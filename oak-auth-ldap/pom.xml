@@ -188,6 +188,12 @@
             <classifier>tests</classifier>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>org.apache.jackrabbit</groupId>
+            <artifactId>oak-it-unreliable-ldap-server</artifactId>
+            <version>0.19-SNAPSHOT</version>
+            <scope>test</scope>
+        </dependency>
 
     </dependencies>
 </project>
