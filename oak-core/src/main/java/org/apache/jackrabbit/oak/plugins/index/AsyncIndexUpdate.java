@@ -205,7 +205,13 @@ public class AsyncIndexUpdate implements Runnable {
                     temps.add(cp);
                     continue;
                 }
-                boolean released = store.release(cp);
+                boolean released = true;
+                try {
+                    released = store.release(cp);
+                }
+                catch (IllegalArgumentException e) {
+                    // ignore
+                }
                 log.debug("Releasing temporary checkpoint {}: {}", cp, released);
                 if (!released) {
                     temps.add(cp);
@@ -276,7 +282,13 @@ public class AsyncIndexUpdate implements Runnable {
         NodeState before;
         String beforeCheckpoint = async.getString(name);
         if (beforeCheckpoint != null) {
-            NodeState state = store.retrieve(beforeCheckpoint);
+            NodeState state = null;
+            try {
+                state = store.retrieve(beforeCheckpoint);
+            }
+            catch  (IllegalArgumentException e) {
+                // ignore
+            }
             if (state == null) {
                 log.warn("Failed to retrieve previously indexed checkpoint {};"
                         + " re-running the initial {} index update",
