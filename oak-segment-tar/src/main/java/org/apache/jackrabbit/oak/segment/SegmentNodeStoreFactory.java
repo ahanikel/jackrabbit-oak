@@ -316,6 +316,10 @@ public class SegmentNodeStoreFactory {
             return;
         }
 
+        if (configuration.customSegmentStore() && segmentStore == null) {
+            return;
+        }
+
         OsgiWhiteboard whiteboard = new OsgiWhiteboard(context.getBundleContext());
         SegmentNodeStore store = registerSegmentStore(
             context,
