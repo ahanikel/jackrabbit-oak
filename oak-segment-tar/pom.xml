@@ -46,7 +46,8 @@
                     <instructions>
                         <Export-Package>
                             org.apache.jackrabbit.oak.segment.spi.monitor,
-                            org.apache.jackrabbit.oak.segment.spi.persistence
+                            org.apache.jackrabbit.oak.segment.spi.persistence,
+                            org.apache.jackrabbit.oak.segment.file.tar
                         </Export-Package>
                         <Embed-Dependency>
                             netty-*,
