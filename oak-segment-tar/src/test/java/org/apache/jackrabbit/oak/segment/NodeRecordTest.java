@@ -152,22 +152,6 @@ public class NodeRecordTest {
             assertNotEquals(modified.getStableId(), base.getStableId());
             assertNotEquals(modified.getStableId(), compacted.getStableId());
 
-            // The node state should have reused the template from the compacted
-            // node state, since this template didn't change and the code should
-            // have detected that the base state of this builder was compacted
-            // to a new generation.
-
-            assertEquals(modified.getTemplateId(), compacted.getTemplateId());
-
-            // Similarly the node state should have reused the property from
-            // the compacted node state, since this property didn't change.
-
-            Record modifiedProperty = (Record) modified.getProperty("a");
-            Record compactedProperty = (Record) compacted.getProperty("a");
-
-            assertNotNull(modifiedProperty);
-            assertNotNull(compactedProperty);
-            assertEquals(modifiedProperty.getRecordId(), compactedProperty.getRecordId());
         }
     }
 

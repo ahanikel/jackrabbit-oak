@@ -839,11 +839,7 @@ public class DefaultSegmentWriter implements SegmentWriter {
 
             List<RecordId> ids = newArrayList();
             Template template = new Template(reader, state);
-            if (template.equals(beforeTemplate)) {
-                ids.add(before.getTemplateId());
-            } else {
-                ids.add(writeTemplate(template));
-            }
+            ids.add(writeTemplate(template));
 
             String childName = template.getChildName();
             if (childName == Template.MANY_CHILD_NODES) {
@@ -874,6 +870,7 @@ public class DefaultSegmentWriter implements SegmentWriter {
                 PropertyState property = state.getProperty(name);
                 assert property != null;
 
+                // TODO(axel): Not sure if we should skip this
                 if (before != null) {
                     // If this property is already present in before (the base state)
                     // and it hasn't been modified use that one. This will result
@@ -885,32 +882,7 @@ public class DefaultSegmentWriter implements SegmentWriter {
                     }
                 }
 
-                if (sameStore(property)) {
-                    RecordId pid = ((Record) property).getRecordId();
-                    if (isOldGeneration(pid)) {
-                        pIds.add(writeProperty(property));
-                    } else {
-                        pIds.add(pid);
-                    }
-                } else if (before == null || !sameStore(before)) {
-                    pIds.add(writeProperty(property));
-                } else {
-                    // reuse previously stored property, if possible
-                    PropertyTemplate bt = beforeTemplate.getPropertyTemplate(name);
-                    if (bt == null) {
-                        pIds.add(writeProperty(property)); // new property
-                    } else {
-                        SegmentPropertyState bp = beforeTemplate.getProperty(before.getRecordId(), bt.getIndex());
-                        if (property.equals(bp)) {
-                            pIds.add(bp.getRecordId()); // no changes
-                        } else if (bp.isArray() && bp.getType() != BINARIES) {
-                            // reuse entries from the previous list
-                            pIds.add(writeProperty(property, bp.getValueRecords()));
-                        } else {
-                            pIds.add(writeProperty(property));
-                        }
-                    }
-                }
+                pIds.add(writeProperty(property));
             }
 
             if (!pIds.isEmpty()) {
