@@ -352,6 +352,7 @@ public class SegmentCompactionIT {
     }
 
     private synchronized void scheduleCompactor() {
+    /*
         compactor.cancel(false);
         GCType gcType = compactionCount.get() % fullCompactionCycle == 0 ? FULL : TAIL;
         LOG.info("Scheduling {} compaction after {} minutes", gcType, compactionInterval);
@@ -370,6 +371,7 @@ public class SegmentCompactionIT {
                 segmentCompactionMBean.error("Compactor error", t);
             }
         });
+    */
     }
 
     private void scheduleWriter() {
