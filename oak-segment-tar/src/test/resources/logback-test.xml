@@ -20,8 +20,16 @@
             <pattern>%date{HH:mm:ss.SSS} %-5level %-40([%thread] %F:%L) %msg%n</pattern>
         </encoder>
     </appender>
+    <appender name="logfile" class="ch.qos.logback.core.FileAppender">
+        <file>debug.log</file>
+        <encoder>
+            <pattern>%date{HH:mm:ss.SSS} %-5level %-40([%thread] %F:%L) %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <logger name="org.apache.jackrabbit.oak.segment.SegmentTarReader" level="DEBUG"/>
 
     <root level="INFO">
-        <appender-ref ref="console"/>
+        <appender-ref ref="logfile"/>
     </root>
 </configuration>
