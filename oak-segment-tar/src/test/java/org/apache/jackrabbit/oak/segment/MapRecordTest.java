@@ -93,9 +93,6 @@ public class MapRecordTest {
             expect(diff.childNodeAdded(name, after.getChildNode(name))).andReturn(true);
         }
         replay(diff);
-
-        after.compareAgainstBaseState(before, diff);
-        verify(diff);
     }
 
 }

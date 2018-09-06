@@ -557,9 +557,6 @@ public class DefaultSegmentWriter implements SegmentWriter {
         private RecordId writeBlob(@Nonnull Blob blob) throws IOException {
             if (sameStore(blob)) {
                 SegmentBlob segmentBlob = (SegmentBlob) blob;
-                if (!isOldGeneration(segmentBlob.getRecordId())) {
-                    return segmentBlob.getRecordId();
-                }
                 if (segmentBlob.isExternal()) {
                     return writeBlobId(segmentBlob.getBlobId());
                 }
@@ -612,22 +609,7 @@ public class DefaultSegmentWriter implements SegmentWriter {
         private RecordId writeStream(@Nonnull InputStream stream) throws IOException {
             boolean threw = true;
             try {
-                RecordId id = SegmentStream.getRecordIdIfAvailable(stream, store);
-                if (id == null) {
-                    // This is either not a segment stream or a one from another store:
-                    // fully serialise the stream.
-                    id = internalWriteStream(stream);
-                } else if (isOldGeneration(id)) {
-                    // This is a segment stream from this store but from an old generation:
-                    // try to link to the blocks if there are any.
-                    SegmentStream segmentStream = (SegmentStream) stream;
-                    List<RecordId> blockIds = segmentStream.getBlockIds();
-                    if (blockIds == null) {
-                        return internalWriteStream(stream);
-                    } else {
-                        return writeValueRecord(segmentStream.getLength(), writeList(blockIds));
-                    }
-                }
+                RecordId id = internalWriteStream(stream);
                 threw = false;
                 return id;
             } finally {
@@ -695,18 +677,14 @@ public class DefaultSegmentWriter implements SegmentWriter {
                     }
                 } else {
                     String value = state.getValue(STRING, i);
-                    RecordId valueId = previousValues.get(value);
-                    if (valueId == null) {
-                        valueId = writeString(value);
-                    }
-                    valueIds.add(valueId);
+                    valueIds.add(writeString(value));
                 }
             }
 
             if (!type.isArray()) {
                 return valueIds.iterator().next();
             } else if (count == 0) {
-                return RecordWriters.newListWriter().write(writer, store);
+                return RecordWriters.newListWriter(/* empty list */).write(writer, store);
             } else {
                 return RecordWriters.newListWriter(count, writeList(valueIds)).write(writer, store);
             }
@@ -715,6 +693,8 @@ public class DefaultSegmentWriter implements SegmentWriter {
         private RecordId writeTemplate(Template template) throws IOException {
             checkNotNull(template);
 
+            // TODO(axel): Let's leave this for now but we need to see what
+            //             "recently" means.
             RecordId id = templateCache.get(template);
             if (id != null) {
                 return id; // shortcut if the same template was recently stored
@@ -788,11 +768,6 @@ public class DefaultSegmentWriter implements SegmentWriter {
 
         private RecordId writeNode(@Nonnull NodeState state, @Nullable ByteBuffer stableIdBytes)
         throws IOException {
-            RecordId compactedId = deduplicateNode(state);
-
-            if (compactedId != null) {
-                return compactedId;
-            }
 
             if (state instanceof SegmentNodeState && stableIdBytes == null) {
                 stableIdBytes = ((SegmentNodeState) state).getStableIdBytes();
@@ -823,19 +798,8 @@ public class DefaultSegmentWriter implements SegmentWriter {
 
             RecordId beforeId = null;
 
-            if (after != null) {
-                // Pass null to indicate we don't want to update the node write statistics
-                // when deduplicating the base state
-                beforeId = deduplicateNode(after.getBaseState());
-            }
-
             SegmentNodeState before = null;
             Template beforeTemplate = null;
-
-            if (beforeId != null) {
-                before = reader.readNode(beforeId);
-                beforeTemplate = before.getTemplate();
-            }
 
             List<RecordId> ids = newArrayList();
             Template template = new Template(reader, state);
@@ -845,19 +809,12 @@ public class DefaultSegmentWriter implements SegmentWriter {
             if (childName == Template.MANY_CHILD_NODES) {
                 MapRecord base;
                 Map<String, RecordId> childNodes;
-                if (before != null
-                        && before.getChildNodeCount(2) > 1
-                        && after.getChildNodeCount(2) > 1) {
-                    base = before.getChildNodeMap();
-                    childNodes = new ChildNodeCollectorDiff().diff(before, after);
-                } else {
-                    base = null;
-                    childNodes = newHashMap();
-                    for (ChildNodeEntry entry : state.getChildNodeEntries()) {
-                        childNodes.put(
-                                entry.getName(),
-                                writeNode(entry.getNodeState(), null));
-                    }
+                base = null;
+                childNodes = newHashMap();
+                for (ChildNodeEntry entry : state.getChildNodeEntries()) {
+                    childNodes.put(
+                            entry.getName(),
+                            writeNode(entry.getNodeState(), null));
                 }
                 ids.add(writeMap(base, childNodes));
             } else if (childName != Template.ZERO_CHILD_NODES) {
@@ -869,19 +826,6 @@ public class DefaultSegmentWriter implements SegmentWriter {
                 String name = pt.getName();
                 PropertyState property = state.getProperty(name);
                 assert property != null;
-
-                // TODO(axel): Not sure if we should skip this
-                if (before != null) {
-                    // If this property is already present in before (the base state)
-                    // and it hasn't been modified use that one. This will result
-                    // in an already compacted property to be reused given before
-                    // has been already compacted.
-                    PropertyState beforeProperty = before.getProperty(name);
-                    if (property.equals(beforeProperty)) {
-                        property = beforeProperty;
-                    }
-                }
-
                 pIds.add(writeProperty(property));
             }
 
