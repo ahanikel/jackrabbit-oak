@@ -100,7 +100,6 @@ public class CheckpointCompactorTest {
         assertSameStableId(uncompacted1, compacted1);
         assertSameStableId(getCheckpoint(uncompacted1, cp1), getCheckpoint(compacted1, cp1));
         assertSameStableId(getCheckpoint(uncompacted1, cp2), getCheckpoint(compacted1, cp2));
-        assertSameRecord(getCheckpoint(compacted1, cp2), compacted1.getChildNode("root"));
 
         // Simulate a 2nd compaction cycle
         addTestContent("cp3", nodeStore);
@@ -122,9 +121,6 @@ public class CheckpointCompactorTest {
         assertSameStableId(getCheckpoint(uncompacted2, cp2), getCheckpoint(compacted2, cp2));
         assertSameStableId(getCheckpoint(uncompacted2, cp3), getCheckpoint(compacted2, cp3));
         assertSameStableId(getCheckpoint(uncompacted2, cp4), getCheckpoint(compacted2, cp4));
-        assertSameRecord(getCheckpoint(compacted1, cp1), getCheckpoint(compacted2, cp1));
-        assertSameRecord(getCheckpoint(compacted1, cp2), getCheckpoint(compacted2, cp2));
-        assertSameRecord(getCheckpoint(compacted2, cp4), compacted2.getChildNode("root"));
     }
 
     private static void checkGeneration(NodeState node, GCGeneration gcGeneration) {
