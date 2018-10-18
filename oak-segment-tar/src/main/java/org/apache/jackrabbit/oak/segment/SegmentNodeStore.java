@@ -27,7 +27,9 @@ import static org.apache.jackrabbit.oak.api.Type.STRING;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 
 import org.apache.jackrabbit.oak.api.Blob;
@@ -37,9 +39,11 @@ import org.apache.jackrabbit.oak.plugins.blob.BlobStoreBlob;
 import org.apache.jackrabbit.oak.segment.scheduler.Commit;
 import org.apache.jackrabbit.oak.segment.scheduler.LockBasedScheduler;
 import org.apache.jackrabbit.oak.segment.scheduler.Scheduler;
+import org.apache.jackrabbit.oak.segment.tool.LoggingHook;
 import org.apache.jackrabbit.oak.spi.blob.BlobStore;
 import org.apache.jackrabbit.oak.spi.commit.CommitHook;
 import org.apache.jackrabbit.oak.spi.commit.CommitInfo;
+import org.apache.jackrabbit.oak.spi.commit.CompositeHook;
 import org.apache.jackrabbit.oak.spi.commit.Observable;
 import org.apache.jackrabbit.oak.spi.commit.Observer;
 import org.apache.jackrabbit.oak.spi.state.ConflictAnnotatingRebaseDiff;
@@ -180,6 +184,8 @@ public class SegmentNodeStore implements NodeStore, Observable {
         return scheduler.getHeadNodeState().getChildNode(ROOT);
     }
 
+    private static LoggingHook LOGGINGHOOK = null;
+
     @NotNull
     @Override
     public NodeState merge(
@@ -187,6 +193,19 @@ public class SegmentNodeStore implements NodeStore, Observable {
             @NotNull CommitInfo info) throws CommitFailedException {
         checkArgument(builder instanceof SegmentNodeBuilder);
         checkArgument(((SegmentNodeBuilder) builder).isRootBuilder());
+        if ("true".equals(System.getProperty(LoggingHook.class.getName()))) {
+            if (LOGGINGHOOK == null) {
+                synchronized(this.getClass()) {
+                    if (LOGGINGHOOK == null) {
+                        LOGGINGHOOK = LoggingHook.newLoggingHook();
+                    }
+                }
+            }
+            final List<CommitHook> hooks = new ArrayList();
+            hooks.add(commitHook);
+            hooks.add(LOGGINGHOOK);
+            commitHook = CompositeHook.compose(hooks);
+        }
         return scheduler.schedule(new Commit(builder, commitHook, info));
     }
 
