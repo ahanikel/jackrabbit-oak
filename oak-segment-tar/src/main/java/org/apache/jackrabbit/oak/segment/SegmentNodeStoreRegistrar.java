@@ -34,6 +34,10 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import com.google.common.io.Closer;
+import java.io.BufferedOutputStream;
+import java.io.FileOutputStream;
+import java.io.OutputStream;
+import java.io.UnsupportedEncodingException;
 import org.apache.jackrabbit.commons.SimpleValueFactory;
 import org.apache.jackrabbit.oak.api.Descriptors;
 import org.apache.jackrabbit.oak.api.jmx.CacheStatsMBean;
@@ -61,6 +65,7 @@ import org.apache.jackrabbit.oak.segment.file.MetricsIOMonitor;
 import org.apache.jackrabbit.oak.segment.file.tar.TarPersistence;
 import org.apache.jackrabbit.oak.segment.spi.persistence.SegmentNodeStorePersistence;
 import org.apache.jackrabbit.oak.segment.split.SplitPersistence;
+import org.apache.jackrabbit.oak.segment.tool.LoggingHook;
 import org.apache.jackrabbit.oak.spi.blob.BlobStore;
 import org.apache.jackrabbit.oak.spi.blob.GarbageCollectableBlobStore;
 import org.apache.jackrabbit.oak.spi.cluster.ClusterRepositoryInfo;
@@ -363,6 +368,18 @@ class SegmentNodeStoreRegistrar {
 
         SegmentNodeStore.SegmentNodeStoreBuilder segmentNodeStoreBuilder = SegmentNodeStoreBuilders.builder(store).withStatisticsProvider(cfg.getStatisticsProvider());
         segmentNodeStoreBuilder.dispatchChanges(cfg.dispatchChanges());
+
+        final String loggingHookFileName = System.getProperty(LoggingHook.class.getName() + ".filename");
+        if (loggingHookFileName != null && ! "".equals(loggingHookFileName)) {
+            final OutputStream os = new BufferedOutputStream(new FileOutputStream(loggingHookFileName));
+            segmentNodeStoreBuilder.withLoggingHook(logMessage -> {
+                try {
+                    os.write(logMessage.getBytes("UTF-8"));
+                } catch (UnsupportedEncodingException ex) {
+                } catch (IOException ex) {
+                }
+            });
+        }
 
         SegmentNodeStore segmentNodeStore = segmentNodeStoreBuilder.build();
 

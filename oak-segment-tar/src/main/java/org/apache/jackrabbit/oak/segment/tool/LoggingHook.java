@@ -16,15 +16,11 @@
  */
 package org.apache.jackrabbit.oak.segment.tool;
 
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
-import java.util.Queue;
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.function.Consumer;
 import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.api.CommitFailedException;
 import org.apache.jackrabbit.oak.api.PropertyState;
@@ -40,59 +36,16 @@ import org.apache.jackrabbit.oak.spi.state.NodeStateDiff;
 
 public class LoggingHook implements CommitHook, NodeStateDiff {
 
-    public static final String LOGFILENAME_PROPERTY = LoggingHook.class.getName() + ".filename";
-    public static final String LOGFILENAME_DEFAULT = "/tmp/logginghook.log";
     public static final int THREADWAITTIMEMILLIS = 1000;
 
-    private final Queue<String> queue;
-    private final Thread writerThread;
-    private OutputStream log;
-    private volatile boolean isOperational;
+    private final Consumer<String> writer;
 
-    private LoggingHook() {
-        isOperational = true;
-        queue = new ConcurrentLinkedQueue<>();
-        try {
-            String logFileName = System.getProperty(LOGFILENAME_PROPERTY);
-            if (logFileName == null || "".equals(logFileName)) {
-                logFileName = LOGFILENAME_DEFAULT;
-            }
-            log = new FileOutputStream(logFileName);
-        }
-        catch (FileNotFoundException e) {
-            isOperational = false;
-        }
-        writerThread = new Thread("LoggingHookWriter") {
-            @Override
-            public void run() {
-                for (;;) {
-                    try {
-                        Thread.sleep(THREADWAITTIMEMILLIS);
-                    }
-                    catch (InterruptedException ex) {
-                        return;
-                    }
-                    String entry;
-                    while ((entry = queue.poll()) != null) {
-                        try {
-                            log.write(entry.getBytes("UTF-8"));
-                        }
-                        catch (UnsupportedEncodingException ex) {
-                            isOperational = false;
-                        }
-                        catch (IOException ex) {
-                            isOperational = false;
-                        }
-                    };
-                }
-            }
-        };
+    private LoggingHook(final Consumer<String> writer) {
+        this.writer = writer;
     }
 
-    public static LoggingHook newLoggingHook() {
-        final LoggingHook h = new LoggingHook();
-        h.writerThread.start();
-        return h;
+    public static LoggingHook newLoggingHook(final Consumer<String> writer) {
+        return new LoggingHook(writer);
     }
 
     public void enter(NodeState before, NodeState after) {
@@ -100,65 +53,49 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
     }
 
     public void leave(NodeState before, NodeState after) {
-        if (isOperational) {
-            queueWriteLine("n!");
-        }
+        queueWriteLine("n!");
     }
 
     @Override
     public boolean propertyAdded(PropertyState after) {
-        if (isOperational) {
-            queueWriteLine("p+ " + toString(after));
-        }
-        return isOperational;
+        queueWriteLine("p+ " + toString(after));
+        return true;
     }
 
     @Override
     public boolean propertyChanged(PropertyState before, PropertyState after) {
-        if (isOperational) {
-            queueWriteLine("p^ " + toString(after));
-        }
-        return isOperational;
+        queueWriteLine("p^ " + toString(after));
+        return true;
     }
 
     @Override
     public boolean propertyDeleted(PropertyState before) {
-        if (isOperational) {
-            queueWriteLine("p- " + toString(before));
-        }
-        return isOperational;
+        queueWriteLine("p- " + toString(before));
+        return true;
     }
 
     @Override
     public boolean childNodeAdded(String name, NodeState after) {
-        if (isOperational) {
-            queueWriteLine("n+ " + urlEncode(name));
-            this.enter(null, after);
-            boolean ret = after.compareAgainstBaseState(EmptyNodeState.EMPTY_NODE, this);
-            this.leave(null, after);
-            return ret;
-        }
-        return isOperational;
+        queueWriteLine("n+ " + urlEncode(name));
+        this.enter(null, after);
+        boolean ret = after.compareAgainstBaseState(EmptyNodeState.EMPTY_NODE, this);
+        this.leave(null, after);
+        return ret;
     }
 
     @Override
     public boolean childNodeChanged(String name, NodeState before, NodeState after) {
-        if (isOperational) {
-            queueWriteLine("n^ " + urlEncode(name));
-            this.enter(before, after);
-            boolean ret = after.compareAgainstBaseState(before, this);
-            this.leave(before, after);
-            return ret;
-        }
-        return false;
+        queueWriteLine("n^ " + urlEncode(name));
+        this.enter(before, after);
+        boolean ret = after.compareAgainstBaseState(before, this);
+        this.leave(before, after);
+        return ret;
     }
 
     @Override
     public boolean childNodeDeleted(String name, NodeState before) {
-        if (isOperational) {
-            queueWriteLine("n- " + urlEncode(name));
-        }
-        return isOperational;
+        queueWriteLine("n- " + urlEncode(name));
+        return true;
     }
 
     private static String toString(final PropertyState ps) {
@@ -171,24 +108,21 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
             val.append("= ");
             final Blob blob = ps.getValue(BINARY);
             appendBlob(val, blob);
-        }
-        else if (ps.getType() == BINARIES) {
+        } else if (ps.getType() == BINARIES) {
             val.append("= [");
             ps.getValue(BINARIES).forEach((Blob b) -> {
                 appendBlob(val, b);
                 val.append(',');
             });
             replaceOrAppendLastChar(val, ',', ']');
-        }
-        else if (ps.isArray()) {
+        } else if (ps.isArray()) {
             val.append("= [");
             ps.getValue(STRINGS).forEach((String s) -> {
                 val.append(urlEncode(s));
                 val.append(',');
             });
             replaceOrAppendLastChar(val, ',', ']');
-        }
-        else {
+        } else {
             val.append("= ").append(urlEncode(ps.getValue(STRING)));
         }
         return val.toString();
@@ -198,8 +132,7 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
         String ret;
         try {
             ret = URLEncoder.encode(s, "UTF-8").replace("%2F", "/").replace("%3A", ":");
-        }
-        catch (UnsupportedEncodingException ex) {
+        } catch (UnsupportedEncodingException ex) {
             ret = "ERROR: " + ex.toString();
         }
         return ret;
@@ -208,14 +141,13 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
     private static void replaceOrAppendLastChar(StringBuilder b, char oldChar, char newChar) {
         if (b.charAt(b.length() - 1) == oldChar) {
             b.setCharAt(b.length() - 1, newChar);
-        }
-        else {
+        } else {
             b.append(newChar);
         }
     }
 
     private void queueWriteLine(String s) {
-        queue.add(System.currentTimeMillis() + " " + urlEncode(Thread.currentThread().getName()) + " " + s + "\n");
+        writer.accept(System.currentTimeMillis() + " " + urlEncode(Thread.currentThread().getName()) + " " + s + "\n");
     }
 
     private static void appendBlob(StringBuilder sb, Blob blob) {
@@ -227,8 +159,7 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
                 sb.append(hex[b >> 4]);
                 sb.append(hex[b & 0x0f]);
             }
-        }
-        catch (IOException ex) {
+        } catch (IOException ex) {
             throw new IllegalStateException(ex);
         }
     }
