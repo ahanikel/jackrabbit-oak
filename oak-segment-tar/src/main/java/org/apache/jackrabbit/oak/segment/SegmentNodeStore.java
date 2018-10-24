@@ -195,7 +195,7 @@ public class SegmentNodeStore implements NodeStore, Observable {
 
     @Override @NotNull
     public NodeState getRoot() {
-        return scheduler.getHeadNodeState().getChildNode(ROOT);
+        return new NodeStateWrapper("", scheduler.getHeadNodeState().getChildNode(ROOT), true);
     }
 
     @NotNull
