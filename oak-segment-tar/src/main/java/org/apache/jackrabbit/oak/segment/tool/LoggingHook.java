@@ -53,30 +53,30 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
     }
 
     public void leave(NodeState before, NodeState after) {
-        queueWriteLine("n!");
+        log("n!");
     }
 
     @Override
     public boolean propertyAdded(PropertyState after) {
-        queueWriteLine("p+ " + toString(after));
+        log("p+ " + toString(after));
         return true;
     }
 
     @Override
     public boolean propertyChanged(PropertyState before, PropertyState after) {
-        queueWriteLine("p^ " + toString(after));
+        log("p^ " + toString(after));
         return true;
     }
 
     @Override
     public boolean propertyDeleted(PropertyState before) {
-        queueWriteLine("p- " + toString(before));
+        log("p- " + toString(before));
         return true;
     }
 
     @Override
     public boolean childNodeAdded(String name, NodeState after) {
-        queueWriteLine("n+ " + urlEncode(name));
+        log("n+ " + urlEncode(name));
         this.enter(null, after);
         boolean ret = after.compareAgainstBaseState(EmptyNodeState.EMPTY_NODE, this);
         this.leave(null, after);
@@ -85,7 +85,7 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
 
     @Override
     public boolean childNodeChanged(String name, NodeState before, NodeState after) {
-        queueWriteLine("n^ " + urlEncode(name));
+        log("n^ " + urlEncode(name));
         this.enter(before, after);
         boolean ret = after.compareAgainstBaseState(before, this);
         this.leave(before, after);
@@ -94,7 +94,7 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
 
     @Override
     public boolean childNodeDeleted(String name, NodeState before) {
-        queueWriteLine("n- " + urlEncode(name));
+        log("n- " + urlEncode(name));
         return true;
     }
 
@@ -146,8 +146,8 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
         }
     }
 
-    private void queueWriteLine(String s) {
-        writer.accept(System.currentTimeMillis() + " " + urlEncode(Thread.currentThread().getName()) + " " + s + "\n");
+    private void log(String s) {
+        writer.accept(System.currentTimeMillis() + " " + urlEncode(Thread.currentThread().getName()) + " " + s);
     }
 
     private static void appendBlob(StringBuilder sb, Blob blob) {

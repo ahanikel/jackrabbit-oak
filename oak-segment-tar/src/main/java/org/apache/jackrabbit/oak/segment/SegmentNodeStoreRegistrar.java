@@ -34,10 +34,6 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import com.google.common.io.Closer;
-import java.io.BufferedOutputStream;
-import java.io.FileOutputStream;
-import java.io.OutputStream;
-import java.io.UnsupportedEncodingException;
 import org.apache.jackrabbit.commons.SimpleValueFactory;
 import org.apache.jackrabbit.oak.api.Descriptors;
 import org.apache.jackrabbit.oak.api.jmx.CacheStatsMBean;
@@ -86,6 +82,7 @@ import org.apache.jackrabbit.oak.stats.StatisticsProvider;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.Constants;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 class SegmentNodeStoreRegistrar {
 
@@ -369,16 +366,9 @@ class SegmentNodeStoreRegistrar {
         SegmentNodeStore.SegmentNodeStoreBuilder segmentNodeStoreBuilder = SegmentNodeStoreBuilders.builder(store).withStatisticsProvider(cfg.getStatisticsProvider());
         segmentNodeStoreBuilder.dispatchChanges(cfg.dispatchChanges());
 
-        final String loggingHookFileName = System.getProperty(LoggingHook.class.getName() + ".filename");
-        if (loggingHookFileName != null && ! "".equals(loggingHookFileName)) {
-            final OutputStream os = new BufferedOutputStream(new FileOutputStream(loggingHookFileName));
-            segmentNodeStoreBuilder.withLoggingHook(logMessage -> {
-                try {
-                    os.write(logMessage.getBytes("UTF-8"));
-                } catch (UnsupportedEncodingException ex) {
-                } catch (IOException ex) {
-                }
-            });
+        final Logger log = LoggerFactory.getLogger(LoggingHook.class.getName() + ".writer");
+        if (log.isTraceEnabled()) {
+            segmentNodeStoreBuilder.withLoggingHook(logMessage -> log.trace(logMessage));
         }
 
         SegmentNodeStore segmentNodeStore = segmentNodeStoreBuilder.build();
