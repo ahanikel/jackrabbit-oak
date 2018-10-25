@@ -30,6 +30,7 @@ import java.io.InputStream;
 import java.util.Collections;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.api.CommitFailedException;
@@ -39,6 +40,7 @@ import org.apache.jackrabbit.oak.segment.scheduler.Commit;
 import org.apache.jackrabbit.oak.segment.scheduler.LockBasedScheduler;
 import org.apache.jackrabbit.oak.segment.scheduler.Scheduler;
 import org.apache.jackrabbit.oak.segment.tool.LoggingHook;
+import org.apache.jackrabbit.oak.segment.tool.NodeStateWrapper;
 import org.apache.jackrabbit.oak.spi.blob.BlobStore;
 import org.apache.jackrabbit.oak.spi.commit.CommitHook;
 import org.apache.jackrabbit.oak.spi.commit.CommitInfo;
@@ -87,6 +89,8 @@ public class SegmentNodeStore implements NodeStore, Observable {
         
         private LoggingHook loggingHook;
 
+        private Function<NodeState, NodeStateWrapper> rootNodeStateWrapper;
+
         private SegmentNodeStoreBuilder(
                 @NotNull Revisions revisions,
                 @NotNull SegmentReader reader,
@@ -123,6 +127,12 @@ public class SegmentNodeStore implements NodeStore, Observable {
         @NotNull
         public SegmentNodeStoreBuilder withLoggingHook(Consumer<String> writer) {
             this.loggingHook = LoggingHook.newLoggingHook(writer);
+            return this;
+        }
+
+        @NotNull
+        public SegmentNodeStoreBuilder withRootNodeStateWrapper(Function<NodeState, NodeStateWrapper> rootNodeStateWrapper) {
+            this.rootNodeStateWrapper = rootNodeStateWrapper;
             return this;
         }
 
@@ -174,6 +184,8 @@ public class SegmentNodeStore implements NodeStore, Observable {
 
     private final LoggingHook loggingHook;
 
+    private final Function<NodeState, NodeStateWrapper> rootNodeStateWrapper;
+
     private SegmentNodeStore(SegmentNodeStoreBuilder builder) {
         this.writer = builder.writer;
         this.blobStore = builder.blobStore;
@@ -182,6 +194,7 @@ public class SegmentNodeStore implements NodeStore, Observable {
                 .dispatchChanges(builder.dispatchChanges)
                 .build();
         this.loggingHook = builder.loggingHook;
+        this.rootNodeStateWrapper = builder.rootNodeStateWrapper;
     }
 
     @Override
@@ -195,7 +208,11 @@ public class SegmentNodeStore implements NodeStore, Observable {
 
     @Override @NotNull
     public NodeState getRoot() {
-        return new NodeStateWrapper("", scheduler.getHeadNodeState().getChildNode(ROOT), true);
+        final NodeState root = scheduler.getHeadNodeState().getChildNode(ROOT);
+        if (rootNodeStateWrapper != null) {
+            return rootNodeStateWrapper.apply(root);
+        }
+        return root;
     }
 
     @NotNull

@@ -128,7 +128,7 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
         return val.toString();
     }
 
-    private static String urlEncode(String s) {
+    protected static String urlEncode(String s) {
         String ret;
         try {
             ret = URLEncoder.encode(s, "UTF-8").replace("%2F", "/").replace("%3A", ":");

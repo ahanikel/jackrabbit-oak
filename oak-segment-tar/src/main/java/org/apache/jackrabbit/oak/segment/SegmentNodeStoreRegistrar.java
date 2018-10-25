@@ -62,6 +62,7 @@ import org.apache.jackrabbit.oak.segment.file.tar.TarPersistence;
 import org.apache.jackrabbit.oak.segment.spi.persistence.SegmentNodeStorePersistence;
 import org.apache.jackrabbit.oak.segment.split.SplitPersistence;
 import org.apache.jackrabbit.oak.segment.tool.LoggingHook;
+import org.apache.jackrabbit.oak.segment.tool.LoggingNodeStateWrapper;
 import org.apache.jackrabbit.oak.spi.blob.BlobStore;
 import org.apache.jackrabbit.oak.spi.blob.GarbageCollectableBlobStore;
 import org.apache.jackrabbit.oak.spi.cluster.ClusterRepositoryInfo;
@@ -366,9 +367,14 @@ class SegmentNodeStoreRegistrar {
         SegmentNodeStore.SegmentNodeStoreBuilder segmentNodeStoreBuilder = SegmentNodeStoreBuilders.builder(store).withStatisticsProvider(cfg.getStatisticsProvider());
         segmentNodeStoreBuilder.dispatchChanges(cfg.dispatchChanges());
 
-        final Logger log = LoggerFactory.getLogger(LoggingHook.class.getName() + ".writer");
-        if (log.isTraceEnabled()) {
-            segmentNodeStoreBuilder.withLoggingHook(logMessage -> log.trace(logMessage));
+        final Logger writeLog = LoggerFactory.getLogger(LoggingHook.class.getName() + ".writer");
+        if (writeLog.isTraceEnabled()) {
+            segmentNodeStoreBuilder.withLoggingHook(logMessage -> writeLog.trace(logMessage));
+        }
+
+        final Logger readLog = LoggerFactory.getLogger(LoggingHook.class.getName() + ".reader");
+        if (readLog.isTraceEnabled()) {
+            segmentNodeStoreBuilder.withRootNodeStateWrapper(root -> new LoggingNodeStateWrapper("", root, true));
         }
 
         SegmentNodeStore segmentNodeStore = segmentNodeStoreBuilder.build();

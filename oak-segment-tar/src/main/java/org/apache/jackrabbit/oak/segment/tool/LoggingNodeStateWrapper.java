@@ -17,27 +17,28 @@
  * under the License.
  */
 
-package org.apache.jackrabbit.oak.segment;
+package org.apache.jackrabbit.oak.segment.tool;
 
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.jackrabbit.oak.api.PropertyState;
-import org.apache.jackrabbit.oak.segment.tool.ReaderLogger;
 import org.apache.jackrabbit.oak.spi.state.ChildNodeEntry;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.apache.jackrabbit.oak.spi.state.NodeStateDiff;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-public class NodeStateWrapper implements NodeState {
+public class LoggingNodeStateWrapper extends NodeStateWrapper {
+
+    private static final Logger LOG = LoggerFactory.getLogger(LoggingHook.class.getName() + ".reader");
 
     private final String path;
-    private final NodeState ns;
-    private static final ReaderLogger LOG = ReaderLogger.newReaderLogger();
-    private boolean isRootNode;
+    private final boolean isRootNode;
 
-    public NodeStateWrapper(String path, NodeState ns, boolean isRootNode) {
+    public LoggingNodeStateWrapper(String path, NodeState ns, boolean isRootNode) {
+        super(ns);
         this.path = path;
-        this.ns = ns;
         this.isRootNode = isRootNode;
     }
 
@@ -57,7 +58,7 @@ public class NodeStateWrapper implements NodeState {
 
     @Override
     public PropertyState getProperty(String name) {
-        LOG.propertyRead(path, name);
+        log.propertyRead(path, name);
         return ns.getProperty(name);
     }
 
@@ -109,8 +110,8 @@ public class NodeStateWrapper implements NodeState {
     @Override
     public NodeState getChildNode(String name) throws IllegalArgumentException {
         final String newName = path + "/" + name;
-        LOG.nodeRead(newName);
-        return new NodeStateWrapper(newName, ns.getChildNode(name), false);
+        log.nodeRead(newName);
+        return new LoggingNodeStateWrapper(newName, ns.getChildNode(name), false);
     }
 
     @Override
@@ -138,7 +139,7 @@ public class NodeStateWrapper implements NodeState {
 
         @Override
         public NodeState getNodeState() {
-            return new NodeStateWrapper(String.join("/", path, entry.getName()), entry.getNodeState(), false);
+            return new LoggingNodeStateWrapper(String.join("/", path, entry.getName()), entry.getNodeState(), false);
         }
     }
 
@@ -158,4 +159,31 @@ public class NodeStateWrapper implements NodeState {
     public boolean compareAgainstBaseState(NodeState base, NodeStateDiff diff) {
         return ns.compareAgainstBaseState(base, diff);
     }
+
+    private interface ReaderLogger {
+        public void nodeRead(String n);
+        public void propertyRead(String n, String p);
+    }
+
+    private ReaderLogger log = new ReaderLogger() {
+        @Override
+        public void nodeRead(String n) {
+            if (n == null) {
+                n = "::: unknown :::";
+            }
+            log("n? " + LoggingHook.urlEncode(n));
+        }
+
+        @Override
+        public void propertyRead(String n, String p) {
+            if (n == null) {
+                n = "::: unknown :::";
+            }
+            log("p? " + LoggingHook.urlEncode(n) + " " + LoggingHook.urlEncode(p));
+        }
+
+        private void log(String s) {
+            LOG.trace(System.currentTimeMillis() + " " + LoggingHook.urlEncode(Thread.currentThread().getName()) + " " + s);
+        }
+    };
 }
