@@ -50,7 +50,8 @@
                         </Export-Package>
                         <Embed-Dependency>
                             netty-*,
-                            concurrentlinkedhashmap-lru
+                            concurrentlinkedhashmap-lru,
+                            jzmq
                         </Embed-Dependency>
                         <Import-Package>
                             <!-- OAK-7182 -->${guava.osgi.import},
@@ -266,6 +267,11 @@
             <groupId>io.dropwizard.metrics</groupId>
             <artifactId>metrics-core</artifactId>
             <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.zeromq</groupId>
+            <artifactId>jzmq</artifactId>
+            <version>3.1.0</version>
         </dependency>
 
 		<!-- Embedded dependencies -->

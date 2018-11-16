@@ -28,6 +28,8 @@ import org.apache.jackrabbit.oak.segment.file.FileStore;
 import org.apache.jackrabbit.oak.segment.file.ReadOnlyFileStore;
 import org.apache.jackrabbit.oak.segment.file.tar.GCGeneration;
 import org.apache.jackrabbit.oak.segment.memory.MemoryStore;
+import org.apache.jackrabbit.oak.segment.memory.SegmentStoreWithGetters;
+import org.apache.jackrabbit.oak.spi.blob.BlobStore;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -206,6 +208,21 @@ public final class DefaultSegmentWriterBuilder {
         );
     }
 
+    /**
+     * Build a {@code SegmentWriter} for a {@code SegmentStoreWithGetters}.
+     */
+    @NotNull
+    public DefaultSegmentWriter build(@NotNull SegmentStoreWithGetters store) {
+        return new DefaultSegmentWriter(
+            checkNotNull(store),
+            store.getReader(),
+            store.getSegmentIdProvider(),
+            store.getBlobStore(),
+            cacheManager,
+            createWriter(store, pooled)
+        );
+    }
+
     @NotNull
     private WriteOperationHandler createWriter(@NotNull FileStore store, boolean pooled) {
         if (pooled) {
@@ -244,4 +261,22 @@ public final class DefaultSegmentWriterBuilder {
         }
     }
 
+    @NotNull
+    private WriteOperationHandler createWriter(@NotNull SegmentStoreWithGetters store, boolean pooled) {
+        if (pooled) {
+            return new SegmentBufferWriterPool(
+                store.getSegmentIdProvider(),
+                store.getReader(),
+                name,
+                generation
+            );
+        } else {
+            return new SegmentBufferWriter(
+                store.getSegmentIdProvider(),
+                store.getReader(),
+                name,
+                generation.get()
+            );
+        }
+    }
 }

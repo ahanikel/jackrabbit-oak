@@ -59,6 +59,8 @@ import org.apache.jackrabbit.oak.segment.file.FileStoreStatsMBean;
 import org.apache.jackrabbit.oak.segment.file.InvalidFileStoreVersionException;
 import org.apache.jackrabbit.oak.segment.file.MetricsIOMonitor;
 import org.apache.jackrabbit.oak.segment.file.tar.TarPersistence;
+import org.apache.jackrabbit.oak.segment.memory.SegmentStoreWithGetters;
+import org.apache.jackrabbit.oak.segment.memory.ZeroMQStore;
 import org.apache.jackrabbit.oak.segment.spi.persistence.SegmentNodeStorePersistence;
 import org.apache.jackrabbit.oak.segment.split.SplitPersistence;
 import org.apache.jackrabbit.oak.spi.blob.BlobStore;
@@ -198,6 +200,7 @@ class SegmentNodeStoreRegistrar {
             gcMonitor = tracker;
         }
 
+        /*
         // Create the gc options
         if (cfg.getRetainedGenerations() != cfg.getDefaultRetainedGenerations()) {
             cfg.getLogger().warn(
@@ -262,7 +265,9 @@ class SegmentNodeStoreRegistrar {
             cfg.getLogger().error("The storage format is not compatible with this version of Oak Segment Tar", e);
             return null;
         }
-        registerCloseable(store);
+        */
+        SegmentStoreWithGetters store = ZeroMQStore.newZeroMQStore();
+        //registerCloseable(store);
 
         // Listen for Executor services on the whiteboard
 
@@ -270,6 +275,7 @@ class SegmentNodeStoreRegistrar {
         executor.start(cfg.getWhiteboard());
         registerCloseable(executor);
 
+        /*
         // Expose stats about the segment cache
 
         CacheStatsMBean segmentCacheStats = store.getSegmentCacheStats();
@@ -297,7 +303,9 @@ class SegmentNodeStoreRegistrar {
             CacheStats.TYPE,
             templateCacheStats.getName()
         ));
+        */
 
+        /*
         WriterCacheManager cacheManager = builder.getCacheManager();
         CacheStatsMBean stringDeduplicationCacheStats = cacheManager.getStringCacheStats();
         if (stringDeduplicationCacheStats != null) {
@@ -328,6 +336,7 @@ class SegmentNodeStoreRegistrar {
                 nodeDeduplicationCacheStats.getName()
             ));
         }
+        */
 
         // Expose an MBean to managing and monitoring garbage collection
 
@@ -336,6 +345,7 @@ class SegmentNodeStoreRegistrar {
             GCMonitor.class,
             monitor
         ));
+        /*
         if (!cfg.isStandbyInstance()) {
             registerCloseable(registerMBean(
                 SegmentRevisionGC.class,
@@ -344,7 +354,9 @@ class SegmentNodeStoreRegistrar {
                 "Segment node store revision garbage collection"
             ));
         }
+        */
 
+        /*
         registerCloseable(registerMBean(
             RevisionGCMBean.class,
             new RevisionGC(store.getGCRunner(), store::cancelGC, monitor::getStatus, executor),
@@ -360,7 +372,7 @@ class SegmentNodeStoreRegistrar {
             FileStoreStatsMBean.TYPE,
             "FileStore statistics"
         ));
-
+*/
         // register segment node store
 
         SegmentNodeStore.SegmentNodeStoreBuilder segmentNodeStoreBuilder = SegmentNodeStoreBuilders.builder(store).withStatisticsProvider(cfg.getStatisticsProvider());
@@ -420,6 +432,7 @@ class SegmentNodeStoreRegistrar {
             }
         }
 
+        /*
         if (!cfg.isSecondarySegmentStore() && cfg.hasCustomBlobStore() && (cfg.getBlobStore() instanceof GarbageCollectableBlobStore)) {
             BlobGarbageCollector gc = new MarkSweepGarbageCollector(
                 new SegmentBlobReferenceRetriever(store),
@@ -437,6 +450,7 @@ class SegmentNodeStoreRegistrar {
                 "Segment node store blob garbage collection"
             ));
         }
+        */
 
         // Expose an MBean for backup/restore operations
 
