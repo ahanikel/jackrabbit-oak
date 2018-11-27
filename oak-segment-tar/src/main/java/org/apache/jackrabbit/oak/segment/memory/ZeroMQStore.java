@@ -158,13 +158,14 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
         segmentServer.bind("tcp://localhost:8002");
         segmentClient.connect("tcp://localhost:8002");
 
+        ZMQ.Poller items = context.poller(3);
+        items.register(segmentServer, ZMQ.Poller.POLLIN);
+        items.register(segmentWriterSocket, ZMQ.Poller.POLLIN);
+        items.register(rootWriterSocket, ZMQ.Poller.POLLIN);
+
         socketHandler = new Thread("ZeroMQStore Socket Handler") {
             @Override
             public void run() {
-                ZMQ.Poller items = new ZMQ.Poller(3);
-                items.register(segmentServer, ZMQ.Poller.POLLIN);
-                items.register(segmentWriterSocket, ZMQ.Poller.POLLIN);
-                items.register(rootWriterSocket, ZMQ.Poller.POLLIN);
                 while (!isInterrupted()) {
                     items.poll();
                     if (items.pollin(0)) {
@@ -207,7 +208,7 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
             if (segment != null) {
             return segment;
             }
-        */
+         */
         try {
             segment = segmentCache.get(id, () -> ZeroMQStore.this.readSegmentRemote(id));
         } catch (ExecutionException ex) {
