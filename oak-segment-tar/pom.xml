@@ -51,7 +51,7 @@
                         <Embed-Dependency>
                             netty-*,
                             concurrentlinkedhashmap-lru,
-                            jzmq
+                            jeromq
                         </Embed-Dependency>
                         <Import-Package>
                             <!-- OAK-7182 -->${guava.osgi.import},
@@ -85,6 +85,7 @@
                             sun.nio.ch;resolution:=optional,
                             sun.security.util;resolution:=optional,
                             sun.security.x509;resolution:=optional,
+                            com.neilalexander.*;resolution:=optional,
                             *
                         </Import-Package>
                     </instructions>
@@ -270,8 +271,8 @@
         </dependency>
         <dependency>
             <groupId>org.zeromq</groupId>
-            <artifactId>jzmq</artifactId>
-            <version>3.1.0</version>
+            <artifactId>jeromq</artifactId>
+            <version>0.4.3</version>
         </dependency>
 
 		<!-- Embedded dependencies -->
