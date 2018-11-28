@@ -50,7 +50,7 @@ import org.zeromq.ZMQ;
  */
 public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
 
-    static final int UUID_LEN = 20;
+    static final int UUID_LEN = 36;
 
     /**
      * read segments to be persisted from this socket
@@ -131,8 +131,6 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
                 return new SegmentId(ZeroMQStore.this, msb, lsb);
             }
         });
-        segmentReader = new CachingSegmentReader(this::getWriter, null, 16, 2, NoopStats.INSTANCE);
-        segmentWriter = defaultSegmentWriterBuilder("sys").withWriterPool().build(this);
 
         ZMQ.Context context = ZMQ.context(1);
         // where you get segments you have to persist
@@ -154,6 +152,7 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
             .maximumSize(1000).build();
 
         segmentWriteQueue.bind("tcp://localhost:8000");
+        segmentWriterSocket.connect("tcp://localhost:8000");
         rootWriteQueue.bind("tcp://localhost:8001");
         segmentServer.bind("tcp://localhost:8002");
         segmentClient.connect("tcp://localhost:8002");
@@ -180,6 +179,9 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
                 }
             }
         };
+
+        segmentReader = new CachingSegmentReader(this::getWriter, null, 16, 2, NoopStats.INSTANCE);
+        segmentWriter = defaultSegmentWriterBuilder("sys").withWriterPool().build(this);
     }
 
     @NotNull
