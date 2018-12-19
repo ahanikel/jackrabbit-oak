@@ -43,6 +43,8 @@ import org.apache.jackrabbit.oak.spi.blob.BlobStore;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.stats.NoopStats;
 import org.jetbrains.annotations.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.zeromq.ZMQ;
 
 /**
@@ -50,7 +52,15 @@ import org.zeromq.ZMQ;
  */
 public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
 
+    private static final Logger log = LoggerFactory.getLogger(ZeroMQStore.class.getName());
+
     static final int UUID_LEN = 36;
+
+    @NotNull
+    final ZMQ.Context context;
+
+    @NotNull
+    final ZMQ.Poller items;
 
     /**
      * read segments to be persisted from this socket
@@ -119,7 +129,14 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
     @NotNull
     final SegmentWriter segmentWriter;
 
-    RecordId head = null;
+    // this should not need to be volatile in the end, but for now...
+    @NotNull
+    volatile RecordId head = RecordId.NULL;
+
+    // for debugging
+    volatile boolean dirty = false;
+
+    private Object dirtyLock = new Object();
 
     // I had to copy the whole constructor from MemoryStore
     // because of the call to revisions.bind(this)
@@ -132,7 +149,7 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
             }
         });
 
-        ZMQ.Context context = ZMQ.context(1);
+        context = ZMQ.context(1);
         // where you get segments you have to persist
         segmentWriterSocket = context.socket(ZMQ.PULL);
         // where you can write a new segment to
@@ -154,10 +171,11 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
         segmentWriteQueue.bind("tcp://localhost:8000");
         segmentWriterSocket.connect("tcp://localhost:8000");
         rootWriteQueue.bind("tcp://localhost:8001");
+        rootWriterSocket.connect("tcp://localhost:8001");
         segmentServer.bind("tcp://localhost:8002");
         segmentClient.connect("tcp://localhost:8002");
 
-        ZMQ.Poller items = context.poller(3);
+        items = context.poller(3);
         items.register(segmentServer, ZMQ.Poller.POLLIN);
         items.register(segmentWriterSocket, ZMQ.Poller.POLLIN);
         items.register(rootWriterSocket, ZMQ.Poller.POLLIN);
@@ -166,15 +184,19 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
             @Override
             public void run() {
                 while (!isInterrupted()) {
-                    items.poll();
-                    if (items.pollin(0)) {
-                        handleSegmentServer(segmentServer.recv(0));
-                    }
-                    if (items.pollin(1)) {
-                        handleSegmentWriterSocket(segmentWriterSocket.recv(0));
-                    }
-                    if (items.pollin(2)) {
-                        handleRootWriterSocket(rootWriterSocket.recv(0));
+                    try {
+                        items.poll();
+                        if (items.pollin(0)) {
+                            handleSegmentServer(segmentServer.recv(0));
+                        }
+                        if (items.pollin(1)) {
+                            handleSegmentWriterSocket(segmentWriterSocket.recv(0));
+                        }
+                        if (items.pollin(2)) {
+                            handleRootWriterSocket(rootWriterSocket.recv(0));
+                        }
+                    } catch (Throwable t) {
+                        log.info(t.toString());
                     }
                 }
             }
@@ -190,7 +212,8 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
         zmqStore.socketHandler.start();
         NodeBuilder builder = EMPTY_NODE.builder();
         builder.setChildNode("root", EMPTY_NODE);
-        zmqStore.head = zmqStore.segmentWriter.writeNode(builder.getNodeState());
+        final RecordId head = zmqStore.segmentWriter.writeNode(builder.getNodeState());
+        zmqStore.setHead(RecordId.NULL, head);
         zmqStore.segmentWriter.flush();
         return zmqStore;
     }
@@ -272,7 +295,12 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
     }
 
     void handleRootWriterSocket(byte[] msg) {
-        // String sMsg = new String(msg);
+        final String sHead = new String(msg);
+        log.info("Receiving {}", sHead);
+        synchronized (dirtyLock) {
+            head = RecordId.fromString(tracker, sHead);
+            setDirty(false);
+        }
     }
 
     @NotNull
@@ -295,11 +323,29 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
 
     @Override
     public RecordId getHead() {
+        if (dirty) {
+            waitForDirty();
+        }
         return head;
+    }
+
+    private void waitForDirty() {
+        final long start = System.currentTimeMillis();
+        while (dirty) {
+            try {
+                Thread.sleep(1L);
+            } catch (InterruptedException ex) {
+            }
+        }
+        final long end = System.currentTimeMillis();
+        log.info("Waited for {} ms", end - start);
     }
 
     @Override
     public RecordId getPersistedHead() {
+        if (dirty) {
+            waitForDirty();
+        }
         return head;
     }
 
@@ -309,7 +355,12 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
         @NotNull RecordId head,
         @NotNull Option... options) {
         if (this.head.equals(expected)) {
-            this.head = head;
+            synchronized (dirtyLock) {
+                setDirty(true);
+                final String msg = head.toString();
+                log.info("Sending {}", msg);
+                rootWriteQueue.send(msg.getBytes());
+            }
             return true;
         } else {
             return false;
@@ -318,6 +369,7 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
 
     @Override
     public RecordId setHead(Function<RecordId, RecordId> newHead, Option... options) throws InterruptedException {
+        // this method throws in MemoryStoreRevisions as well
         throw new UnsupportedOperationException("Not supported yet.");
     }
 
@@ -329,5 +381,22 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
     @Override
     public BlobStore getBlobStore() {
         return null;
+    }
+
+    synchronized void setDirty(boolean dirty) {
+        this.dirty = dirty;
+    }
+
+    @Override
+    public void close() throws IOException {
+        socketHandler.interrupt();
+        items.close();
+        segmentWriteQueue.close();
+        segmentWriterSocket.close();
+        rootWriteQueue.close();
+        rootWriterSocket.close();
+        segmentServer.close();
+        segmentClient.close();
+        context.close();
     }
 }

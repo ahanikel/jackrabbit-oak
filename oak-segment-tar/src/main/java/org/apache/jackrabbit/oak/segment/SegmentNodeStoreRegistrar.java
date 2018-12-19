@@ -266,7 +266,7 @@ class SegmentNodeStoreRegistrar {
         }
         */
         SegmentStoreWithGetters store = ZeroMQStore.newZeroMQStore();
-        //registerCloseable(store);
+        registerCloseable(store);
 
         // Listen for Executor services on the whiteboard
 

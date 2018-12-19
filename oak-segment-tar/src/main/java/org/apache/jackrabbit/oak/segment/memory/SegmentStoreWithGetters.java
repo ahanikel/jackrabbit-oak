@@ -19,6 +19,7 @@
 
 package org.apache.jackrabbit.oak.segment.memory;
 
+import java.io.Closeable;
 import org.apache.jackrabbit.oak.segment.Revisions;
 import org.apache.jackrabbit.oak.segment.SegmentIdProvider;
 import org.apache.jackrabbit.oak.segment.SegmentReader;
@@ -27,7 +28,7 @@ import org.apache.jackrabbit.oak.segment.SegmentWriter;
 import org.apache.jackrabbit.oak.spi.blob.BlobStore;
 import org.jetbrains.annotations.NotNull;
 
-public interface SegmentStoreWithGetters extends SegmentStore {
+public interface SegmentStoreWithGetters extends SegmentStore, Closeable {
 
     @NotNull
     public SegmentIdProvider getSegmentIdProvider();
