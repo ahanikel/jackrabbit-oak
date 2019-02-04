@@ -165,6 +165,7 @@ public class LockBasedSchedulerCheckpointTest {
             @Override
             public Boolean call() {
                 try {
+                    log.info("Sleep is about to start");
                     SECONDS.sleep(blockTime);
                     semaphore.release();
                 } catch (InterruptedException e) {
@@ -191,7 +192,7 @@ public class LockBasedSchedulerCheckpointTest {
             @Override
             public void run() {
                 try {
-                    Commit commit = createBlockingCommit(scheduler, "following", "following", () -> { return true; });
+                    Commit commit = createBlockingCommit(scheduler, "following", "following", () -> { semaphore.release(); return true; });
                     scheduler.schedule(commit);
                     log.info("Following commit scheduled");
                 } catch (Exception e) {
@@ -202,9 +203,11 @@ public class LockBasedSchedulerCheckpointTest {
 
         log.info("Background thread starting");
         blockingCommitThread.start();
+        Thread.sleep(1000);
         log.info("Background thread started, starting following commit thread");
         followingCommitThread.start();
         log.info("Following thread started, acquiring semaphore");
+        semaphore.acquire();
         semaphore.acquire();
         log.info("Semaphore acquired");
 
