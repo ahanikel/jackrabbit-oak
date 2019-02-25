@@ -201,7 +201,7 @@ public class DefaultSegmentWriter implements SegmentWriter {
     @NotNull
     public RecordId writeNode(@NotNull final NodeState state, @Nullable final Buffer stableIdBytes) throws IOException {
         return new SegmentWriteOperation(writeOperationHandler.getGCGeneration())
-                .writeNode("/", state, stableIdBytes);
+                .writeNode("", state, stableIdBytes);
     }
 
     /**
