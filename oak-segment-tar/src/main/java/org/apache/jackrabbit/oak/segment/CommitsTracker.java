@@ -176,7 +176,7 @@ class CommitsTracker {
             if (commit.getQueued() > t) {
                 String group = findGroupFor(commit.threadName);
                 if (!"other".equals(group)) {
-                    commitsPerGroup.compute(group, (w, v) -> v == null ? 1 : v + 1);
+                    commitsPerGroup.compute(group, (k, v) -> v == null ? 1 : v + 1);
                 }
             }
         }
@@ -191,7 +191,7 @@ class CommitsTracker {
             if (commit.getQueued() > t) {
                 String group = findGroupFor(commit.threadName);
                 if ("other".equals(group)) {
-                    commitsOther.compute(commit.threadName, (w, v) -> v == null ? 1 : v + 1);
+                    commitsOther.compute(commit.threadName, (k, v) -> v == null ? 1 : v + 1);
                 }
             }
         }
