@@ -51,7 +51,12 @@ class CommitsTracker {
     private final ConcurrentMap<String, Commit> queuedWritersMap;
     private final Queue<Commit> commits = newConcurrentLinkedQueue();
 
-    private Commit currentCommit;
+    // Does not need to be volatile, because trackExecutedCommitOf, which
+    // reads it, runs while the lock is acquired and so it couldn't have been
+    // modified by a different thread.
+    // However, it is also read by getCurrentWriter, which is most probably
+    // a different thread.
+    private volatile Commit currentCommit;
 
     static final class Commit {
         private final String threadName;
