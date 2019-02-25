@@ -67,7 +67,7 @@ public class CommitsTrackerTest {
 
         Runnable queuedCommitTask = () -> {
             Thread t = Thread.currentThread();
-            commitsTracker.trackQueuedCommitOf(t);
+            commitsTracker.trackQueuedCommitOf(t, 1);
             addLatch.countDown();
         };
 

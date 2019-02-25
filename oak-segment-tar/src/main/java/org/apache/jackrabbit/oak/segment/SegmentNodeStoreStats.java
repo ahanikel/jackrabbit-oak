@@ -89,9 +89,9 @@ public class SegmentNodeStoreStats implements SegmentNodeStoreStatsMBean, Segmen
     }
 
     @Override
-    public void onCommitQueued(Thread t) {
+    public void onCommitQueued(Thread t, int generation) {
         commitQueueSize.inc();
-        commitsTracker.trackQueuedCommitOf(t);
+        commitsTracker.trackQueuedCommitOf(t, generation);
     }
 
     @Override

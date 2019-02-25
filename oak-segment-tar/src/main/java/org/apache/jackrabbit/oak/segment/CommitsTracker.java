@@ -61,14 +61,16 @@ class CommitsTracker {
     static final class Commit {
         private final String threadName;
         private final WeakReference<Thread> thread;
+        private final int generation;
 
         private long queued;
         private long dequeued;
         private long applied;
 
-        Commit(Thread thread) {
+        Commit(Thread thread, int generation) {
             this.threadName = thread.getName();
             this.thread = new WeakReference<>(thread);
+            this.generation = generation;
         }
 
         Commit queued() {
@@ -112,6 +114,10 @@ class CommitsTracker {
         long getApplied() {
             return applied;
         }
+
+        int getGeneration() {
+            return generation;
+        }
     }
 
     CommitsTracker(String[] threadGroups, int otherWritersLimit) {
@@ -120,8 +126,8 @@ class CommitsTracker {
         this.queuedWritersMap = new ConcurrentHashMap<>();
     }
 
-    public void trackQueuedCommitOf(Thread thread) {
-        queuedWritersMap.put(thread.getName(), new Commit(thread).queued());
+    public void trackQueuedCommitOf(Thread thread, int generation) {
+        queuedWritersMap.put(thread.getName(), new Commit(thread, generation).queued());
     }
 
     public void trackDequedCommitOf(Thread thread) {

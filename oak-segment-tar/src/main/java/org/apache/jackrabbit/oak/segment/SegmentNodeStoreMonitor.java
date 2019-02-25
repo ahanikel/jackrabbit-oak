@@ -31,7 +31,7 @@ public interface SegmentNodeStoreMonitor {
         }
 
         @Override
-        public void onCommitQueued(Thread t) {
+        public void onCommitQueued(Thread t, int generation) {
 
         }
         
@@ -53,9 +53,10 @@ public interface SegmentNodeStoreMonitor {
      * queued for later retry.
      * 
      * @param t the thread which initiated the write
+     * @param generation the commit's gc full generation
      */
-    void onCommitQueued(Thread t);
-    
+    void onCommitQueued(Thread t, int generation);
+
     /**
      * Notifies the monitor when a queued commit was dequeued for processing.
      * @param t the thread which initiated the write
