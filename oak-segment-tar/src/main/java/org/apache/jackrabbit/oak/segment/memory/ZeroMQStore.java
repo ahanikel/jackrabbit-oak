@@ -259,15 +259,16 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
         SegmentId id, byte[] data, int offset, int length) throws IOException {
         byte[] bId = id.toString().getBytes();
         assert (UUID_LEN == bId.length);
-        ByteBuffer buffer = ByteBuffer.allocate(UUID_LEN + length);
+        final int bufferLength = UUID_LEN + length;
+        ByteBuffer buffer = ByteBuffer.allocate(bufferLength);
         buffer.put(bId);
         buffer.put(data, offset, length);
         buffer.rewind();
-        segmentWriteQueue.send(data, offset, length, 0);
+        segmentWriteQueue.send(buffer.array(), buffer.arrayOffset(), bufferLength, 0);
     }
 
     void handleSegmentServer(byte[] msg) {
-        final String sId = ByteBuffer.wrap(msg, 0, UUID_LEN).asCharBuffer().toString();
+        final String sId = new String(msg, 0, UUID_LEN);
         final UUID uId = UUID.fromString(sId);
         final SegmentId id = new SegmentId(this, uId.getMostSignificantBits(), uId.getLeastSignificantBits());
         final Segment segment = segmentStore.getIfPresent(id);
@@ -286,7 +287,7 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
     }
 
     void handleSegmentWriterSocket(byte[] msg) {
-        final String sId = ByteBuffer.wrap(msg, 0, UUID_LEN).asCharBuffer().toString();
+        final String sId = new String(msg, 0, UUID_LEN);
         final UUID uId = UUID.fromString(sId);
         final SegmentId id = new SegmentId(this, uId.getMostSignificantBits(), uId.getLeastSignificantBits());
         final ByteBuffer segmentBytes = ByteBuffer.wrap(msg, UUID_LEN, msg.length - UUID_LEN);
