@@ -227,21 +227,33 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
     @NotNull
     public Segment readSegment(SegmentId id) {
         Segment segment = null;
-        // let's always get it remotely for now
-        /*
+        if (isOurs(id)) {
             segment = segmentStore.getIfPresent(id);
             if (segment != null) {
-            return segment;
+                return segment;
             }
-         */
-        try {
-            segment = segmentCache.get(id, () -> ZeroMQStore.this.readSegmentRemote(id));
-        } catch (ExecutionException ex) {
-        }
-        if (segment != null) {
-            return segment;
+        } else {
+            try {
+                segment = segmentCache.get(id, () -> ZeroMQStore.this.readSegmentRemote(id));
+            } catch (ExecutionException ex) {
+            }
+            if (segment != null) {
+                return segment;
+            }
         }
         throw new SegmentNotFoundException(id);
+    }
+
+    private boolean isOurs(SegmentId id) {
+
+        final int clusterInstances = Integer.getInteger("clusterInstances");
+        final int clusterInstance = Integer.getInteger("clusterInstance");
+        final long slice = Long.MAX_VALUE / clusterInstances;
+        final long start = slice * (clusterInstance - 1);
+        final long end = clusterInstance == clusterInstances ? Long.MAX_VALUE : start + slice - 1;
+        final long msb = id.getMostSignificantBits();
+
+        return (start <= msb && msb <= end);
     }
 
     /**
@@ -257,32 +269,39 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
     @Override
     public void writeSegment(
         SegmentId id, byte[] data, int offset, int length) throws IOException {
-        byte[] bId = id.toString().getBytes();
-        assert (UUID_LEN == bId.length);
-        final int bufferLength = UUID_LEN + length;
-        ByteBuffer buffer = ByteBuffer.allocate(bufferLength);
-        buffer.put(bId);
-        buffer.put(data, offset, length);
-        buffer.rewind();
-        segmentWriteQueue.send(buffer.array(), buffer.arrayOffset(), bufferLength, 0);
+        if (isOurs(id)) {
+            segmentCache.put(id, new Segment(getSegmentIdProvider(), getReader(), id, ByteBuffer.wrap(data, length, offset)));
+        } else {
+            byte[] bId = id.toString().getBytes();
+            assert (UUID_LEN == bId.length);
+            final int bufferLength = UUID_LEN + length;
+            ByteBuffer buffer = ByteBuffer.allocate(bufferLength);
+            buffer.put(bId);
+            buffer.put(data, offset, length);
+            buffer.rewind();
+            segmentWriteQueue.send(buffer.array(), buffer.arrayOffset(), bufferLength, 0);
+        }
     }
 
     void handleSegmentServer(byte[] msg) {
         final String sId = new String(msg, 0, UUID_LEN);
         final UUID uId = UUID.fromString(sId);
         final SegmentId id = new SegmentId(this, uId.getMostSignificantBits(), uId.getLeastSignificantBits());
-        final Segment segment = segmentStore.getIfPresent(id);
-        if (segment != null) {
-            final ByteArrayOutputStream bos = new ByteArrayOutputStream();
-            try {
-                segment.writeTo(bos);
-            } catch (IOException ex) {
-                // assuming this does not happen
-                assert (false);
+        if (isOurs(id)) {
+            final Segment segment = segmentStore.getIfPresent(id);
+            if (segment != null) {
+                final ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                try {
+                    segment.writeTo(bos);
+                } catch (IOException ex) {
+                    // assuming this does not happen
+                    assert (false);
+                }
+                segmentServer.send(bos.toByteArray(), 0);
+            } else {
+                //segmentServer.send(SegmentId.NULL.toString().getBytes(), 0);
+                throw new SegmentNotFoundException(id);
             }
-            segmentServer.send(bos.toByteArray(), 0);
-        } else {
-            segmentServer.send(SegmentId.NULL.toString().getBytes(), 0);
         }
     }
 
@@ -290,9 +309,11 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
         final String sId = new String(msg, 0, UUID_LEN);
         final UUID uId = UUID.fromString(sId);
         final SegmentId id = new SegmentId(this, uId.getMostSignificantBits(), uId.getLeastSignificantBits());
-        final ByteBuffer segmentBytes = ByteBuffer.wrap(msg, UUID_LEN, msg.length - UUID_LEN);
-        final Segment segment = new Segment(getSegmentIdProvider(), getReader(), id, segmentBytes);
-        segmentStore.put(id, segment);
+        if (isOurs(id)) {
+            final ByteBuffer segmentBytes = ByteBuffer.wrap(msg, UUID_LEN, msg.length - UUID_LEN);
+            final Segment segment = new Segment(getSegmentIdProvider(), getReader(), id, segmentBytes);
+            segmentStore.put(id, segment);
+        }
     }
 
     void handleRootWriterSocket(byte[] msg) {
