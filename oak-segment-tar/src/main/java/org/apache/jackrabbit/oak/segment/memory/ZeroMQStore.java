@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
+import java.util.logging.Level;
 import org.apache.commons.io.output.ByteArrayOutputStream;
 import static org.apache.jackrabbit.oak.plugins.memory.EmptyNodeState.EMPTY_NODE;
 import org.apache.jackrabbit.oak.segment.CachingSegmentReader;
@@ -176,7 +177,7 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
         segmentCache = CacheBuilder.newBuilder()
             .maximumSize(1000).build();
 
-        items = context.poller(3);
+        items = context.poller(2);
         items.register(segmentReaderService, ZMQ.Poller.POLLIN);
         items.register(segmentWriterService, ZMQ.Poller.POLLIN);
 
@@ -187,10 +188,10 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
                     try {
                         items.poll();
                         if (items.pollin(0)) {
-                            handleSegmentServer(segmentReaderService.recv(0));
+                            handleSegmentReaderService(segmentReaderService.recv(0));
                         }
                         if (items.pollin(1)) {
-                            handleSegmentWriterSocket(segmentWriterService.recv(0));
+                            handleSegmentWriterService(segmentWriterService.recv(0));
                         }
                     } catch (Throwable t) {
                         log.info(t.toString());
@@ -216,25 +217,27 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
     }
 
     @Override
-    public boolean containsSegment(SegmentId id) {
+    public synchronized boolean containsSegment(SegmentId id) {
         return true;
     }
 
     @Override
     @NotNull
-    public Segment readSegment(SegmentId id) {
+    public synchronized Segment readSegment(SegmentId id) {
         Segment segment = null;
         final int reader = clusterInstanceForSegmentId(id);
         if (reader == clusterInstance) {
             segment = segmentStore.getIfPresent(id);
             if (segment != null) {
+                id.loaded(segment);
                 return segment;
             }
         } else {
-            try {
-                segment = segmentCache.get(id, () -> ZeroMQStore.this.readSegmentRemote(reader, id));
-            } catch (ExecutionException ex) {
-            }
+            //try {
+            //segment = segmentCache.get(id, () -> ZeroMQStore.this.readSegmentRemote(reader, id));
+            segment = readSegmentRemote(reader, id);
+            //} catch (ExecutionException ex) {
+            //}
             if (segment != null) {
                 return segment;
             }
@@ -265,12 +268,15 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
         synchronized (segmentReaders[reader]) {
             segmentReaders[reader].send(id.toString());
             bytes = segmentReaders[reader].recv();
+            if ("Segment not found".equals(new String(bytes))) {
+                throw new SegmentNotFoundException(id);
+            }
         }
         return new Segment(getSegmentIdProvider(), getReader(), id, ByteBuffer.wrap(bytes));
     }
 
     @Override
-    public void writeSegment(
+    public synchronized void writeSegment(
         SegmentId id, byte[] data, int offset, int length) throws IOException {
         final int writer = clusterInstanceForSegmentId(id);
         final Segment segment = new Segment(getSegmentIdProvider(), getReader(), id, ByteBuffer.wrap(data, offset, length));
@@ -290,11 +296,11 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
                 byte[] msg = segmentWriters[writer].recv(); // wait for confirmation
                 log.info(new String(msg));
             }
-            segmentCache.put(id, segment);
+            //segmentCache.put(id, segment);
         }
     }
 
-    void handleSegmentServer(byte[] msg) {
+    synchronized void handleSegmentReaderService(byte[] msg) {
         final String sId = new String(msg, 0, UUID_LEN);
         final UUID uId = UUID.fromString(sId);
         final SegmentId id = new SegmentId(this, uId.getMostSignificantBits(), uId.getLeastSignificantBits());
@@ -312,14 +318,14 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
                 segmentReaderService.send(bos.toByteArray(), 0);
             } else {
                 segmentReaderService.send("Segment not found");
-                throw new SegmentNotFoundException(id);
+                //throw new SegmentNotFoundException(id);
             }
         } else {
             log.warn("Received request for a segment which is not ours: {}", id.toString());
         }
     }
 
-    void handleSegmentWriterSocket(byte[] msg) {
+    synchronized void handleSegmentWriterService(byte[] msg) {
         final String sId = new String(msg, 0, UUID_LEN);
         final UUID uId = UUID.fromString(sId);
         final SegmentId id = new SegmentId(this, uId.getMostSignificantBits(), uId.getLeastSignificantBits());
@@ -354,7 +360,7 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
     }
 
     @Override
-    public RecordId getHead() {
+    public synchronized RecordId getHead() {
         if (dirty) {
             waitForDirty();
         }
@@ -374,7 +380,7 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
     }
 
     @Override
-    public RecordId getPersistedHead() {
+    public synchronized RecordId getPersistedHead() {
         if (dirty) {
             waitForDirty();
         }
@@ -390,12 +396,13 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
             this.head = head;
             return true;
         } else {
+            log.error("setHead failed");
             return false;
         }
     }
 
     @Override
-    public RecordId setHead(Function<RecordId, RecordId> newHead, Option... options) throws InterruptedException {
+    public synchronized RecordId setHead(Function<RecordId, RecordId> newHead, Option... options) throws InterruptedException {
         // this method throws in MemoryStoreRevisions as well
         throw new UnsupportedOperationException("Not supported yet.");
     }

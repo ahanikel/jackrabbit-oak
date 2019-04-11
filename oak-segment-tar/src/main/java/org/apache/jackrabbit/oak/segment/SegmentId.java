@@ -199,7 +199,7 @@ public class SegmentId implements Comparable<SegmentId> {
      * @see #getSegment()
      * @see #unloaded()
      */
-    void loaded(@NotNull Segment segment) {
+    public void loaded(@NotNull Segment segment) {
         this.segment = segment;
         this.gcGeneration = segment.getGcGeneration();
     }
@@ -210,7 +210,7 @@ public class SegmentId implements Comparable<SegmentId> {
      * @see #getSegment()
      * @see #loaded(Segment)
      */
-    void unloaded() {
+    public void unloaded() {
         this.segment = null;
     }
 
