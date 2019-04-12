@@ -94,7 +94,7 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
      * we are responsible for
      */
     @NotNull
-    final Cache<SegmentId, Segment> segmentStore;
+    final Cache<SegmentId, ByteBuffer> segmentStore;
 
     /**
      * our segment cache which keeps foreign segments for
@@ -227,8 +227,9 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
         Segment segment = null;
         final int reader = clusterInstanceForSegmentId(id);
         if (reader == clusterInstance) {
-            segment = segmentStore.getIfPresent(id);
-            if (segment != null) {
+            final ByteBuffer buffer = segmentStore.getIfPresent(id);
+            if (buffer != null) {
+                segment = new Segment(tracker, segmentReader, id, buffer);
                 id.loaded(segment);
                 return segment;
             }
@@ -279,46 +280,53 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
     public synchronized void writeSegment(
         SegmentId id, byte[] data, int offset, int length) throws IOException {
         final int writer = clusterInstanceForSegmentId(id);
-        final Segment segment = new Segment(getSegmentIdProvider(), getReader(), id, ByteBuffer.wrap(data, offset, length));
-        if (writer == clusterInstance) {
-            segmentStore.put(id, segment);
-        } else {
-            log.info("Remotely writing segment {}", id.toString());
-            byte[] bId = id.toString().getBytes();
-            assert (UUID_LEN == bId.length);
-            final int bufferLength = UUID_LEN + length;
-            ByteBuffer buffer = ByteBuffer.allocate(bufferLength);
-            buffer.put(bId);
-            buffer.put(data, offset, length);
-            buffer.rewind();
-            synchronized (segmentWriters[writer]) {
-                segmentWriters[writer].send(buffer.array(), buffer.arrayOffset(), bufferLength, 0);
-                byte[] msg = segmentWriters[writer].recv(); // wait for confirmation
-                log.info(new String(msg));
+        final ByteBuffer buffer;
+        if (id.isDataSegmentId()) {
+            if (writer == clusterInstance) {
+                if (offset > 4096) {
+                    buffer = ByteBuffer.allocate(length);
+                    buffer.put(data, offset, length);
+                    buffer.rewind();
+                } else {
+                    buffer = ByteBuffer.wrap(data, offset, length);
+                }
+                segmentStore.put(id, buffer);
+            } else {
+                log.info("Remotely writing segment {}", id.toString());
+                byte[] bId = id.toString().getBytes();
+                assert (UUID_LEN == bId.length);
+                final int bufferLength = UUID_LEN + length;
+                buffer = ByteBuffer.allocate(bufferLength);
+                buffer.put(bId);
+                buffer.put(data, offset, length);
+                buffer.rewind();
+                synchronized (segmentWriters[writer]) {
+                    segmentWriters[writer].send(buffer.array(), buffer.arrayOffset(), bufferLength, 0);
+                    byte[] msg = segmentWriters[writer].recv(); // wait for confirmation
+                    log.info(new String(msg));
+                }
+                //segmentCache.put(id, segment);
             }
-            //segmentCache.put(id, segment);
+        } else {
+            if (writer == clusterInstance) {
+                buffer = ByteBuffer.wrap(data, offset, length);
+                segmentStore.put(id, buffer);
+            }
         }
     }
 
     synchronized void handleSegmentReaderService(byte[] msg) {
         final String sId = new String(msg, 0, UUID_LEN);
         final UUID uId = UUID.fromString(sId);
-        final SegmentId id = new SegmentId(this, uId.getMostSignificantBits(), uId.getLeastSignificantBits());
+        final SegmentId id = tracker.newSegmentId(uId.getMostSignificantBits(), uId.getLeastSignificantBits());
         final int reader = clusterInstanceForSegmentId(id);
         if (reader == clusterInstance) {
-            final Segment segment = segmentStore.getIfPresent(id);
-            if (segment != null) {
-                final ByteArrayOutputStream bos = new ByteArrayOutputStream();
-                try {
-                    segment.writeTo(bos);
-                } catch (IOException ex) {
-                    // assuming this does not happen
-                    assert (false);
-                }
-                segmentReaderService.send(bos.toByteArray(), 0);
+            final ByteBuffer buffer = segmentStore.getIfPresent(id);
+            if (buffer != null) {
+                buffer.rewind();
+                segmentReaderService.send(buffer.array(), buffer.arrayOffset(), buffer.remaining(), 0);
             } else {
                 segmentReaderService.send("Segment not found");
-                //throw new SegmentNotFoundException(id);
             }
         } else {
             log.warn("Received request for a segment which is not ours: {}", id.toString());
@@ -328,12 +336,11 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
     synchronized void handleSegmentWriterService(byte[] msg) {
         final String sId = new String(msg, 0, UUID_LEN);
         final UUID uId = UUID.fromString(sId);
-        final SegmentId id = new SegmentId(this, uId.getMostSignificantBits(), uId.getLeastSignificantBits());
+        final SegmentId id = tracker.newSegmentId(uId.getMostSignificantBits(), uId.getLeastSignificantBits());
         final int writer = clusterInstanceForSegmentId(id);
         if (writer == clusterInstance) {
             final ByteBuffer segmentBytes = ByteBuffer.wrap(msg, UUID_LEN, msg.length - UUID_LEN);
-            final Segment segment = new Segment(getSegmentIdProvider(), getReader(), id, segmentBytes);
-            segmentStore.put(id, segment);
+            segmentStore.put(id, segmentBytes);
             segmentWriterService.send(sId + " confirmed.");
             log.info("Received our segment {}", id.toString());
         } else {
