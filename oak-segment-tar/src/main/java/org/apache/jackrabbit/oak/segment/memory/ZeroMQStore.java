@@ -288,7 +288,7 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
                     buffer.put(data, offset, length);
                     buffer.rewind();
                 } else {
-                    buffer = ByteBuffer.wrap(data, offset, length);
+                    buffer = ByteBuffer.wrap(data, offset, length).slice();
                 }
                 segmentStore.put(id, buffer);
             } else {
