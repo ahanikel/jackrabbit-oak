@@ -253,8 +253,8 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
     private int clusterInstanceForSegmentId(SegmentId id) {
 
         final long msb = id.getMostSignificantBits();
-        final long msbMsb = 2 ^ 32 & (msb >> 32);
-        final long inst = msbMsb / (2L ^ 32 / clusterInstances);
+        final long msbMsb = 0xffff_ffffL & (msb >> 32);
+        final long inst = msbMsb / (0x1_0000_0000L / clusterInstances);
         if (inst < 0) {
             throw new IllegalStateException("inst < 0");
         }
