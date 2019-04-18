@@ -88,7 +88,6 @@ public class RecordTest {
         checkRandomStreamRecord(Segment.MAX_SEGMENT_SIZE + 1);
         checkRandomStreamRecord(Segment.MAX_SEGMENT_SIZE * 2);
         checkRandomStreamRecord(Segment.MAX_SEGMENT_SIZE * 2 + 1);
-        checkRandomStreamRecord(100_000_000);
     }
 
     private void checkRandomStreamRecord(int size) throws IOException {

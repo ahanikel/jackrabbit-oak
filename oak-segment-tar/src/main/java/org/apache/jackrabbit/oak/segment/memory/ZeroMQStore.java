@@ -25,8 +25,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
-import java.util.logging.Level;
-import org.apache.commons.io.output.ByteArrayOutputStream;
+
 import static org.apache.jackrabbit.oak.plugins.memory.EmptyNodeState.EMPTY_NODE;
 import org.apache.jackrabbit.oak.segment.CachingSegmentReader;
 import static org.apache.jackrabbit.oak.segment.DefaultSegmentWriterBuilder.defaultSegmentWriterBuilder;
@@ -41,6 +40,7 @@ import org.apache.jackrabbit.oak.segment.SegmentReader;
 import org.apache.jackrabbit.oak.segment.SegmentTracker;
 import org.apache.jackrabbit.oak.segment.SegmentWriter;
 import org.apache.jackrabbit.oak.spi.blob.BlobStore;
+import org.apache.jackrabbit.oak.spi.blob.MemoryBlobStore;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.stats.NoopStats;
 import org.jetbrains.annotations.NotNull;
@@ -131,6 +131,9 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
 
     private final int clusterInstance;
 
+    @NotNull
+    private final BlobStore blobStore;
+
     // I had to copy the whole constructor from MemoryStore
     // because of the call to revisions.bind(this)
     protected ZeroMQStore() throws IOException {
@@ -200,7 +203,8 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
             }
         };
 
-        segmentReader = new CachingSegmentReader(this::getWriter, null, 16, 2, NoopStats.INSTANCE);
+        blobStore = new MemoryBlobStore();
+        segmentReader = new CachingSegmentReader(this::getWriter, blobStore, 16, 2, NoopStats.INSTANCE);
         segmentWriter = defaultSegmentWriterBuilder("sys").withWriterPool().build(this);
     }
 
@@ -421,10 +425,10 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
 
     @Override
     public BlobStore getBlobStore() {
-        return null;
+        return blobStore;
     }
 
-    synchronized void setDirty(boolean dirty) {
+    void setDirty(boolean dirty) {
         this.dirty = dirty;
     }
 

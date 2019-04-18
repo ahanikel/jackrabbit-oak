@@ -42,5 +42,6 @@ public interface SegmentStoreWithGetters extends SegmentStore, Closeable {
     @NotNull
     public Revisions getRevisions();
 
+    @NotNull
     public BlobStore getBlobStore();
 }
