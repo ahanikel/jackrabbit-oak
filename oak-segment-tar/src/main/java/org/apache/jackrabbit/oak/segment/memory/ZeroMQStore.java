@@ -221,13 +221,13 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
     }
 
     @Override
-    public synchronized boolean containsSegment(SegmentId id) {
+    public boolean containsSegment(SegmentId id) {
         return true;
     }
 
     @Override
     @NotNull
-    public synchronized Segment readSegment(SegmentId id) {
+    public Segment readSegment(SegmentId id) {
         Segment segment = null;
         final int reader = clusterInstanceForSegmentId(id);
         if (reader == clusterInstance) {
@@ -238,11 +238,11 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
                 return segment;
             }
         } else {
-            //try {
-            //segment = segmentCache.get(id, () -> ZeroMQStore.this.readSegmentRemote(reader, id));
-            segment = readSegmentRemote(reader, id);
-            //} catch (ExecutionException ex) {
-            //}
+            try {
+            segment = segmentCache.get(id, () -> ZeroMQStore.this.readSegmentRemote(reader, id));
+            //segment = readSegmentRemote(reader, id);
+            } catch (ExecutionException ex) {
+            }
             if (segment != null) {
                 return segment;
             }
@@ -270,18 +270,16 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
     private Segment readSegmentRemote(int reader, SegmentId id) {
         log.info("Remotely reading segment {}", id.toString());
         byte[] bytes = null;
-        synchronized (segmentReaders[reader]) {
-            segmentReaders[reader].send(id.toString());
-            bytes = segmentReaders[reader].recv();
-            if ("Segment not found".equals(new String(bytes))) {
-                throw new SegmentNotFoundException(id);
-            }
+        segmentReaders[reader].send(id.toString());
+        bytes = segmentReaders[reader].recv();
+        if ("Segment not found".equals(new String(bytes))) {
+            throw new SegmentNotFoundException(id);
         }
         return new Segment(getSegmentIdProvider(), getReader(), id, ByteBuffer.wrap(bytes));
     }
 
     @Override
-    public synchronized void writeSegment(
+    public void writeSegment(
         SegmentId id, byte[] data, int offset, int length) throws IOException {
         final int writer = clusterInstanceForSegmentId(id);
         final ByteBuffer buffer;
@@ -297,19 +295,18 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
                 segmentStore.put(id, buffer);
             } else {
                 log.info("Remotely writing segment {}", id.toString());
-                byte[] bId = id.toString().getBytes();
+                final byte[] bId = id.toString().getBytes();
                 assert (UUID_LEN == bId.length);
                 final int bufferLength = UUID_LEN + length;
                 buffer = ByteBuffer.allocate(bufferLength);
                 buffer.put(bId);
                 buffer.put(data, offset, length);
                 buffer.rewind();
-                synchronized (segmentWriters[writer]) {
-                    segmentWriters[writer].send(buffer.array(), buffer.arrayOffset(), bufferLength, 0);
-                    byte[] msg = segmentWriters[writer].recv(); // wait for confirmation
-                    log.info(new String(msg));
-                }
-                //segmentCache.put(id, segment);
+                segmentWriters[writer].send(buffer.array(), buffer.arrayOffset(), bufferLength, 0);
+                final byte[] msg = segmentWriters[writer].recv(); // wait for confirmation
+                log.info(new String(msg));
+                final Segment segment = new Segment(getSegmentIdProvider(), getReader(), id, ByteBuffer.wrap(data, offset, length));
+                segmentCache.put(id, segment);
             }
         } else {
             if (writer == clusterInstance) {
@@ -319,7 +316,7 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
         }
     }
 
-    synchronized void handleSegmentReaderService(byte[] msg) {
+    void handleSegmentReaderService(byte[] msg) {
         final String sId = new String(msg, 0, UUID_LEN);
         final UUID uId = UUID.fromString(sId);
         final SegmentId id = tracker.newSegmentId(uId.getMostSignificantBits(), uId.getLeastSignificantBits());
@@ -331,13 +328,14 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
                 segmentReaderService.send(buffer.array(), buffer.arrayOffset(), buffer.remaining(), 0);
             } else {
                 segmentReaderService.send("Segment not found");
+                log.error("Requested segment {} not found.", id.toString());
             }
         } else {
-            log.warn("Received request for a segment which is not ours: {}", id.toString());
+            log.error("Received request for a segment which is not ours: {}", id.toString());
         }
     }
 
-    synchronized void handleSegmentWriterService(byte[] msg) {
+    void handleSegmentWriterService(byte[] msg) {
         final String sId = new String(msg, 0, UUID_LEN);
         final UUID uId = UUID.fromString(sId);
         final SegmentId id = tracker.newSegmentId(uId.getMostSignificantBits(), uId.getLeastSignificantBits());
@@ -348,7 +346,7 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
             segmentWriterService.send(sId + " confirmed.");
             log.info("Received our segment {}", id.toString());
         } else {
-            log.warn("Received segment which is not ours: {}", id.toString());
+            log.error("Received segment which is not ours: {}", id.toString());
         }
     }
 
@@ -371,7 +369,7 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
     }
 
     @Override
-    public synchronized RecordId getHead() {
+    public RecordId getHead() {
         if (dirty) {
             waitForDirty();
         }
@@ -391,7 +389,7 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
     }
 
     @Override
-    public synchronized RecordId getPersistedHead() {
+    public RecordId getPersistedHead() {
         if (dirty) {
             waitForDirty();
         }
