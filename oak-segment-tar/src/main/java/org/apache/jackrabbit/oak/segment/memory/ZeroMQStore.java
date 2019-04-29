@@ -239,8 +239,8 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
             }
         } else {
             try {
-            segment = segmentCache.get(id, () -> ZeroMQStore.this.readSegmentRemote(reader, id));
-            //segment = readSegmentRemote(reader, id);
+                segment = segmentCache.get(id, () -> ZeroMQStore.this.readSegmentRemote(reader, id));
+                //segment = readSegmentRemote(reader, id);
             } catch (ExecutionException ex) {
             }
             if (segment != null) {
@@ -283,36 +283,29 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
         SegmentId id, byte[] data, int offset, int length) throws IOException {
         final int writer = clusterInstanceForSegmentId(id);
         final ByteBuffer buffer;
-        if (id.isDataSegmentId()) {
-            if (writer == clusterInstance) {
-                if (offset > 4096) {
-                    buffer = ByteBuffer.allocate(length);
-                    buffer.put(data, offset, length);
-                    buffer.rewind();
-                } else {
-                    buffer = ByteBuffer.wrap(data, offset, length).slice();
-                }
-                segmentStore.put(id, buffer);
-            } else {
-                log.info("Remotely writing segment {}", id.toString());
-                final byte[] bId = id.toString().getBytes();
-                assert (UUID_LEN == bId.length);
-                final int bufferLength = UUID_LEN + length;
-                buffer = ByteBuffer.allocate(bufferLength);
-                buffer.put(bId);
+        if (writer == clusterInstance) {
+            if (offset > 4096) {
+                buffer = ByteBuffer.allocate(length);
                 buffer.put(data, offset, length);
                 buffer.rewind();
-                segmentWriters[writer].send(buffer.array(), buffer.arrayOffset(), bufferLength, 0);
-                final byte[] msg = segmentWriters[writer].recv(); // wait for confirmation
-                log.info(new String(msg));
-                final Segment segment = new Segment(getSegmentIdProvider(), getReader(), id, ByteBuffer.wrap(data, offset, length));
-                segmentCache.put(id, segment);
+            } else {
+                buffer = ByteBuffer.wrap(data, offset, length).slice();
             }
+            segmentStore.put(id, buffer);
         } else {
-            if (writer == clusterInstance) {
-                buffer = ByteBuffer.wrap(data, offset, length);
-                segmentStore.put(id, buffer);
-            }
+            log.info("Remotely writing segment {}", id.toString());
+            final byte[] bId = id.toString().getBytes();
+            assert (UUID_LEN == bId.length);
+            final int bufferLength = UUID_LEN + length;
+            buffer = ByteBuffer.allocate(bufferLength);
+            buffer.put(bId);
+            buffer.put(data, offset, length);
+            buffer.rewind();
+            segmentWriters[writer].send(buffer.array(), buffer.arrayOffset(), bufferLength, 0);
+            final byte[] msg = segmentWriters[writer].recv(); // wait for confirmation
+            log.info(new String(msg));
+            final Segment segment = new Segment(getSegmentIdProvider(), getReader(), id, ByteBuffer.wrap(data, offset, length));
+            segmentCache.put(id, segment);
         }
     }
 
