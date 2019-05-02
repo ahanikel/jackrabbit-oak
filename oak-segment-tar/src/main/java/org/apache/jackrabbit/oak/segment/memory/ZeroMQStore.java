@@ -22,7 +22,6 @@ import com.google.common.base.Function;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 
@@ -39,6 +38,7 @@ import org.apache.jackrabbit.oak.segment.SegmentNotFoundException;
 import org.apache.jackrabbit.oak.segment.SegmentReader;
 import org.apache.jackrabbit.oak.segment.SegmentTracker;
 import org.apache.jackrabbit.oak.segment.SegmentWriter;
+import org.apache.jackrabbit.oak.segment.spi.persistence.Buffer;
 import org.apache.jackrabbit.oak.spi.blob.BlobStore;
 import org.apache.jackrabbit.oak.spi.blob.MemoryBlobStore;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
@@ -94,7 +94,7 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
      * we are responsible for
      */
     @NotNull
-    final Cache<SegmentId, ByteBuffer> segmentStore;
+    final Cache<SegmentId, Buffer> segmentStore;
 
     /**
      * our segment cache which keeps foreign segments for
@@ -231,7 +231,7 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
         Segment segment = null;
         final int reader = clusterInstanceForSegmentId(id);
         if (reader == clusterInstance) {
-            final ByteBuffer buffer = segmentStore.getIfPresent(id);
+            final Buffer buffer = segmentStore.getIfPresent(id);
             if (buffer != null) {
                 segment = new Segment(tracker, segmentReader, id, buffer);
                 return segment;
@@ -273,31 +273,31 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
         if ("Segment not found".equals(new String(bytes))) {
             throw new SegmentNotFoundException(id);
         }
-        return new Segment(getSegmentIdProvider(), getReader(), id, ByteBuffer.wrap(bytes));
+        return new Segment(getSegmentIdProvider(), getReader(), id, Buffer.wrap(bytes));
     }
 
     @Override
     public void writeSegment(
         SegmentId id, byte[] data, int offset, int length) throws IOException {
         final int writer = clusterInstanceForSegmentId(id);
-        final ByteBuffer buffer;
+        final Buffer buffer;
         try {
             if (writer == clusterInstance) {
-                buffer = ByteBuffer.wrap(data, offset, length);
+                buffer = Buffer.wrap(data, offset, length);
                 segmentStore.put(id, buffer);
             } else {
                 log.info("Remotely writing segment {}", id.toString());
                 final byte[] bId = id.toString().getBytes();
                 assert (UUID_LEN == bId.length);
                 final int bufferLength = UUID_LEN + length;
-                buffer = ByteBuffer.allocate(bufferLength);
+                buffer = Buffer.allocate(bufferLength);
                 buffer.put(bId);
                 buffer.put(data, offset, length);
                 buffer.rewind();
                 segmentWriters[writer].send(buffer.array(), buffer.arrayOffset(), bufferLength, 0);
                 final byte[] msg = segmentWriters[writer].recv(); // wait for confirmation
                 log.info(new String(msg));
-                final Segment segment = new Segment(getSegmentIdProvider(), getReader(), id, ByteBuffer.wrap(data, offset, length));
+                final Segment segment = new Segment(getSegmentIdProvider(), getReader(), id, Buffer.wrap(data, offset, length));
                 segmentCache.put(id, segment);
             }
         } catch (Throwable t) {
@@ -312,7 +312,7 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
         final SegmentId id = tracker.newSegmentId(uId.getMostSignificantBits(), uId.getLeastSignificantBits());
         final int reader = clusterInstanceForSegmentId(id);
         if (reader == clusterInstance) {
-            final ByteBuffer buffer = segmentStore.getIfPresent(id);
+            final Buffer buffer = segmentStore.getIfPresent(id);
             if (buffer != null) {
                 buffer.rewind();
                 segmentReaderService.send(buffer.array(), buffer.arrayOffset(), buffer.remaining(), 0);
@@ -331,7 +331,7 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
         final SegmentId id = tracker.newSegmentId(uId.getMostSignificantBits(), uId.getLeastSignificantBits());
         final int writer = clusterInstanceForSegmentId(id);
         if (writer == clusterInstance) {
-            final ByteBuffer segmentBytes = ByteBuffer.wrap(msg, UUID_LEN, msg.length - UUID_LEN);
+            final Buffer segmentBytes = Buffer.wrap(msg, UUID_LEN, msg.length - UUID_LEN);
             segmentStore.put(id, segmentBytes);
             segmentWriterService.send(sId + " confirmed.");
             log.info("Received our segment {}", id.toString());

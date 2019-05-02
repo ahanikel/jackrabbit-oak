@@ -162,6 +162,10 @@ final public class Buffer {
         return buffer.array();
     }
 
+    public int arrayOffset() {
+        return buffer.arrayOffset();
+    }
+
     public int capacity() {
         return buffer.capacity();
     }
