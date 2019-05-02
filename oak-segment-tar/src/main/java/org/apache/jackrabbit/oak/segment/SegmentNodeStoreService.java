@@ -67,7 +67,7 @@ import org.slf4j.LoggerFactory;
 /**
  * An OSGi wrapper for the segment node store.
  */
-@Component(configurationPolicy = ConfigurationPolicy.REQUIRE)
+@Component(immediate = true, configurationPolicy = ConfigurationPolicy.REQUIRE)
 @Designate(ocd = SegmentNodeStoreService.Configuration.class)
 public class SegmentNodeStoreService {
 
