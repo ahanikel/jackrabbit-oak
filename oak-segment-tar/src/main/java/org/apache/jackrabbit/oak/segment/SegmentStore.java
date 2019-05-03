@@ -57,6 +57,10 @@ public interface SegmentStore {
         throws IOException {
             throw new IOException("This store is read only");
         }
+
+        @Override
+        public void notifyNewSegment(Segment segment) {
+        }
     };
 
     /**
@@ -85,4 +89,11 @@ public interface SegmentStore {
      * @param length length of the segment
      */
     void writeSegment(SegmentId id, byte[] bytes, int offset, int length) throws IOException;
+
+    /**
+     * Notifies the store that a new segment has been created which is not * persisted yet.
+     *
+     * @param segment new segment
+     */
+    void notifyNewSegment(Segment segment);
 }

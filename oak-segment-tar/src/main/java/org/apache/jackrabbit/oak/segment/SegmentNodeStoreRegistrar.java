@@ -400,7 +400,7 @@ class SegmentNodeStoreRegistrar {
             ));
         }
 
-        if (cfg.registerDescriptors()) {
+        if (cfg.registerDescriptors() && store.isRemoteOnly()) {
             // ensure a clusterId is initialized
             // and expose it as 'oak.clusterid' repository descriptor
             GenericDescriptors clusterIdDesc = new GenericDescriptors();

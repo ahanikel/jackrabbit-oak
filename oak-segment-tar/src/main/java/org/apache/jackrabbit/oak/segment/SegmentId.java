@@ -200,7 +200,8 @@ public class SegmentId implements Comparable<SegmentId> {
      * @see #unloaded()
      */
     public void loaded(@NotNull Segment segment) {
-        this.segment = segment;
+        //this.segment = segment;
+        store.notifyNewSegment(segment);
         this.gcGeneration = segment.getGcGeneration();
     }
 

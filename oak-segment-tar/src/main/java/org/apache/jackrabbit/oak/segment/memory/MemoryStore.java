@@ -138,4 +138,8 @@ public class MemoryStore implements SegmentStore {
     public Set<SegmentId> getReferencedSegmentIds() {
         return tracker.getReferencedSegmentIds();
     }
+
+    @Override
+    public void notifyNewSegment(Segment segment) {
+    }
 }

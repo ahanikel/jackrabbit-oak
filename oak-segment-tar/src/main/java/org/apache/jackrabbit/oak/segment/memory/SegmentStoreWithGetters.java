@@ -44,4 +44,6 @@ public interface SegmentStoreWithGetters extends SegmentStore, Closeable {
 
     @NotNull
     public BlobStore getBlobStore();
+
+    public boolean isRemoteOnly();
 }

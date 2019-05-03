@@ -44,6 +44,9 @@ import org.apache.jackrabbit.oak.spi.blob.MemoryBlobStore;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.stats.NoopStats;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.ConfigurationPolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.zeromq.ZMQ;
@@ -51,6 +54,7 @@ import org.zeromq.ZMQ;
 /**
  * A store used for in-memory operations.
  */
+@Component(immediate = true, configurationPolicy = ConfigurationPolicy.REQUIRE)
 public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
 
     private static final Logger log = LoggerFactory.getLogger(ZeroMQStore.class.getName());
@@ -61,7 +65,7 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
     final ZMQ.Context context;
 
     @NotNull
-    final ZMQ.Poller items;
+    final ZMQ.Poller pollerItems;
 
     /**
      * read segments to be persisted from this socket
@@ -106,8 +110,8 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
     /**
      * the thread which listens on the sockets and processes messages
      */
-    @NotNull
-    final Thread socketHandler;
+    @Nullable
+    private final Thread socketHandler;
 
     @NotNull
     final SegmentTracker tracker;
@@ -131,15 +135,18 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
 
     private final int clusterInstance;
 
+    private final boolean remoteOnly;
+
     @NotNull
     private final BlobStore blobStore;
 
     // I had to copy the whole constructor from MemoryStore
     // because of the call to revisions.bind(this)
-    protected ZeroMQStore() throws IOException {
+    public ZeroMQStore() throws IOException {
 
         clusterInstances = Integer.getInteger("clusterInstances");
         clusterInstance = Integer.getInteger("clusterInstance") - 1;
+        remoteOnly = clusterInstance == -1;
 
         tracker = new SegmentTracker(new SegmentIdFactory() {
             @Override
@@ -152,7 +159,9 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
         context = ZMQ.context(1);
 
         segmentWriterService = context.socket(ZMQ.REP);
-        segmentWriterService.bind("tcp://localhost:" + (8000 + 2 * clusterInstance));
+        if (!remoteOnly) {
+            segmentWriterService.bind("tcp://localhost:" + (8000 + 2 * clusterInstance));
+        }
 
         segmentWriters = new ZMQ.Socket[clusterInstances];
         for (int i = 0; i < clusterInstances; ++i) {
@@ -164,7 +173,9 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
         }
 
         segmentReaderService = context.socket(ZMQ.REP);
-        segmentReaderService.bind("tcp://localhost:" + (8001 + 2 * clusterInstance));
+        if (!remoteOnly) {
+            segmentReaderService.bind("tcp://localhost:" + (8001 + 2 * clusterInstance));
+        }
 
         segmentReaders = new ZMQ.Socket[clusterInstances];
         for (int i = 0; i < clusterInstances; ++i) {
@@ -180,43 +191,52 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
         segmentCache = CacheBuilder.newBuilder()
             .maximumSize(1000).build();
 
-        items = context.poller(2);
-        items.register(segmentReaderService, ZMQ.Poller.POLLIN);
-        items.register(segmentWriterService, ZMQ.Poller.POLLIN);
+        pollerItems = context.poller(2);
+        if (remoteOnly) {
+            socketHandler = null;
+        } else {
+            pollerItems.register(segmentReaderService, ZMQ.Poller.POLLIN);
+            pollerItems.register(segmentWriterService, ZMQ.Poller.POLLIN);
 
-        socketHandler = new Thread("ZeroMQStore Socket Handler") {
-            @Override
-            public void run() {
-                while (!isInterrupted()) {
-                    try {
-                        items.poll();
-                        if (items.pollin(0)) {
-                            handleSegmentReaderService(segmentReaderService.recv(0));
+            socketHandler = new Thread("ZeroMQStore Socket Handler") {
+                @Override
+                public void run() {
+                    while (!isInterrupted()) {
+                        try {
+                            pollerItems.poll();
+                            if (pollerItems.pollin(0)) {
+                                handleSegmentReaderService(segmentReaderService.recv(0));
+                            }
+                            if (pollerItems.pollin(1)) {
+                                handleSegmentWriterService(segmentWriterService.recv(0));
+                            }
+                        } catch (Throwable t) {
+                            log.info(t.toString());
                         }
-                        if (items.pollin(1)) {
-                            handleSegmentWriterService(segmentWriterService.recv(0));
-                        }
-                    } catch (Throwable t) {
-                        log.info(t.toString());
                     }
                 }
-            }
-        };
+            };
+        }
 
         blobStore = new MemoryBlobStore();
         segmentReader = new CachingSegmentReader(this::getWriter, blobStore, 16, 2, NoopStats.INSTANCE);
         segmentWriter = defaultSegmentWriterBuilder("sys").withWriterPool().build(this);
+
+        if (!remoteOnly) {
+            startBackgroundThreads();
+        }
     }
 
     @NotNull
     public static ZeroMQStore newZeroMQStore() throws IOException {
         final ZeroMQStore zmqStore = new ZeroMQStore();
-        zmqStore.socketHandler.start();
-        NodeBuilder builder = EMPTY_NODE.builder();
-        builder.setChildNode("root", EMPTY_NODE);
-        final RecordId head = zmqStore.segmentWriter.writeNode(builder.getNodeState());
-        zmqStore.setHead(RecordId.NULL, head);
-        zmqStore.segmentWriter.flush();
+        if (zmqStore.remoteOnly) {
+            NodeBuilder builder = EMPTY_NODE.builder();
+            builder.setChildNode("root", EMPTY_NODE);
+            final RecordId head = zmqStore.segmentWriter.writeNode(builder.getNodeState());
+            zmqStore.setHead(RecordId.NULL, head);
+            zmqStore.segmentWriter.flush();
+        }
         return zmqStore;
     }
 
@@ -298,7 +318,7 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
                 final byte[] msg = segmentWriters[writer].recv(); // wait for confirmation
                 log.info(new String(msg));
                 final Segment segment = new Segment(getSegmentIdProvider(), getReader(), id, Buffer.wrap(data, offset, length));
-                segmentCache.put(id, segment);
+                //segmentCache.put(id, segment);
             }
         } catch (Throwable t) {
             log.error("Unable to write segment: {}", t.toString());
@@ -422,8 +442,8 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
 
     @Override
     public void close() throws IOException {
-        socketHandler.interrupt();
-        items.close();
+        stopBackgroundThreads();
+        pollerItems.close();
         segmentWriterService.close();
         segmentReaderService.close();
         for (int i = 0; i < clusterInstances; ++i) {
@@ -433,5 +453,29 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
             }
         }
         context.close();
+    }
+
+    private void startBackgroundThreads() {
+        if (socketHandler != null) {
+            socketHandler.start();
+        }
+    }
+
+    private void stopBackgroundThreads() {
+        if (socketHandler != null) {
+            socketHandler.interrupt();
+        }
+    }
+
+    @Override
+    public boolean isRemoteOnly() {
+        return remoteOnly;
+    }
+
+    @Override
+    public void notifyNewSegment(Segment segment) {
+        if (remoteOnly) {
+            segmentCache.put(segment.getSegmentId(), segment);
+        }
     }
 }

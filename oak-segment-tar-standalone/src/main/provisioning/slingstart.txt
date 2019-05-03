@@ -82,17 +82,8 @@
 
 [configurations]
 
-  org.apache.jackrabbit.oak.segment.SegmentNodeStoreService
-    customBlobStore=B"false"
-
-  org.apache.jackrabbit.oak.segment.SegmentNodeStoreMonitorService
-    commitsTrackerWriterGroups=[ \
-    ".*Thread.*", \
-    ".*sling.*", \
-    "async-index.*", \
-    ".*GET.*", \
-    ".*POST.*", \
-    ]
+  org.apache.jackrabbit.oak.segment.memory.ZeroMQStore
+    dummy=B"true"
 
 [feature name=:launchpad]
 

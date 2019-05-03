@@ -300,4 +300,8 @@ public abstract class AbstractFileStore implements SegmentStore, Closeable {
      * @param collector  reference collector called back for each blob reference found
      */
     public abstract void collectBlobReferences(Consumer<String> collector) throws IOException;
+
+    @Override
+    public void notifyNewSegment(Segment segment) {
+    }
 }
