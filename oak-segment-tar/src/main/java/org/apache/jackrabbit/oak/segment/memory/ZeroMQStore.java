@@ -25,8 +25,6 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
 
 import static org.apache.jackrabbit.oak.plugins.memory.EmptyNodeState.EMPTY_NODE;
 import org.apache.jackrabbit.oak.segment.CachingSegmentReader;
@@ -198,10 +196,9 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
         segmentStore = CacheBuilder.newBuilder().build();
 
         segmentCache = CacheBuilder.newBuilder()
-            .expireAfterWrite(15, TimeUnit.SECONDS)
-            .maximumSize(11).build();
+            .maximumSize(100).build();
 
-        unpersistedSegments = new HashMap();
+        unpersistedSegments = new HashMap<String, Segment>();
 
         pollerItems = context.poller(2);
         if (remoteOnly) {
@@ -223,7 +220,7 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
                                 handleSegmentWriterService(segmentWriterService.recv(0));
                             }
                         } catch (Throwable t) {
-                            log.info(t.toString());
+                            log.error(t.toString());
                         }
                     }
                 }
@@ -271,11 +268,13 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
             }
         } else {
             try {
-                segment = segmentCache.get(id, ()
-                    -> unpersistedSegments.computeIfAbsent(id.toString(), (dummy)
-                        -> ZeroMQStore.this.readSegmentRemote(reader, id)
-                    ));
-            } catch (ExecutionException ex) {
+                segment = segmentCache.getIfPresent(id);
+                if (segment == null) {
+                    segment = unpersistedSegments.get(id.toString());
+                    if (segment == null) {
+                        segment = readSegmentRemote(reader, id);
+                    }
+                }
             } catch (IllegalArgumentException ex) {
                 throw ex;
             }
@@ -304,10 +303,25 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
      * read a segment by requesting it via zmq
      */
     private Segment readSegmentRemote(int reader, SegmentId id) {
-        log.info("Remotely reading segment {}", id.toString());
+        final String sId = id.toString();
+        log.info("Remotely reading segment {}", sId);
         byte[] bytes = null;
-        segmentReaders[reader].send(id.toString());
-        bytes = segmentReaders[reader].recv();
+        // if any network errors occur, retry until we succeed
+        while (true) {
+            try {
+                synchronized (segmentReaders[reader]) {
+                    segmentReaders[reader].send(sId);
+                    bytes = segmentReaders[reader].recv();
+                }
+                break;
+            } catch (Throwable t) {
+                try {
+                    log.warn(t.toString());
+                    Thread.sleep(100);
+                } catch (InterruptedException ex) {
+                }
+            }
+        }
         if ("Segment not found".equals(new String(bytes))) {
             throw new SegmentNotFoundException(id);
         }
@@ -315,9 +329,11 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
         try {
             segment = new Segment(getSegmentIdProvider(), getReader(), id, Buffer.wrap(bytes));
         } catch (IllegalArgumentException ex) {
+            // this is fatal, just catching for debugging/documentation
             throw ex;
         }
-        notifySegmentPersisted(id.toString());
+        segmentCache.put(id, segment);
+        notifySegmentPersisted(sId);
         return segment;
     }
 
@@ -339,13 +355,27 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
                 buffer.put(bId);
                 buffer.put(data, offset, length);
                 buffer.rewind();
-                segmentWriters[writer].send(buffer.array(), buffer.arrayOffset(), bufferLength, 0);
-                final byte[] msg = segmentWriters[writer].recv(); // wait for confirmation
-                log.info(new String(msg));
+                // retry forever if any network errors occur
+                while (true) {
+                    try {
+                        final byte[] msg;
+                        synchronized (segmentWriters[writer]) {
+                            segmentWriters[writer].send(buffer.array(), buffer.arrayOffset(), bufferLength, 0);
+                            msg = segmentWriters[writer].recv(); // wait for confirmation
+                        }
+                        log.info(new String(msg));
+                        break;
+                    } catch (Throwable t) {
+                        log.warn(t.toString());
+                        Thread.sleep(100);
+                    }
+                }
                 final Segment segment = new Segment(getSegmentIdProvider(), getReader(), id, Buffer.wrap(data, offset, length));
-                notifySegmentPersisted(id.toString());
                 segmentCache.put(id, segment);
+                notifySegmentPersisted(id.toString());
             }
+        } catch (InterruptedException e) {
+            log.error(e.toString());
         } catch (Throwable t) {
             log.error("Unable to write segment: {}", t.toString());
             throw t;
@@ -385,7 +415,7 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
             final Buffer segmentBytes = Buffer.wrap(msg, UUID_LEN, msg.length - UUID_LEN).slice();
             segmentStore.put(id, segmentBytes);
             segmentWriterService.send(sId + " confirmed.");
-            log.info("Received our segment {}", id.toString());
+            log.debug("Received our segment {}", id.toString());
         } else {
             log.error("Received segment which is not ours: {}", id.toString());
         }
@@ -507,13 +537,14 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
     public void notifyNewSegment(String segmentId, Segment segment) {
         if (remoteOnly) {
             unpersistedSegments.put(segmentId, segment);
-            log.info("Unpersisted segments: {}", unpersistedSegments.size());
+            log.debug("(Adding) Unpersisted segments: {}", unpersistedSegments.size());
         }
     }
 
     private void notifySegmentPersisted(String segmentId) {
         if (remoteOnly) {
             unpersistedSegments.remove(segmentId);
+            log.debug("(Removing) Unpersisted segments: {}", unpersistedSegments.size());
         }
     }
 }
