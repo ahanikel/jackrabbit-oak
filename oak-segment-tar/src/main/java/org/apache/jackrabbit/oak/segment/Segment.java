@@ -56,6 +56,8 @@ import org.apache.jackrabbit.oak.segment.file.tar.GCGeneration;
 import org.apache.jackrabbit.oak.segment.spi.persistence.Buffer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A list of records.
@@ -167,6 +169,8 @@ public class Segment {
         return (address + boundary - 1) & ~(boundary - 1);
     }
 
+    private static final Logger log = LoggerFactory.getLogger(Segment.class.getName());
+
     Segment(
         @NotNull SegmentId id,
         @NotNull SegmentReader reader,
@@ -187,6 +191,7 @@ public class Segment {
         this.recordNumbers = recordNumbers;
         this.segmentReferences = segmentReferences;
         id.loaded(this);
+        log.info("Created segment {}.", id.toString());
     }
 
     public Segment(@NotNull SegmentIdProvider idProvider,

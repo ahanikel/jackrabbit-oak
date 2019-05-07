@@ -302,6 +302,6 @@ public abstract class AbstractFileStore implements SegmentStore, Closeable {
     public abstract void collectBlobReferences(Consumer<String> collector) throws IOException;
 
     @Override
-    public void notifyNewSegment(Segment segment) {
+    public void notifyNewSegment(String segmentId, Segment segment) {
     }
 }

@@ -59,7 +59,7 @@ public interface SegmentStore {
         }
 
         @Override
-        public void notifyNewSegment(Segment segment) {
+        public void notifyNewSegment(String segmentId, Segment segment) {
         }
     };
 
@@ -95,5 +95,5 @@ public interface SegmentStore {
      *
      * @param segment new segment
      */
-    void notifyNewSegment(Segment segment);
+    void notifyNewSegment(String segmentId, Segment segment);
 }

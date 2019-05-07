@@ -140,6 +140,6 @@ public class MemoryStore implements SegmentStore {
     }
 
     @Override
-    public void notifyNewSegment(Segment segment) {
+    public void notifyNewSegment(String segmentId, Segment segment) {
     }
 }
