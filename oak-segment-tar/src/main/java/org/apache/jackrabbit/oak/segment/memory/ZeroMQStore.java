@@ -94,6 +94,12 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
     @NotNull
     final ZMQ.Socket[] segmentReaders;
 
+    @NotNull
+    final ZMQ.Socket journalReader;
+
+    @NotNull
+    final ZMQ.Socket journalWriter;
+
     /**
      * our local segment store which keeps the segments
      * we are responsible for
@@ -129,15 +135,6 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
     @NotNull
     final SegmentWriter segmentWriter;
 
-    // this should not need to be volatile in the end, but for now...
-    @NotNull
-    volatile RecordId head = RecordId.NULL;
-
-    // for debugging
-    volatile boolean dirty = false;
-
-    private Object dirtyLock = new Object();
-
     private final int clusterInstances;
 
     private final int clusterInstance;
@@ -146,6 +143,8 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
 
     @NotNull
     private final BlobStore blobStore;
+
+    private final Object headMonitor = new Object();
 
     // I had to copy the whole constructor from MemoryStore
     // because of the call to revisions.bind(this)
@@ -192,6 +191,12 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
             segmentReaders[i] = context.socket(ZMQ.REQ);
             segmentReaders[i].connect("tcp://localhost:" + (8001 + 2 * i));
         }
+
+        journalWriter = context.socket(ZMQ.REQ);
+        journalWriter.connect("tcp://localhost:9000");
+
+        journalReader = context.socket(ZMQ.REQ);
+        journalReader.connect("tcp://localhost:9001");
 
         segmentStore = CacheBuilder.newBuilder().build();
 
@@ -270,7 +275,9 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
             try {
                 segment = segmentCache.getIfPresent(id);
                 if (segment == null) {
-                    segment = unpersistedSegments.get(id.toString());
+                    synchronized (unpersistedSegments) {
+                        segment = unpersistedSegments.get(id.toString());
+                    }
                     if (segment == null) {
                         segment = readSegmentRemote(reader, id);
                     }
@@ -323,7 +330,7 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
             }
         }
         if ("Segment not found".equals(new String(bytes))) {
-            throw new SegmentNotFoundException(id);
+            return null;
         }
         final Segment segment;
         try {
@@ -441,43 +448,62 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
 
     @Override
     public RecordId getHead() {
-        if (dirty) {
-            waitForDirty();
-        }
-        return head;
-    }
-
-    private void waitForDirty() {
-        final long start = System.currentTimeMillis();
-        while (dirty) {
-            try {
-                Thread.sleep(1L);
-            } catch (InterruptedException ex) {
+        byte[] msg;
+        synchronized (headMonitor) {
+            while (true) {
+                try {
+                    journalReader.send("ping");
+                    msg = journalReader.recv();
+                    break;
+                } catch (Throwable t) {
+                    log.warn(t.toString());
+                    try {
+                        Thread.sleep(100);
+                    } catch (InterruptedException ex) {
+                    }
+                }
             }
+            final String sMsg = new String(msg);
+            final RecordId head = RecordId.fromString(tracker, sMsg);
+            return head;
         }
-        final long end = System.currentTimeMillis();
-        log.info("Waited for {} ms", end - start);
     }
 
     @Override
     public RecordId getPersistedHead() {
-        if (dirty) {
-            waitForDirty();
-        }
-        return head;
+        return getHead();
     }
 
     @Override
-    public synchronized boolean setHead(
+    public boolean setHead(
         @NotNull RecordId expected,
         @NotNull RecordId head,
         @NotNull Option... options) {
-        if (this.head.equals(expected)) {
-            this.head = head;
-            return true;
-        } else {
-            log.error("setHead failed");
-            return false;
+
+        final String sMsg = head.toString();
+        final byte[] msg = sMsg.getBytes();
+
+        synchronized (headMonitor) {
+            if (getHead().equals(expected)) {
+                while (true) {
+                    try {
+                        journalWriter.send(msg);
+                        final byte[] resp = journalWriter.recv();
+                        log.info(new String(resp));
+                        break;
+                    } catch (Throwable t) {
+                        log.warn(t.toString());
+                        try {
+                            Thread.sleep(100);
+                        } catch (InterruptedException ex) {
+                        }
+                    }
+                }
+                return true;
+            } else {
+                log.error("setHead failed");
+                return false;
+            }
         }
     }
 
@@ -497,10 +523,6 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
         return blobStore;
     }
 
-    void setDirty(boolean dirty) {
-        this.dirty = dirty;
-    }
-
     @Override
     public void close() throws IOException {
         stopBackgroundThreads();
@@ -513,6 +535,8 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
                 segmentReaders[i].close();
             }
         }
+        journalWriter.close();
+        journalReader.close();
         context.close();
     }
 
@@ -536,15 +560,23 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
     @Override
     public void notifyNewSegment(String segmentId, Segment segment) {
         if (remoteOnly) {
-            unpersistedSegments.put(segmentId, segment);
+            synchronized (unpersistedSegments) {
+                unpersistedSegments.put(segmentId, segment);
+            }
             log.debug("(Adding) Unpersisted segments: {}", unpersistedSegments.size());
         }
     }
 
     private void notifySegmentPersisted(String segmentId) {
         if (remoteOnly) {
-            unpersistedSegments.remove(segmentId);
-            log.debug("(Removing) Unpersisted segments: {}", unpersistedSegments.size());
+            synchronized (unpersistedSegments) {
+                unpersistedSegments.remove(segmentId);
+            }
+            final StringBuffer buf = new StringBuffer();
+            unpersistedSegments.forEach((id, segment) -> buf.append(id).append(", "));
+            if (buf.length() > 1) {
+                log.info("(Removing) Unpersisted segments: {}", buf.delete(buf.length() - 2, buf.length() - 1).toString());
+            }
         }
     }
 }

@@ -1,0 +1,8 @@
+#!/bin/bash -e
+
+./makeit
+ps auxww|grep java|grep journal-standalone|awk '{print $2}'|xargs kill || true
+
+sleep 2
+
+./runservice &
