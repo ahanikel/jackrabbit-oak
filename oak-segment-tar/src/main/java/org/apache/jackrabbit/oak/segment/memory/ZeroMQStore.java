@@ -146,6 +146,8 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
 
     private final Object headMonitor = new Object();
 
+    private final Thread flusher;
+
     // I had to copy the whole constructor from MemoryStore
     // because of the call to revisions.bind(this)
     public ZeroMQStore() throws IOException {
@@ -232,13 +234,36 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
             };
         }
 
+        if (remoteOnly) {
+            flusher = new Thread("ZeroMQStore Flush Handler") {
+                @Override
+                public void run() {
+                    while (!isInterrupted()) {
+                        try {
+                            Thread.sleep(15_000);
+                        } catch (InterruptedException ex) {
+                        }
+                        try {
+                            log.info("Flushing writer");
+                            synchronized(unpersistedSegments) {
+                                segmentWriter.flush();
+                                unpersistedSegments.clear();
+                            }
+                        } catch (IOException ex) {
+                            log.warn(ex.toString());
+                        }
+                    }
+                }
+            };
+        } else {
+            flusher = null;
+        }
+
         blobStore = new MemoryBlobStore();
         segmentReader = new CachingSegmentReader(this::getWriter, blobStore, 16, 2, NoopStats.INSTANCE);
         segmentWriter = defaultSegmentWriterBuilder("sys").withWriterPool().build(this);
 
-        if (!remoteOnly) {
-            startBackgroundThreads();
-        }
+        startBackgroundThreads();
     }
 
     @NotNull
@@ -527,6 +552,7 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
     public void close() throws IOException {
         stopBackgroundThreads();
         pollerItems.close();
+        segmentWriter.flush();
         segmentWriterService.close();
         segmentReaderService.close();
         for (int i = 0; i < clusterInstances; ++i) {
@@ -544,11 +570,17 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
         if (socketHandler != null) {
             socketHandler.start();
         }
+        if (flusher != null) {
+            flusher.start();
+        }
     }
 
     private void stopBackgroundThreads() {
         if (socketHandler != null) {
             socketHandler.interrupt();
+        }
+        if (flusher != null) {
+            flusher.interrupt();
         }
     }
 
@@ -571,11 +603,6 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
         if (remoteOnly) {
             synchronized (unpersistedSegments) {
                 unpersistedSegments.remove(segmentId);
-            }
-            final StringBuffer buf = new StringBuffer();
-            unpersistedSegments.forEach((id, segment) -> buf.append(id).append(", "));
-            if (buf.length() > 1) {
-                log.info("(Removing) Unpersisted segments: {}", buf.delete(buf.length() - 2, buf.length() - 1).toString());
             }
         }
     }

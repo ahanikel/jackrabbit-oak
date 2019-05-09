@@ -20,10 +20,7 @@ package org.apache.jackrabbit.oak.segment.memory;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.util.logging.Level;
 import org.apache.jackrabbit.oak.segment.RecordId;
-import org.apache.jackrabbit.oak.segment.Revisions;
-import org.apache.jackrabbit.oak.segment.SegmentIdProvider;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.osgi.service.component.annotations.Component;
