@@ -269,7 +269,7 @@ public class ZeroMQStore implements SegmentStoreWithGetters, Revisions {
     @NotNull
     public static ZeroMQStore newZeroMQStore() throws IOException {
         final ZeroMQStore zmqStore = new ZeroMQStore();
-        if (zmqStore.remoteOnly) {
+        if (zmqStore.remoteOnly && zmqStore.getHead().equals(RecordId.NULL)) {
             NodeBuilder builder = EMPTY_NODE.builder();
             builder.setChildNode("root", EMPTY_NODE);
             final RecordId head = zmqStore.segmentWriter.writeNode(builder.getNodeState());
