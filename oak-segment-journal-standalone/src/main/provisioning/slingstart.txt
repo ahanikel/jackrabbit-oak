@@ -39,12 +39,12 @@
   org.apache.sling/org.apache.sling.launchpad.installer/1.2.2
 
   # Segment Tar deps
-  org.apache.jackrabbit/oak-api/1.14-SNAPSHOT
-  org.apache.jackrabbit/oak-core-spi/1.14-SNAPSHOT
-  org.apache.jackrabbit/oak-commons/1.14-SNAPSHOT
-  org.apache.jackrabbit/oak-blob/1.14-SNAPSHOT
-  org.apache.jackrabbit/oak-blob-plugins/1.14-SNAPSHOT
-  org.apache.jackrabbit/oak-store-spi/1.14-SNAPSHOT
+  org.apache.jackrabbit/oak-api/1.12.0
+  org.apache.jackrabbit/oak-core-spi/1.12.0
+  org.apache.jackrabbit/oak-commons/1.12.0
+  org.apache.jackrabbit/oak-blob/1.12.0
+  org.apache.jackrabbit/oak-blob-plugins/1.12.0
+  org.apache.jackrabbit/oak-store-spi/1.12.0
 
   # Segment Azure deps
   com.fasterxml.jackson.core/jackson-annotations/2.9.0
@@ -53,15 +53,15 @@
   org.apache.commons/commons-lang3/3.6
 
   # Oak Core and deps (for StatisticsProvider)
-  org.apache.jackrabbit/oak-core/1.14-SNAPSHOT
-  org.apache.jackrabbit/oak-security-spi/1.14-SNAPSHOT
-  org.apache.jackrabbit/oak-query-spi/1.14-SNAPSHOT
+  org.apache.jackrabbit/oak-core/1.12.0
+  org.apache.jackrabbit/oak-security-spi/1.12.0
+  org.apache.jackrabbit/oak-query-spi/1.12.0
 
   # JCR / Jackrabbit
   javax.jcr/jcr/2.0
-  org.apache.jackrabbit/jackrabbit-jcr-commons/2.17.6
-  org.apache.jackrabbit/jackrabbit-api/2.17.6
-  org.apache.jackrabbit/jackrabbit-data/2.17.6
+  org.apache.jackrabbit/jackrabbit-jcr-commons/2.18.0
+  org.apache.jackrabbit/jackrabbit-api/2.18.0
+  org.apache.jackrabbit/jackrabbit-data/2.18.0
 
   # JMX
   org.apache.sling/org.apache.sling.commons.json/2.0.20
@@ -78,7 +78,7 @@
   commons-io/commons-io/2.6
 
   # The segment tar
-  org.apache.jackrabbit/oak-segment-tar/1.14-SNAPSHOT
+  org.apache.jackrabbit/oak-segment-tar/1.12.0
 
 [configurations]
 
