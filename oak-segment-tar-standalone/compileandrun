@@ -1,0 +1,16 @@
+#!/bin/bash -e
+
+(
+    cd ~/Documents/git/jackrabbit-oak/oak-segment-tar
+    mvn -DskipTests clean install
+)
+
+./makeit
+ps auxww|grep java|grep tar-standalone|awk '{print $2}'|xargs kill || true
+
+sleep 2
+
+for i in 1 2
+do
+    ./runservice $i 2 &
+done

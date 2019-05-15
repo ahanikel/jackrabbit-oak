@@ -191,13 +191,13 @@ public class Segment {
         this.recordNumbers = recordNumbers;
         this.segmentReferences = segmentReferences;
         id.loaded(this);
-        log.info("Created segment {}.", id.toString());
+        log.info("Created {} segment {}.", id.isDataSegmentId() ? "data" : "bulk", id.toString());
     }
 
     public Segment(@NotNull SegmentIdProvider idProvider,
                    @NotNull SegmentReader reader,
                    @NotNull final SegmentId id,
-        @NotNull final Buffer data) {
+                   @NotNull final Buffer data) {
         this.reader = checkNotNull(reader);
         this.id = checkNotNull(id);
         if (id.isDataSegmentId()) {

@@ -18,13 +18,17 @@ import static org.apache.jackrabbit.oak.plugins.memory.EmptyNodeState.EMPTY_NODE
 import static org.apache.jackrabbit.oak.segment.DefaultSegmentWriterBuilder.defaultSegmentWriterBuilder;
 import static org.junit.Assert.assertEquals;
 
-public class MemoryStoreTest {
+public class ZeroMQStoreTest {
 
     @Test
     public void createSegmentBlobTest() throws Exception {
+
         final int repeatAfter = 127;
 
-        final MemoryStore store = new MemoryStore();
+        System.setProperty("clusterInstance", "1");
+        System.setProperty("clusterInstances", "1");
+
+        final ZeroMQStore store = new ZeroMQStore();
         final NodeBuilder builder = EMPTY_NODE.builder();
 
         final InputStream testData = new InputStream() {
