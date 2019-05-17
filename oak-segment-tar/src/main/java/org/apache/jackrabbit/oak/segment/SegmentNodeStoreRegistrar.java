@@ -60,7 +60,7 @@ import org.apache.jackrabbit.oak.segment.file.InvalidFileStoreVersionException;
 import org.apache.jackrabbit.oak.segment.file.MetricsIOMonitor;
 import org.apache.jackrabbit.oak.segment.file.tar.TarPersistence;
 import org.apache.jackrabbit.oak.segment.memory.SegmentStoreWithGetters;
-import org.apache.jackrabbit.oak.segment.memory.ZeroMQStore;
+import org.apache.jackrabbit.oak.segment.memory.ZeroMQRemote;
 import org.apache.jackrabbit.oak.segment.spi.persistence.SegmentNodeStorePersistence;
 import org.apache.jackrabbit.oak.segment.split.SplitPersistence;
 import org.apache.jackrabbit.oak.spi.blob.BlobStore;
@@ -266,7 +266,7 @@ class SegmentNodeStoreRegistrar {
             return null;
         }
         */
-        SegmentStoreWithGetters store = ZeroMQStore.newZeroMQStore();
+        SegmentStoreWithGetters store = ZeroMQRemote.newZeroMQRemote();
         registerCloseable(store);
 
         // Listen for Executor services on the whiteboard
@@ -400,7 +400,7 @@ class SegmentNodeStoreRegistrar {
             ));
         }
 
-        if (cfg.registerDescriptors() && store.isRemoteOnly()) {
+        if (cfg.registerDescriptors()) {
             // ensure a clusterId is initialized
             // and expose it as 'oak.clusterid' repository descriptor
             GenericDescriptors clusterIdDesc = new GenericDescriptors();

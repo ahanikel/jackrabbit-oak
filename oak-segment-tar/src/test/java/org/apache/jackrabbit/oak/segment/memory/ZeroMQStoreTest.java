@@ -28,7 +28,9 @@ public class ZeroMQStoreTest {
         System.setProperty("clusterInstance", "1");
         System.setProperty("clusterInstances", "1");
 
+        final ZeroMQRemote remote = new ZeroMQRemote();
         final ZeroMQStore store = new ZeroMQStore();
+        store.activate(null);
         final NodeBuilder builder = EMPTY_NODE.builder();
 
         final InputStream testData = new InputStream() {
@@ -47,7 +49,7 @@ public class ZeroMQStoreTest {
         builder.child("root").setProperty("testData", blob);
         final NodeState nodeState = builder.getNodeState();
 
-        final SegmentWriter writer = defaultSegmentWriterBuilder("sys").withWriterPool().build(store);
+        final SegmentWriter writer = defaultSegmentWriterBuilder("sys").withWriterPool().build(remote);
         final RecordId head = writer.writeNode(nodeState);
         writer.flush();
 
