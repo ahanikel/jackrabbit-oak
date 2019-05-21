@@ -19,6 +19,8 @@
 
 package org.apache.jackrabbit.oak.run.cli;
 
+import java.net.URI;
+
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
 import joptsimple.OptionSpec;
@@ -90,6 +92,15 @@ public class CommonOptions implements OptionsBean {
     public String getStoreArg() {
         List<String> nonOptions = nonOption.values(options);
         return nonOptions.size() > 0 ? nonOptions.get(0) : "";
+    }
+
+    /**
+     * Get the nth non-option argument as a URI, starting with 0
+     * @param idx
+     * @return the URI
+     */
+    public URI getURI(int idx) {
+        return URI.create(nonOption.values(options).get(idx));
     }
 
     @Override

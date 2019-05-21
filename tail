@@ -1,0 +1,1 @@
+tail -n +0 -F ~/Downloads/crx-quickstart/logs/stdout.log | awk '/(ActivityLog|CHANGED to)/ { print nr++ "  " $0 }'

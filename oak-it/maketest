@@ -1,0 +1,9 @@
+export clusterInstances=1
+export writeBackJournal=true
+export customBlobStore=false
+export backendPrefix=localhost
+export blobendPrefix=localhost
+export journalPrefix=localhost
+export initJournal=undefined
+
+mvn -Dmaven.surefire.debug="-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=30303 -Xnoagent -Djava.compiler=NONE" -Dnsfixtures=ZEROMQ_NS clean test

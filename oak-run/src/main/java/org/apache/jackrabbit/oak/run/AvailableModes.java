@@ -25,6 +25,10 @@ import org.apache.jackrabbit.oak.index.merge.IndexStoreCommand;
 import org.apache.jackrabbit.oak.index.merge.IndexStoreStatsCommand;
 import org.apache.jackrabbit.oak.run.commons.Command;
 import org.apache.jackrabbit.oak.run.commons.Modes;
+import org.apache.jackrabbit.oak.simple.ImportToSimpleCommand;
+import org.apache.jackrabbit.oak.simple.SerialiseNodeStoreCommand;
+import org.apache.jackrabbit.oak.simple.SimpleBlobReaderServiceCommand;
+import org.apache.jackrabbit.oak.simple.SimpleNodeStateWriterServiceCommand;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -43,6 +47,7 @@ public final class AvailableModes {
         builder.put("compact", new CompactCommand());
         builder.put("composite-prepare", new CompositePrepareCommand());
         builder.put("console", new ConsoleCommand());
+        builder.put("copy", new CopyCommand());
         builder.put(DataStoreCommand.NAME, new DataStoreCommand());
         builder.put(DataStoreCopyCommand.NAME, new DataStoreCopyCommand());
         builder.put("datastorecacheupgrade", new DataStoreCacheUpgradeCommand());

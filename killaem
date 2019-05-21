@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+
+thePid=$(ps auxww|grep java|grep cq-quickstart|grep -v zeromq-service|awk '{print $2}')
+
+if [[ -n $thePid ]]
+then
+    kill -9 $thePid
+fi
+
+while kill -0 $thePid
+do
+    sleep 1
+done 2>/dev/null
+

@@ -45,9 +45,13 @@ class SegmentTarFixtureProvider {
 
     static NodeStore configureSegment(Options options, BlobStore blobStore, Whiteboard wb, Closer closer, boolean readOnly)
             throws IOException, InvalidFileStoreVersionException {
-        StatisticsProvider statisticsProvider = requireNonNull(getService(wb, StatisticsProvider.class));
+        final String pathOrUri = options.getOptionBean(CommonOptions.class).getStoreArg();
+        return configureSegment(pathOrUri, blobStore, wb, closer, readOnly);
+    }
 
-        String pathOrUri = options.getOptionBean(CommonOptions.class).getStoreArg();
+    static NodeStore configureSegment(String pathOrUri, BlobStore blobStore, Whiteboard wb, Closer closer, boolean readOnly)
+            throws IOException, InvalidFileStoreVersionException {
+        StatisticsProvider statisticsProvider = checkNotNull(getService(wb, StatisticsProvider.class));
         ToolUtils.SegmentStoreType segmentStoreType = ToolUtils.storeTypeFromPathOrUri(pathOrUri);
 
         FileStoreBuilder builder;
