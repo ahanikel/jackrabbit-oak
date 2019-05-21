@@ -1,0 +1,69 @@
+version: "3"
+services:
+  backend0:
+    image: docker2-granite-release-local.dr-uw2.adobeitc.com/ahanikel/oak-store-zeromq-service-store:1.38.0-zeromq
+    ports:
+            - 8000-8001:8000-8001
+            - 9000:9000
+            - 6006:6006
+    volumes:
+      - /tmp/backendBlobs:/tmp/backendBlobs
+      - /home/axel/mac/Documents/git/jackrabbit-oak/oak-store-zeromq-service-store:/log
+    environment:
+        - ZEROMQ_NTHREADS=4
+        - ZEROMQ_READER_URL=tcp://*:8000
+        - ZEROMQ_WRITER_URL=tcp://*:8001
+        - ZEROMQ_JOURNAL_URL=tcp://*:9000
+        - ZEROMQ_BACKEND_BLOBCACHE=/tmp/backendBlobs
+        - javaOpts=-Xmx2g -Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=yyyy-MM-dd'T'HH:mm:ss.SSSZ -Djava.library.path=/usr/lib/x86_64-linux-gnu/jni
+        - jarOpts=log /log/test-diff-1.38.0.log
+        # these should not be necessary:
+        #- KAFKA_TOPIC=nodestates
+        #- KAFKA_SERVERS=kafka:9092
+        #- clusterInstances=1
+        #- writeBackJournal=true
+        #- customBlobStore=false
+        #- backendPrefix=localhost
+        #- blobendPrefix=localhost
+        #- journalPrefix=localhost
+        #- initJournal=undefined
+        #- logNodeStates=false
+
+  quickstart-leader:
+    image: docker2-granite-release-local.dr-uw2.adobeitc.com/ahanikel/quickstart-remotesegment-docker:1.38.0-zeromq
+    ports:
+      - 4504:4502
+      - 5006:5005
+    environment:
+      - ZEROMQ_LEADER=true
+      - journalId=golden
+      - javaargs=-Xmx4g -Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*:5005
+      - jarargs=-nofork -nobrowser -r author,crx3,crx3tar-nofds -v
+      - blobCacheDir=/tmp/blurbs
+      - backendReaderURL=tcp://backend0:8000
+      - backendWriterURL=tcp://backend0:8001
+      - journalSocketURL=tcp://backend0:9000
+      # these should not be necessary:
+      #- clusterInstances=1
+      #- writeBackJournal=true
+      #- writeBackNodes=true
+      #- backendPrefix=backend
+      #- remoteReads=true
+      #- customBlobStore=false
+      #- logNodeStates=false
+      #- delay=180
+
+  quickstart-follower:
+    image: docker2-granite-release-local.dr-uw2.adobeitc.com/ahanikel/quickstart-remotesegment-docker:1.38.0-zeromq
+    ports:
+      - 4505:4502
+      - 5007:5005
+    environment:
+      - ZEROMQ_LEADER=true
+      - journalId=golden
+      - javaargs=-Xmx4g -Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*:5005
+      - jarargs=-nofork -nobrowser -r author,crx3,crx3tar-nofds -v
+      - blobCacheDir=/tmp/blurbs
+      - backendReaderURL=tcp://backend0:8000
+      - backendWriterURL=tcp://backend0:8001
+      - journalSocketURL=tcp://backend0:9000

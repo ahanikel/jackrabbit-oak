@@ -19,12 +19,6 @@
 
 package org.apache.jackrabbit.oak.run.cli;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.Map;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
-
 import com.codahale.metrics.ConsoleReporter;
 import com.codahale.metrics.Counting;
 import com.codahale.metrics.MetricRegistry;
@@ -36,10 +30,18 @@ import org.apache.jackrabbit.oak.plugins.metric.MetricStatisticsProvider;
 import org.apache.jackrabbit.oak.segment.file.InvalidFileStoreVersionException;
 import org.apache.jackrabbit.oak.spi.blob.BlobStore;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
+import org.apache.jackrabbit.oak.spi.whiteboard.DefaultWhiteboard;
 import org.apache.jackrabbit.oak.spi.whiteboard.Registration;
 import org.apache.jackrabbit.oak.spi.whiteboard.Tracker;
 import org.apache.jackrabbit.oak.spi.whiteboard.Whiteboard;
 import org.apache.jackrabbit.oak.stats.StatisticsProvider;
+
+import java.io.File;
+import java.io.IOException;
+import java.net.URI;
+import java.util.Map;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 
 import static java.lang.management.ManagementFactory.getPlatformMBeanServer;
 import static java.util.Collections.emptyMap;
@@ -86,6 +88,50 @@ public class NodeStoreFixtureProvider {
             }
         }
 
+        return new SimpleNodeStoreFixture(store, blobStore, wb, closer);
+    }
+
+    public static NodeStoreFixture create(URI uri, Options options, boolean readOnly) throws Exception {
+        Closer closer = Closer.create();
+        Whiteboard wb = new ClosingWhiteboard(new DefaultWhiteboard(), closer);
+
+        NodeStore store;
+        BlobStore blobStore = null;
+
+        BlobStoreFixture blobStoreFixture = BlobStoreFixtureProvider.create(options);
+        if (blobStoreFixture != null) {
+            blobStore = blobStoreFixture.getBlobStore();
+            closer.register(blobStoreFixture);
+        }
+
+        StatisticsProvider statisticsProvider = createStatsProvider(options, wb, closer);
+        wb.register(StatisticsProvider.class, statisticsProvider, emptyMap());
+
+        switch (uri.getScheme()) {
+            case "memory": {
+                store = new MemoryNodeStore();
+                break;
+            }
+            case "segment": {
+                store = SegmentTarFixtureProvider.configureSegment(uri.getRawSchemeSpecificPart(), blobStore, wb, closer, readOnly);
+                break;
+            }
+            case "oldsegment": {
+                store = SegmentFixtureProvider.create(uri.getRawSchemeSpecificPart(), blobStore, wb, closer, readOnly);
+                break;
+            }
+            case "document": {
+                final DocumentNodeStore dns = DocumentFixtureProvider.configureDocumentMk(uri.getRawSchemeSpecificPart(), options, blobStore, wb, closer, readOnly);
+                store = dns;
+                if (blobStore == null) {
+                    blobStore = dns.getBlobStore();
+                }
+                break;
+            }
+            default: {
+                throw new IllegalArgumentException("Unknown nodestore type " + uri.getScheme());
+            }
+        }
         return new SimpleNodeStoreFixture(store, blobStore, wb, closer);
     }
 
