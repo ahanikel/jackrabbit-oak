@@ -118,7 +118,24 @@ public class ZeroMQNodeStore implements NodeStore {
     }
 
     private void write(String s) {
-        nodeStateWriter.send(s);
+        while (true) {
+            final byte[] msg;
+            try {
+                synchronized (nodeStateWriter) {
+                    nodeStateWriter.send(s);
+                    msg = nodeStateWriter.recv(); // wait for confirmation
+                }
+                log.info(new String(msg));
+                break;
+            } catch (Throwable t) {
+                log.warn(t.toString());
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    log.error(e.toString());
+                }
+            }
+        }
     }
 
     @Override
