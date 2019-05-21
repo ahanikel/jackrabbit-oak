@@ -20,11 +20,16 @@
 package org.apache.jackrabbit.oak.run;
 
 import org.apache.jackrabbit.guava.common.collect.ImmutableMap;
+import org.apache.jackrabbit.oak.copy.CopyCommand;
 import org.apache.jackrabbit.oak.exporter.NodeStateExportCommand;
 import org.apache.jackrabbit.oak.index.IndexCommand;
 import org.apache.jackrabbit.oak.index.merge.IndexDiffCommand;
 import org.apache.jackrabbit.oak.run.commons.Command;
 import org.apache.jackrabbit.oak.run.commons.Modes;
+import org.apache.jackrabbit.oak.simple.ImportToSimpleCommand;
+import org.apache.jackrabbit.oak.simple.SerialiseNodeStoreCommand;
+import org.apache.jackrabbit.oak.simple.SimpleBlobReaderServiceCommand;
+import org.apache.jackrabbit.oak.simple.SimpleNodeStateWriterServiceCommand;
 
 public final class AvailableModes {
     // list of available Modes for the tool
@@ -37,6 +42,7 @@ public final class AvailableModes {
             .put("compact", new CompactCommand())
             .put("composite-prepare", new CompositePrepareCommand())
             .put("console", new ConsoleCommand())
+            .put("copy", new CopyCommand())
             .put(DataStoreCommand.NAME, new DataStoreCommand())
             .put(DataStoreCopyCommand.NAME, new DataStoreCopyCommand())
             .put("datastorecacheupgrade", new DataStoreCacheUpgradeCommand())
@@ -50,6 +56,7 @@ public final class AvailableModes {
             .put("garbage", new GarbageCommand())
             .put("help", new HelpCommand())
             .put("history", new HistoryCommand())
+            .put("import-to-simple", new ImportToSimpleCommand())
             .put("index-merge", new IndexMergeCommand())
             .put("index-diff", new IndexDiffCommand())
             .put(IndexCommand.NAME, new IndexCommand())
@@ -63,6 +70,9 @@ public final class AvailableModes {
             .put("repair", new RepairCommand())
             .put("resetclusterid", new ResetClusterIdCommand())
             .put("restore", new RestoreCommand())
+            .put(SerialiseNodeStoreCommand.NAME, new SerialiseNodeStoreCommand())
+            .put("simple-blob-reader-service", new SimpleBlobReaderServiceCommand())
+            .put("simple-blob-writer-service", new SimpleNodeStateWriterServiceCommand())
             .put("tarmkdiff", new FileStoreDiffCommand())
             .put(ThreadDumpCommand.THREADDUMP, new ThreadDumpCommand())
             .put("tika", new TikaCommand())

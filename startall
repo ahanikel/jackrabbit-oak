@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+
+YJP_ARGS="-Dorg.apache.sling.launcher.bootdelegation=com.yourkit.api,com.yourkit.runtime,com.yourkit.util -Xbootclasspath/a:/Users/ahanikel/yjp/lib/yjp-controller-api-redist.jar -agentpath:/Users/ahanikel/yjp/bin/linux-x86-64/libyjpagent.so"
+
+export clusterInstances=1
+export writeBackJournal=true
+export writeBackNodes=true
+export customBlobStore=false
+export backendPrefix=localhost
+export blobendPrefix=localhost
+export journalPrefix=localhost
+export initJournal=undefined
+export logNodeStates=false
+export blobCacheDir=/tmp/blobCacheDir
+
+./killaem
+#cp oak-store-zeromq/target/oak-store-zeromq-1.30.0.jar /Users/ahanikel/Downloads/install.zeromq/15/
+rm -rf /tmp/blobCacheDir
+
+(cd /Users/ahanikel/Downloads &&
+    rm -rf crx-quickstart && rm -rf /tmp/blobs && rm -rf /Users/ahanikel/Downloads/blobs && (rm -f /tmp/zmqBlob* || true) && mkdir crx-quickstart && cp -R install.zeromq crx-quickstart/install)
+(cd /Users/ahanikel/Downloads && echo admin | java -Xmx8g '-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005' -Doak.queryLimitReads=10000000 -jar cq-quickstart-6.6.0-1.38.0.nosegment.jar -nofork -nobrowser -r author,crx3,crx3tar-nofds & )

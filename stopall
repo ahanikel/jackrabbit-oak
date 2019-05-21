@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+ps auxww|grep java|grep quickstart|awk '{print $2}'|xargs kill -9
+ps auxww | grep java | grep oak-store-zeromq-service-store | awk '{print $2}' | xargs kill -9
+#(cd /Users/ahanikel/Documents/git/jackrabbit-oak/quickstart-remotesegment-docker && docker-compose down)
+(cd /Users/ahanikel/Downloads &&
+    rm -rf crx-quickstart && rm -rf /tmp/blobs && rm -rf /Users/ahanikel/Downloads/blobs && (rm -f /tmp/zmqBlob* || true) && mkdir crx-quickstart && cp -R install.zeromq crx-quickstart/install)
