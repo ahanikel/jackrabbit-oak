@@ -46,10 +46,20 @@ import static org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardUtils.getServic
 
 class DocumentFixtureProvider {
     static DocumentNodeStore configureDocumentMk(Options options,
-                                         BlobStore blobStore,
-                                         Whiteboard wb,
-                                         Closer closer,
-                                         boolean readOnly) throws IOException {
+                                                 BlobStore blobStore,
+                                                 Whiteboard wb,
+                                                 Closer closer,
+                                                 boolean readOnly) throws IOException {
+        final String storeArg = options.getCommonOpts().getStoreArg();
+        return configureDocumentMk(storeArg, options, blobStore, wb, closer, readOnly);
+    }
+
+    static DocumentNodeStore configureDocumentMk(String storeArg,
+                                                 Options options,
+                                                 BlobStore blobStore,
+                                                 Whiteboard wb,
+                                                 Closer closer,
+                                                 boolean readOnly) throws IOException {
         CommonOptions commonOpts = options.getOptionBean(CommonOptions.class);
 
         DocumentNodeStoreBuilder<?> builder;
@@ -102,7 +112,7 @@ class DocumentFixtureProvider {
 
         DocumentNodeStore dns;
         if (commonOpts.isMongo()) {
-            MongoClientURI uri = new MongoClientURI(commonOpts.getStoreArg());
+            MongoClientURI uri = new MongoClientURI(storeArg);
             if (uri.getDatabase() == null) {
                 System.err.println("Database missing in MongoDB URI: "
                         + uri.getURI());
@@ -118,7 +128,7 @@ class DocumentFixtureProvider {
             wb.register(MongoDocumentStore.class, (MongoDocumentStore) builder.getDocumentStore(), emptyMap());
         } else if (commonOpts.isRDB()) {
             RDBStoreOptions rdbOpts = options.getOptionBean(RDBStoreOptions.class);
-            DataSource ds = RDBDataSourceFactory.forJdbcUrl(commonOpts.getStoreArg(),
+            DataSource ds = RDBDataSourceFactory.forJdbcUrl(storeArg,
                     rdbOpts.getUser(), rdbOpts.getPassword());
             wb.register(DataSource.class, ds, emptyMap());
             ((RDBDocumentNodeStoreBuilder) builder).setRDBConnection(ds);

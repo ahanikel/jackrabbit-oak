@@ -45,7 +45,7 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
         this.writer = writer;
     }
 
-    static LoggingHook newLoggingHook(final Consumer<String> writer) {
+    public static LoggingHook newLoggingHook(final Consumer<String> writer) {
         return new LoggingHook(writer);
     }
 
