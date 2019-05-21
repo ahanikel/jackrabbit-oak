@@ -158,7 +158,7 @@ public class ZeroMQRemote implements SegmentStoreWithGetters, Revisions {
         journalReader.connect("tcp://localhost:9001");
 
         segmentCache = CacheBuilder.newBuilder()
-            .maximumSize(100).build();
+            .maximumSize(1000).build();
 
         unpersistedSegments = new HashMap<String, Segment>();
 
@@ -189,7 +189,7 @@ public class ZeroMQRemote implements SegmentStoreWithGetters, Revisions {
             }
         };
 
-        segmentReader = new CachingSegmentReader(this::getWriter, null, 16, 2, NoopStats.INSTANCE);
+        segmentReader = new CachingSegmentReader(this::getWriter, null, 0, 0, NoopStats.INSTANCE);
         segmentWriter = defaultSegmentWriterBuilder("sys").withWriterPool().build(this);
 
         startBackgroundThreads();
