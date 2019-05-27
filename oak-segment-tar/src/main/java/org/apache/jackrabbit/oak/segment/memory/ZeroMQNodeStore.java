@@ -39,6 +39,7 @@ import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
 import org.jetbrains.annotations.NotNull;
+import org.osgi.service.component.annotations.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.zeromq.ZMQ;
@@ -46,6 +47,7 @@ import org.zeromq.ZMQ;
 /**
  * A store which dumps everything into a queue.
  */
+@Component
 public class ZeroMQNodeStore implements NodeStore {
 
     private static final Logger log = LoggerFactory.getLogger(ZeroMQNodeStore.class.getName());
@@ -68,7 +70,11 @@ public class ZeroMQNodeStore implements NodeStore {
     @NotNull
     final Cache<String, NodeState> nodeStateCache;
 
-    public ZeroMQNodeStore() {
+    public static ZeroMQNodeStore newZeroMQNodeStore() {
+        return new ZeroMQNodeStore();
+    }
+
+    private ZeroMQNodeStore() {
 
         context = ZMQ.context(1);
 
@@ -90,11 +96,11 @@ public class ZeroMQNodeStore implements NodeStore {
 
     @Override
     public NodeState getRoot() {
-        byte[] msg;
+        String msg;
         while (true) {
             try {
                 journalReader.send("ping");
-                msg = journalReader.recv();
+                msg = journalReader.recvStr();
                 break;
             } catch (Throwable t) {
                 log.warn(t.toString());
@@ -104,8 +110,7 @@ public class ZeroMQNodeStore implements NodeStore {
                 }
             }
         }
-        final String sMsg = new String(msg);
-        return newZeroMQNodeState(UUID.fromString(sMsg));
+        return newZeroMQNodeState(msg, this::read);
     }
 
     @Override
@@ -117,15 +122,37 @@ public class ZeroMQNodeStore implements NodeStore {
         return after;
     }
 
-    private void write(String s) {
+    private String read(String s) {
+        String msg;
         while (true) {
-            final byte[] msg;
+            try {
+                synchronized (nodeStateReader) {
+                    nodeStateReader.send(s);
+                    msg = nodeStateReader.recvStr();
+                }
+                log.info(msg);
+                break;
+            } catch (Throwable t) {
+                log.warn(t.toString());
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    log.error(e.toString());
+                }
+            }
+        }
+        return msg;
+    }
+
+    private void write(String s) {
+       String msg;
+        while (true) {
             try {
                 synchronized (nodeStateWriter) {
                     nodeStateWriter.send(s);
-                    msg = nodeStateWriter.recv(); // wait for confirmation
+                    msg = nodeStateWriter.recvStr(); // wait for confirmation
                 }
-                log.info(new String(msg));
+                log.info(msg);
                 break;
             } catch (Throwable t) {
                 log.warn(t.toString());
