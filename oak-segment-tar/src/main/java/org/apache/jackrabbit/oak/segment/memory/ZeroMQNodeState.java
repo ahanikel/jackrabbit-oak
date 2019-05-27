@@ -21,12 +21,11 @@ package org.apache.jackrabbit.oak.segment.memory;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
-import java.util.UUID;
+import java.util.*;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.api.PropertyState;
@@ -43,13 +42,13 @@ import org.apache.jackrabbit.oak.spi.state.NodeState;
 
 public class ZeroMQNodeState extends AbstractNodeState {
 
-    private final UUID uuid;
+    private final String uuid;
 
-    private final Map<String, UUID> children;
+    private final Map<String, String> children;
 
     private final Map<String, ZeroMQPropertyState> properties;
 
-    public static ZeroMQNodeState newZeroMQNodeState(UUID uuid, Function<String, String> reader) {
+    public static ZeroMQNodeState newZeroMQNodeState(String uuid, Function<String, String> reader) {
         final ZeroMQNodeState zmqNodeState = new ZeroMQNodeState(uuid, reader);
         zmqNodeState.init();
         return zmqNodeState;
@@ -57,28 +56,136 @@ public class ZeroMQNodeState extends AbstractNodeState {
 
     private final Function<String, String> reader;
 
-    private ZeroMQNodeState(UUID uuid, Function<String, String> reader) {
+    private ZeroMQNodeState(String uuid, Function<String, String> reader) {
         this.uuid = uuid;
         this.children = new HashMap<>();
         this.properties = new HashMap<>();
         this.reader = reader;
     }
 
+    private static class ParseFailure extends Exception {
+        private ParseFailure(String s) {
+            super(s);
+        }
+    }
+
     private void init() {
+        final String sNode = reader.apply(uuid);
+        try {
+            parseNodeState(sNode);
+        } catch (ParseFailure parseFailure) {
+            throw new IllegalStateException(parseFailure);
+        }
+    }
+
+    private static final class FinalVar<Type> {
+        private Type val;
+        private boolean assigned = false;
+
+        public FinalVar() {};
+        public void assign(Type val) {
+            if (assigned) {
+                throw new IllegalStateException("Variable has already been assigned");
+            } else {
+                this.val = val;
+                assigned = true;
+            }
+        }
+        public Type val() {
+            if (assigned) {
+                return val;
+            } else {
+                throw new IllegalStateException("Variable has not been assigned yet");
+            }
+        }
+    }
+
+    @FunctionalInterface
+    private interface SupplierWithException<T, E extends Exception> {
+        T get() throws E;
+    }
+
+    private static class Parser {
+        private String s;
+        private String last;
+
+        private Parser(String s) {
+            this.s = s;
+            this.last = "";
+        }
+
+        private Parser parseString(String t) throws ParseFailure {
+            if (!s.startsWith(t)) {
+                throw new ParseFailure("Failed to parse " + t);
+            }
+            s = s.substring(t.length());
+            last = t;
+            return this;
+        }
+
+        private Parser parseRegexp(String re) throws ParseFailure {
+            final Pattern p = Pattern.compile(re, Pattern.MULTILINE);
+            final Matcher m = p.matcher(s);
+            if (m.matches()) {
+                last = m.group(0);
+                return this;
+            }
+            throw new ParseFailure("Failed to parse " + re);
+        }
+
+        private Parser assignTo(FinalVar<String> var) {
+            var.assign(last);
+            return this;
+        }
+
+        private Parser appendTo(List<String> list) {
+            list.add(last);
+            return this;
+        }
+
+        private Parser parseRegexpUntil(SupplierWithException<Parser, ParseFailure> f, String until) throws ParseFailure {
+            Parser parser = this;
+            final Pattern p = Pattern.compile(until);
+            while (!p.matcher(parser.s).matches()) {
+                parser = f.get();
+            }
+            return this;
+        }
+    }
+
+    private void parseNodeState(String s) throws ParseFailure {
+        final FinalVar<String> id = new FinalVar();
+        final List<String> children = new ArrayList<>();
+        final List<String> properties = new ArrayList<>();
+        final Parser parser = new Parser(s);
+        parser
+                .parseRegexp("begin ZeroMQNodeState ([^\n]+)\n")
+                .assignTo(id)
+                .parseString("begin children\n")
+                .parseRegexpUntil(
+                        () -> parser.parseRegexp("([^\n]*)\n").appendTo(children),
+                       "end children\n"
+                )
+                .parseString("begin properties\n")
+                .parseRegexpUntil(
+                        () -> parser.parseRegexp("([^\n]*)\n").appendTo(properties),
+                        "end properties\n"
+                )
+                .parseString("end properties\n");
     }
 
     public void serialise(Consumer<StringBuilder> writer) {
         final StringBuilder sb = new StringBuilder();
         sb
             .append("begin ZeroMQNodeState ")
-            .append(uuid.toString())
+            .append(uuid)
             .append('\n')
             .append("begin children\n");
         children.forEach((name, uuid) ->
             sb
                 .append(name)
                 .append('\t')
-                .append(uuid.toString())
+                .append(uuid)
                 .append('\n'));
         sb.append("end children\n");
         sb.append("begin properties\n");
