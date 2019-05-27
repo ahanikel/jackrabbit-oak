@@ -22,26 +22,43 @@ package org.apache.jackrabbit.oak.segment.memory;
 import org.apache.jackrabbit.oak.api.PropertyState;
 import org.apache.jackrabbit.oak.api.Type;
 
+import java.util.List;
+
 public class ZeroMQPropertyState implements PropertyState {
+
+    private final String name;
+    private final Type type;
+    private final List<String> values;
+
+    public ZeroMQPropertyState(String name, String type, List<String> values) {
+        this.name = name;
+        this.type = Type.fromString(type);
+        this.values = values;
+    }
 
     @Override
     public String getName() {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        return name;
     }
 
     @Override
     public boolean isArray() {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        return type.isArray();
     }
 
     @Override
     public Type<?> getType() {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        return type;
     }
 
     @Override
     public <T> T getValue(Type<T> type) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        if (type.equals(Type.STRING)) {
+            return (T) values.get(0);
+        } else if (type.equals(Type.STRINGS)) {
+            return (T) values;
+        } // TODO: implement rest
+        return null;
     }
 
     @Override
@@ -51,16 +68,17 @@ public class ZeroMQPropertyState implements PropertyState {
 
     @Override
     public long size() {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        return values.size();
     }
 
     @Override
     public long size(int index) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        // TODO:
+        return values.get(index).length();
     }
 
     @Override
     public int count() {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        return values.size();
     }
 }
