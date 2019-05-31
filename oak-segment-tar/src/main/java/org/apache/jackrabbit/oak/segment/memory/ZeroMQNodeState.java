@@ -124,10 +124,11 @@ public class ZeroMQNodeState extends AbstractNodeState {
         }
 
         private Parser parseRegexp(String re) throws ParseFailure {
-            final Pattern p = Pattern.compile(re, Pattern.MULTILINE);
+            final Pattern p = Pattern.compile(re, Pattern.DOTALL);
             final Matcher m = p.matcher(s);
             if (m.matches()) {
-                last = m.group(0);
+                last = m.group(1);
+                s = m.group(2);
                 return this;
             }
             throw new ParseFailure("Failed to parse " + re);
@@ -145,10 +146,14 @@ public class ZeroMQNodeState extends AbstractNodeState {
 
         private Parser parseRegexpUntil(SupplierWithException<Parser, ParseFailure> f, String until) throws ParseFailure {
             Parser parser = this;
-            final Pattern p = Pattern.compile(until);
-            while (!p.matcher(parser.s).matches()) {
+            final Pattern p = Pattern.compile(until, Pattern.DOTALL);
+            Matcher m = p.matcher(parser.s);
+            while (!m.matches()) {
                 parser = f.get();
+                m = p.matcher(parser.s);
             }
+            last = m.group(1);
+            s = m.group(2);
             return this;
         }
     }
@@ -159,19 +164,39 @@ public class ZeroMQNodeState extends AbstractNodeState {
         final List<String> properties = new ArrayList<>();
         final Parser parser = new Parser(s);
         parser
-                .parseRegexp("begin ZeroMQNodeState ([^\n]+)\n")
+                .parseRegexp("begin ZeroMQNodeState ([^\\n]+)\\n(.*)")
                 .assignTo(id)
                 .parseString("begin children\n")
                 .parseRegexpUntil(
-                        () -> parser.parseRegexp("([^\n]*)\n").appendTo(children),
-                       "end children\n"
+                        () -> parser.parseRegexp("([^\\n]*)\\n(.*)").appendTo(children),
+                       "(end children)\\n(.*)"
                 )
                 .parseString("begin properties\n")
                 .parseRegexpUntil(
-                        () -> parser.parseRegexp("([^\n]*)\n").appendTo(properties),
-                        "end properties\n"
+                        () -> parser.parseRegexp("([^\\n]*)\\n(.*)").appendTo(properties),
+                        "(end properties)\\n(.*)"
                 )
-                .parseString("end properties\n");
+                .parseString("end ZeroMQNodeState\n");
+        for (String child : children) {
+            Parser p = new Parser(child);
+            FinalVar<String> key = new FinalVar<>();
+            FinalVar<String> value = new FinalVar<>();
+            p
+                    .parseRegexp("([^\\t]+)\\t(.*)").assignTo(key)
+                    .parseRegexp("(.*)(.*)").assignTo(value);
+            this.children.put(key.val, value.val);
+        }
+        for (String prop : properties) {
+            FinalVar<String> pName = new FinalVar<>();
+            FinalVar<String> pType = new FinalVar<>();
+            List<String> pValues   = new ArrayList<>();
+            Parser p = new Parser(prop);
+            p
+                    .parseRegexp("([^ ]+) (.*)").assignTo(pName)
+                    .parseRegexp("<([^>]+)> = (.*)").assignTo(pType)
+                    .parseRegexp("(.*)(.*)").appendTo(pValues); // TODO
+            this.properties.put(pName.val(), new ZeroMQPropertyState(pName.val(), pType.val(), pValues));
+        }
     }
 
     public void serialise(Consumer<StringBuilder> writer) {
@@ -230,7 +255,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
     @Override
     public NodeState getChildNode(String name) throws IllegalArgumentException {
         if (children.containsKey(name)) {
-            return new ZeroMQNodeState(children.get(name), reader);
+            return newZeroMQNodeState(children.get(name), reader);
         }
         throw new IllegalArgumentException("No such child");
     }
