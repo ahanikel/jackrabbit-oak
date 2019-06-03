@@ -6,6 +6,7 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -36,7 +37,14 @@ public class ZeroMQNodeStateTest {
                     .append("cTwo\t").append(UUIDS[2]).append('\n')
                     .append("end children\n")
                     .append("begin properties\n")
-                    .append("pOne <STRING> = Hello world\n")
+                    .append("pString <STRING> = Hello world\n")
+                    .append("pDate <DATE> = 2019-06-03T14:29:30+0200\n")
+                    .append("pName <NAME> = Hello\n")
+                    .append("pPath <PATH> = /Hello/World\n")
+                    .append("pLong <LONG> = 1234567\n")
+                    .append("pDouble <DOUBLE> = 1234567.89123\n")
+                    .append("pBoolean <BOOLEAN> = true\n")
+                    .append("pDecimal <DECIMAL> = 1234567\n")
                     .append("end properties\n")
                     .append("end ZeroMQNodeState\n");
         } else {
@@ -69,14 +77,35 @@ public class ZeroMQNodeStateTest {
         assertNotNull(cOne);
         assertNotNull(cTwo);
 
-        assertEquals(Type.STRING, ns.getProperty("pOne").getType());
-        assertEquals("Hello world", ns.getProperty("pOne").getValue(Type.STRING));
+        assertEquals(Type.STRING, ns.getProperty("pString").getType());
+        assertEquals("Hello world", ns.getProperty("pString").getValue(Type.STRING));
+
+        assertEquals(Type.DATE, ns.getProperty("pDate").getType());
+        assertEquals("2019-06-03T14:29:30+0200", ns.getProperty("pDate").getValue(Type.DATE));
+
+        assertEquals(Type.NAME, ns.getProperty("pName").getType());
+        assertEquals("Hello", ns.getProperty("pName").getValue(Type.NAME));
+
+        assertEquals(Type.PATH, ns.getProperty("pPath").getType());
+        assertEquals("/Hello/World", ns.getProperty("pPath").getValue(Type.PATH));
+
+        assertEquals(Type.LONG, ns.getProperty("pLong").getType());
+        assertEquals(1234567L, ns.getProperty("pLong").getValue(Type.PATH));
+
+        assertEquals(Type.DOUBLE, ns.getProperty("pDouble").getType());
+        assertEquals(1234567.89123d, ns.getProperty("pDouble").getValue(Type.PATH));
+
+        assertEquals(Type.BOOLEAN, ns.getProperty("pBoolean").getType());
+        assertEquals(true, ns.getProperty("pBoolean").getValue(Type.PATH));
+
+        assertEquals(Type.DECIMAL, ns.getProperty("pDecimal").getType());
+        assertEquals(new BigDecimal(1234567), ns.getProperty("pDecimal").getValue(Type.DECIMAL));
 
         assertEquals(Type.STRING, cOne.getProperty("pOne").getType());
-        assertEquals("Hello world", ns.getProperty("pOne").getValue(Type.STRING));
+        assertEquals("Hello world", cOne.getProperty("pOne").getValue(Type.STRING));
 
         assertEquals(Type.STRING, cTwo.getProperty("pOne").getType());
-        assertEquals("Hello world", ns.getProperty("pOne").getValue(Type.STRING));
+        assertEquals("Hello world", cTwo.getProperty("pOne").getValue(Type.STRING));
     }
 
     @Test

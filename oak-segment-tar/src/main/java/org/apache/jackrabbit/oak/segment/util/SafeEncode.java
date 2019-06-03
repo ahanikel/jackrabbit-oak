@@ -20,6 +20,7 @@
 package org.apache.jackrabbit.oak.segment.util;
 
 import java.io.UnsupportedEncodingException;
+import java.net.URLDecoder;
 import java.net.URLEncoder;
 
 public class SafeEncode {
@@ -42,4 +43,15 @@ public class SafeEncode {
         return URLEncoder.encode(s, "UTF-8").replace("%2F", "/").replace("%3A", ":");
     }
 
+    /**
+     * Decodes the input string by translating escape sequences back to special characters.
+     * The resulting string is decoded according to the rules for URL decoding.
+     *
+     * @param s A UTF-8 string.
+     * @return The decoded string.
+     * @throws UnsupportedEncodingException
+     */
+    public static String safeDecode(String s) throws UnsupportedEncodingException {
+        return URLDecoder.decode(s, "UTF-8");
+    }
 }
