@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.regex.Matcher;
@@ -184,7 +185,11 @@ public class ZeroMQNodeState extends AbstractNodeState {
             p
                     .parseRegexp("([^\\t]+)\\t(.*)").assignTo(key)
                     .parseRegexp("(.*)(.*)").assignTo(value);
-            this.children.put(key.val, value.val);
+            try {
+                this.children.put(SafeEncode.safeDecode(key.val), value.val);
+            } catch (UnsupportedEncodingException e) {
+                throw new IllegalStateException(e);
+            }
         }
         for (String prop : properties) {
             FinalVar<String> pName = new FinalVar<>();
@@ -200,6 +205,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
     }
 
     public void serialise(Consumer<StringBuilder> writer) {
+        final AtomicReference<Exception> e = new AtomicReference<>();
         final StringBuilder sb = new StringBuilder();
         sb
             .append("begin ZeroMQNodeState ")
@@ -207,15 +213,24 @@ public class ZeroMQNodeState extends AbstractNodeState {
             .append('\n')
             .append("begin children\n");
         children.forEach((name, uuid) ->
-            sb
-                .append(name)
-                .append('\t')
-                .append(uuid)
-                .append('\n'));
+        {
+            try {
+                sb
+                    .append(SafeEncode.safeEncode(name))
+                    .append('\t')
+                    .append(uuid)
+                    .append('\n');
+            } catch (UnsupportedEncodingException ex) {
+                e.compareAndSet(null, ex);
+            }
+        });
+        if (e.get() != null) {
+            throw new IllegalStateException(e.get());
+        }
         sb.append("end children\n");
         sb.append("begin properties\n");
         properties.forEach((name, ps) ->
-            serialisePropertyState(ps, sb).append('\n')
+            ps.serialise(sb).append('\n')
         );
         sb.append("end properties\n");
         sb.append("end ZeroMQNodeState\n");
@@ -281,65 +296,5 @@ public class ZeroMQNodeState extends AbstractNodeState {
     @Override
     public NodeBuilder builder() {
         return new MemoryNodeBuilder(this);
-    }
-
-    // TODO: copy-pasted from LoggingHook.java
-    private static StringBuilder serialisePropertyState(final PropertyState ps, final StringBuilder sb) {
-        sb.append(safeEncode(ps.getName()));
-        sb.append(" <");
-        sb.append(ps.getType());
-        sb.append("> ");
-        if (ps.getType() == BINARY) {
-            sb.append("= ");
-            final Blob blob = ps.getValue(BINARY);
-            appendBlob(sb, blob);
-        } else if (ps.getType() == BINARIES) {
-            sb.append("= [");
-            ps.getValue(BINARIES).forEach((Blob b) -> {
-                appendBlob(sb, b);
-                sb.append(',');
-            });
-            replaceOrAppendLastChar(sb, ',', ']');
-        } else if (ps.isArray()) {
-            sb.append("= [");
-            ps.getValue(STRINGS).forEach((String s) -> {
-                sb.append(safeEncode(s));
-                sb.append(',');
-            });
-            replaceOrAppendLastChar(sb, ',', ']');
-        } else {
-            sb.append("= ").append(safeEncode(ps.getValue(STRING)));
-        }
-        return sb;
-    }
-
-    private static void replaceOrAppendLastChar(StringBuilder b, char oldChar, char newChar) {
-        if (b.charAt(b.length() - 1) == oldChar) {
-            b.setCharAt(b.length() - 1, newChar);
-        } else {
-            b.append(newChar);
-        }
-    }
-
-    private static void appendBlob(StringBuilder sb, Blob blob) {
-        final InputStream is = blob.getNewStream();
-        final char[] hex = "0123456789ABCDEF".toCharArray();
-        int b;
-        try {
-            while ((b = is.read()) >= 0) {
-                sb.append(hex[b >> 4]);
-                sb.append(hex[b & 0x0f]);
-            }
-        } catch (IOException ex) {
-            throw new IllegalStateException(ex);
-        }
-    }
-
-    private static String safeEncode(String value) {
-        try {
-            return SafeEncode.safeEncode(value);
-        } catch (UnsupportedEncodingException e) {
-            return "ERROR: " + e;
-        }
     }
 }
