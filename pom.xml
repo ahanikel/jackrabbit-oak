@@ -82,6 +82,7 @@
     <module>oak-benchmarks-solr</module>
     <module>oak-benchmarks-elastic</module>
       <module>oak-run-elastic</module>
+    <module>oak-store-zeromq</module>
   </modules>
 
   <scm>

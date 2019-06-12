@@ -17,12 +17,11 @@
  * under the License.
  */
 
-package org.apache.jackrabbit.oak.segment.memory;
+package org.apache.jackrabbit.oak.store.zeromq;
 
 import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.api.PropertyState;
 import org.apache.jackrabbit.oak.api.Type;
-import org.apache.jackrabbit.oak.segment.util.SafeEncode;
 
 import java.io.IOException;
 import java.io.InputStream;
