@@ -16,38 +16,40 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.jackrabbit.oak.segment.memory;
+package org.apache.jackrabbit.oak.store.zeromq;
 
-import static com.google.common.base.Preconditions.checkArgument;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.Map;
-import java.util.UUID;
+import org.apache.felix.scr.annotations.Service;
 import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.api.CommitFailedException;
-import org.apache.jackrabbit.oak.segment.LoggingHook;
-import org.apache.jackrabbit.oak.segment.SegmentNodeBuilder;
-import org.apache.jackrabbit.oak.segment.SegmentNodeState;
-import static org.apache.jackrabbit.oak.segment.memory.ZeroMQNodeState.newZeroMQNodeState;
 import org.apache.jackrabbit.oak.spi.commit.CommitHook;
 import org.apache.jackrabbit.oak.spi.commit.CommitInfo;
+import org.apache.jackrabbit.oak.spi.commit.EmptyHook;
 import org.apache.jackrabbit.oak.spi.state.ConflictAnnotatingRebaseDiff;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
-
 import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
 import org.jetbrains.annotations.NotNull;
 import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.ConfigurationPolicy;
+import org.osgi.service.component.annotations.ServiceScope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.zeromq.ZMQ;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Map;
+
+import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQEmptyNodeState.EMPTY_NODE;
+import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeState.newZeroMQNodeState;
+
 /**
  * A store which dumps everything into a queue.
  */
-@Component
+@Component(scope = ServiceScope.SINGLETON, immediate = true, configurationPolicy = ConfigurationPolicy.REQUIRE)
+@Service
 public class ZeroMQNodeStore implements NodeStore {
 
     private static final Logger log = LoggerFactory.getLogger(ZeroMQNodeStore.class.getName());
@@ -70,32 +72,42 @@ public class ZeroMQNodeStore implements NodeStore {
     @NotNull
     final Cache<String, NodeState> nodeStateCache;
 
-    public static ZeroMQNodeStore newZeroMQNodeStore() {
-        return new ZeroMQNodeStore();
-    }
-
-    private ZeroMQNodeStore() {
+    public ZeroMQNodeStore() {
 
         context = ZMQ.context(1);
 
         nodeStateReader = context.socket(ZMQ.REQ);
-        nodeStateReader.connect("tcp://localhost:10000");
+        nodeStateReader.connect("tcp://localhost:8000");
 
         nodeStateWriter = context.socket(ZMQ.REQ);
-        nodeStateWriter.connect("tcp://localhost:10001");
+        nodeStateWriter.connect("tcp://localhost:8001");
 
         journalReader = context.socket(ZMQ.REQ);
-        journalReader.connect("tcp://localhost:9001");
+        journalReader.connect("tcp://localhost:9000");
 
         journalWriter = context.socket(ZMQ.REQ);
-        journalWriter.connect("tcp://localhost:9000");
+        journalWriter.connect("tcp://localhost:9001");
 
         nodeStateCache = CacheBuilder.newBuilder()
             .maximumSize(1000).build();
+
+        init();
     }
 
-    @Override
-    public NodeState getRoot() {
+    public void init() {
+        final String uuid = readRoot();
+        if ("undefined".equals(uuid)) {
+            final NodeBuilder builder = EMPTY_NODE(this::read, this::write).builder();
+            builder.setChildNode("roots").setChildNode("1");
+            try {
+                merge(builder, EmptyHook.INSTANCE, CommitInfo.EMPTY);
+            } catch (CommitFailedException e) {
+                // never happens
+            }
+        }
+    }
+
+    private String readRoot() {
         String msg;
         while (true) {
             try {
@@ -110,15 +122,33 @@ public class ZeroMQNodeStore implements NodeStore {
                 }
             }
         }
-        return newZeroMQNodeState(msg, this::read);
+        return msg;
+    }
+
+    @Override
+    public NodeState getRoot() {
+        String uuid = readRoot();
+        return newZeroMQNodeState(uuid, this::read, this::write);
+    }
+
+    private void setRoot(String uuid) {
+        while (true) {
+            try {
+                journalWriter.send(uuid);
+            } catch (Throwable t) {
+                log.warn(t.toString());
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                }
+            }
+        }
     }
 
     @Override
     public NodeState merge(NodeBuilder builder, CommitHook commitHook, CommitInfo info) throws CommitFailedException {
-        final NodeState before = builder.getBaseState();
         final NodeState after = builder.getNodeState();
-        final LoggingHook serialiser = LoggingHook.newLoggingHook(this::write);
-        after.compareAgainstBaseState(before, serialiser);
+        setRoot(((ZeroMQNodeState) after).getUuid());
         return after;
     }
 
