@@ -23,6 +23,8 @@ import com.google.common.cache.CacheBuilder;
 import org.apache.felix.scr.annotations.Service;
 import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.api.CommitFailedException;
+import org.apache.jackrabbit.oak.api.jmx.CheckpointMBean;
+import org.apache.jackrabbit.oak.osgi.OsgiWhiteboard;
 import org.apache.jackrabbit.oak.spi.commit.CommitHook;
 import org.apache.jackrabbit.oak.spi.commit.CommitInfo;
 import org.apache.jackrabbit.oak.spi.commit.EmptyHook;
@@ -31,6 +33,8 @@ import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
 import org.jetbrains.annotations.NotNull;
+import org.osgi.service.component.ComponentContext;
+import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.ConfigurationPolicy;
 import org.osgi.service.component.annotations.ServiceScope;
@@ -40,10 +44,11 @@ import org.zeromq.ZMQ;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 
 import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQEmptyNodeState.EMPTY_NODE;
-import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeState.newZeroMQNodeState;
 
 /**
  * A store which dumps everything into a queue.
@@ -70,7 +75,9 @@ public class ZeroMQNodeStore implements NodeStore {
     final ZMQ.Socket journalWriter;
 
     @NotNull
-    final Cache<String, NodeState> nodeStateCache;
+    final Cache<String, ZeroMQNodeState> nodeStateCache;
+
+    private volatile ComponentContext ctx;
 
     public ZeroMQNodeStore() {
 
@@ -90,15 +97,28 @@ public class ZeroMQNodeStore implements NodeStore {
 
         nodeStateCache = CacheBuilder.newBuilder()
             .maximumSize(1000).build();
+    }
 
+    @Activate
+    public void activate(ComponentContext ctx) {
+        this.ctx = ctx;
         init();
+        OsgiWhiteboard whiteboard = new OsgiWhiteboard(ctx.getBundleContext());
+        org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardUtils.registerMBean
+                ( whiteboard
+                , CheckpointMBean.class
+                , new ZeroMQCheckpointMBean(this)
+                , CheckpointMBean.TYPE
+                , "ZeroMQNodeStore checkpoint management"
+                , new HashMap<>()
+                );
     }
 
     public void init() {
         final String uuid = readRoot();
         if ("undefined".equals(uuid)) {
-            final NodeBuilder builder = EMPTY_NODE(this::read, this::write).builder();
-            builder.setChildNode("roots").setChildNode("1");
+            final NodeBuilder builder = EMPTY_NODE(this::readNodeState, this::write).builder();
+            //builder.setChildNode("roots").setChildNode("1");
             try {
                 merge(builder, EmptyHook.INSTANCE, CommitInfo.EMPTY);
             } catch (CommitFailedException e) {
@@ -127,14 +147,17 @@ public class ZeroMQNodeStore implements NodeStore {
 
     @Override
     public NodeState getRoot() {
-        String uuid = readRoot();
-        return newZeroMQNodeState(uuid, this::read, this::write);
+        final String uuid = readRoot();
+        return readNodeState(uuid);
     }
 
     private void setRoot(String uuid) {
+        String msg;
         while (true) {
             try {
                 journalWriter.send(uuid);
+                msg = journalWriter.recvStr();
+                break;
             } catch (Throwable t) {
                 log.warn(t.toString());
                 try {
@@ -143,6 +166,7 @@ public class ZeroMQNodeStore implements NodeStore {
                 }
             }
         }
+        log.debug(msg);
     }
 
     @Override
@@ -150,6 +174,26 @@ public class ZeroMQNodeStore implements NodeStore {
         final NodeState after = builder.getNodeState();
         setRoot(((ZeroMQNodeState) after).getUuid());
         return after;
+    }
+
+    private ZeroMQNodeState readNodeState(String s) {
+        try {
+            return nodeStateCache.get(s, () -> {
+                final String sNode = read(s);
+                try {
+                    final ZeroMQNodeState ret = ZeroMQNodeState.deSerialise(sNode, this::readNodeState, this::write);
+                    return ret;
+                } catch (ZeroMQNodeState.ParseFailure parseFailure) {
+                    if ("Node not found".equals(sNode)) {
+                        throw new IllegalStateException("Node not found");
+                    } else {
+                        throw new IllegalStateException(parseFailure);
+                    }
+                }
+            });
+        } catch (ExecutionException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     private String read(String s) {
@@ -160,7 +204,7 @@ public class ZeroMQNodeStore implements NodeStore {
                     nodeStateReader.send(s);
                     msg = nodeStateReader.recvStr();
                 }
-                log.info(msg);
+                log.debug("{} read.", s);
                 break;
             } catch (Throwable t) {
                 log.warn(t.toString());
@@ -182,7 +226,7 @@ public class ZeroMQNodeStore implements NodeStore {
                     nodeStateWriter.send(s);
                     msg = nodeStateWriter.recvStr(); // wait for confirmation
                 }
-                log.info(msg);
+                log.debug(msg);
                 break;
             } catch (Throwable t) {
                 log.warn(t.toString());
