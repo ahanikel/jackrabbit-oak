@@ -36,14 +36,14 @@ import static java.util.Collections.emptyList;
  */
 public final class ZeroMQEmptyNodeState extends ZeroMQNodeState {
 
-    private final Function<String, String> reader;
+    private final Function<String, ZeroMQNodeState> reader;
     private final Consumer<String> writer;
 
-    public static final NodeState EMPTY_NODE(Function<String, String> reader, Consumer<String> writer) {
+    public static final NodeState EMPTY_NODE(Function<String, ZeroMQNodeState> reader, Consumer<String> writer) {
         return new ZeroMQEmptyNodeState(true, reader, writer);
     }
 
-    public static final NodeState MISSING_NODE(Function<String, String> reader, Consumer<String> writer) {
+    public static final NodeState MISSING_NODE(Function<String, ZeroMQNodeState> reader, Consumer<String> writer) {
         return new ZeroMQEmptyNodeState(false, reader, writer);
     }
 
@@ -51,7 +51,7 @@ public final class ZeroMQEmptyNodeState extends ZeroMQNodeState {
 
     private final boolean exists;
 
-    private ZeroMQEmptyNodeState(boolean exists, Function<String, String> reader, Consumer<String> writer) {
+    private ZeroMQEmptyNodeState(boolean exists, Function<String, ZeroMQNodeState> reader, Consumer<String> writer) {
         super(UUID_NULL.toString(), reader, writer);
         this.exists = exists;
         this.reader = reader;

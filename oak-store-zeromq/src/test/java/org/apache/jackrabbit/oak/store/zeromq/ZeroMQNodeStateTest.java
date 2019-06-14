@@ -1,10 +1,14 @@
 package org.apache.jackrabbit.oak.store.zeromq;
 
+import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.api.Type;
+import org.apache.jackrabbit.oak.plugins.memory.StringBasedBlob;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.junit.Test;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
@@ -27,7 +31,7 @@ public class ZeroMQNodeStateTest {
         }
     }
 
-    private String reader(String sUuid) {
+    private ZeroMQNodeState staticReader(String sUuid) {
         final UUID uuid = UUID.fromString(sUuid);
         final StringBuilder sb = new StringBuilder();
         if (uuid.equals(UUIDS[0])) {
@@ -58,10 +62,18 @@ public class ZeroMQNodeStateTest {
                     .append("end properties\n")
                     .append("end ZeroMQNodeState\n");
         }
-        return sb.toString();
+        return new ZeroMQNodeState(sUuid, this::staticReader, this::storageWriter);
     }
 
-    private void writer(String s) {
+    private ZeroMQNodeState storageReader(String s) {
+        final String ser = storage.get(s);
+        try {
+            return ZeroMQNodeState.deSerialise(ser, this::storageReader, this::storageWriter);
+        } catch (ZeroMQNodeState.ParseFailure parseFailure) {
+            throw new IllegalStateException(parseFailure);
+        }
+    }
+    private void storageWriter(String s) {
         final Pattern uuidPattern = Pattern.compile("begin ZeroMQNodeState ([^\\n]+).*", Pattern.DOTALL);
         final Matcher m = uuidPattern.matcher(s);
         if (m.matches()) {
@@ -73,7 +85,7 @@ public class ZeroMQNodeStateTest {
     @Test
     public void parse() {
         storage.clear();
-        final ZeroMQNodeState ns = ZeroMQNodeState.newZeroMQNodeState(UUIDS[0].toString(), this::reader, this::writer);
+        final ZeroMQNodeState ns = new ZeroMQNodeState(UUIDS[0].toString(), this::staticReader, this::storageWriter);
         final ZeroMQNodeState cOne = (ZeroMQNodeState) ns.getChildNode("cOne");
         final ZeroMQNodeState cTwo = (ZeroMQNodeState) ns.getChildNode("cTwo");
 
@@ -114,32 +126,53 @@ public class ZeroMQNodeStateTest {
     @Test
     public void serialise() {
         storage.clear();
-        final ZeroMQNodeState ns = ZeroMQNodeState.newZeroMQNodeState(UUIDS[0].toString(), this::reader, this::writer);
+        final ZeroMQNodeState ns = new ZeroMQNodeState(UUIDS[0].toString(), this::staticReader, this::storageWriter);
         StringBuilder sb = new StringBuilder();
         ns.serialise(sb::append);
-        assertEquals(reader(UUIDS[0].toString()), sb.toString());
+        assertEquals(staticReader(UUIDS[0].toString()), sb.toString());
 
         sb = new StringBuilder();
         ((ZeroMQNodeState) ns.getChildNode("cOne")).serialise(sb::append);
-        assertEquals(reader(UUIDS[1].toString()), sb.toString());
+        assertEquals(staticReader(UUIDS[1].toString()), sb.toString());
 
         sb = new StringBuilder();
         ((ZeroMQNodeState) ns.getChildNode("cTwo")).serialise(sb::append);
-        assertEquals(reader(UUIDS[2].toString()), sb.toString());
+        assertEquals(staticReader(UUIDS[2].toString()), sb.toString());
     }
 
     @Test
-    public void diff() {
+    public void diff() throws IOException {
         storage.clear();
-        final ZeroMQNodeState ns = (ZeroMQNodeState) ZeroMQEmptyNodeState.EMPTY_NODE(this::reader, this::writer);
+        final ZeroMQNodeState ns = (ZeroMQNodeState) ZeroMQEmptyNodeState.EMPTY_NODE(this::staticReader, this::storageWriter);
         final NodeBuilder builder = ns.builder();
-        builder.child("first").setProperty("fp", "blurb");
+        builder.child("first")
+                .setProperty("1p", "blurb", Type.STRING)
+                .setProperty("2p", 3L, Type.LONG)
+                .setProperty("3p", 5.0, Type.DOUBLE)
+                .setProperty("4p", true, Type.BOOLEAN)
+                .setProperty("5p", new BigDecimal(7), Type.DECIMAL)
+                .setProperty("6p", new StringBasedBlob("Hello world"), Type.BINARY)
+        ;
         final NodeState newNs = builder.getNodeState();
         final String uuid = ((ZeroMQNodeState) newNs).getUuid();
-        final String ser = storage.get(uuid);
-        final NodeState nsRead = ZeroMQNodeState.newZeroMQNodeState(uuid, storage::get, s -> {});
+        final NodeState nsRead = storageReader(uuid);
         assertTrue(nsRead.hasChildNode("first"));
-        assertTrue(nsRead.getChildNode("first").hasProperty("fp"));
-        assertTrue(nsRead.getChildNode("first").getProperty("fp").getValue(Type.STRING).equals("blurb"));
+        assertTrue(nsRead.getChildNode("first").hasProperty("1p"));
+        assertTrue(nsRead.getChildNode("first").getProperty("1p").getValue(Type.STRING).equals("blurb"));
+        assertTrue(nsRead.getChildNode("first").hasProperty("2p"));
+        assertTrue(nsRead.getChildNode("first").getProperty("2p").getValue(Type.LONG).equals(3L));
+        assertTrue(nsRead.getChildNode("first").hasProperty("3p"));
+        assertTrue(nsRead.getChildNode("first").getProperty("3p").getValue(Type.DOUBLE).equals(5.0));
+        assertTrue(nsRead.getChildNode("first").hasProperty("4p"));
+        assertTrue(nsRead.getChildNode("first").getProperty("4p").getValue(Type.BOOLEAN).equals(true));
+        assertTrue(nsRead.getChildNode("first").hasProperty("5p"));
+        assertTrue(nsRead.getChildNode("first").getProperty("5p").getValue(Type.DECIMAL).equals(new BigDecimal(7)));
+        assertTrue(nsRead.getChildNode("first").hasProperty("6p"));
+        ZeroMQPropertyState ps = (ZeroMQPropertyState) nsRead.getChildNode("first").getProperty("6p");
+        Blob v = ps.getValue(Type.BINARY);
+        InputStream is = v.getNewStream();
+        for (int i = 0; i < v.length(); ++i) {
+            assertEquals("Hello world".charAt(i), is.read());
+        }
     }
 }
