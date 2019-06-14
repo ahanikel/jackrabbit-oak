@@ -31,6 +31,7 @@ import org.zeromq.ZMQ;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.UUID;
 
 /**
  * A store used for in-memory operations.
@@ -76,9 +77,13 @@ public class ZeroMQBackendStore implements Closeable {
     public ZeroMQBackendStore() {
         clusterInstance = Integer.getInteger("clusterInstance") - 1;
         context = ZMQ.context(1);
-        writerService = context.socket(ZMQ.REP);
         readerService = context.socket(ZMQ.REP);
+        writerService = context.socket(ZMQ.REP);
         store = CacheBuilder.newBuilder().build();
+        ZeroMQNodeState ns = (ZeroMQNodeState) ZeroMQEmptyNodeState.EMPTY_NODE(null, null);
+        final StringBuilder sb = new StringBuilder();
+        ns.serialise(sb::append);
+        store.put(ns.getUuid(), sb.toString());
         pollerItems = context.poller(2);
         socketHandler = new Thread("ZeroMQBackendStore Socket Handler") {
             @Override
@@ -134,8 +139,8 @@ public class ZeroMQBackendStore implements Closeable {
     }
 
     public void open() {
-        writerService.bind("tcp://localhost:" + (8000 + 2 * clusterInstance));
-        readerService.bind("tcp://localhost:" + (8001 + 2 * clusterInstance));
+        readerService.bind("tcp://localhost:" + (8000 + 2 * clusterInstance));
+        writerService.bind("tcp://localhost:" + (8001 + 2 * clusterInstance));
         pollerItems.register(readerService, ZMQ.Poller.POLLIN);
         pollerItems.register(writerService, ZMQ.Poller.POLLIN);
         startBackgroundThreads();

@@ -32,16 +32,14 @@ import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeState.getNodeStat
 
 public class ZeroMQNodeBuilder extends MemoryNodeBuilder {
 
-    private static final Logger LOG = LoggerFactory.getLogger(ZeroMQNodeBuilder.class);
-
     @NotNull
-    private final Function<String, String> reader;
+    private final Function<String, ZeroMQNodeState> reader;
 
     private final Consumer<String> writer;
 
     ZeroMQNodeBuilder(
             @NotNull ZeroMQNodeState base,
-            Function<String, String> reader,
+            Function<String, ZeroMQNodeState> reader,
             Consumer<String> writer) {
         super(base);
         this.reader = reader;
