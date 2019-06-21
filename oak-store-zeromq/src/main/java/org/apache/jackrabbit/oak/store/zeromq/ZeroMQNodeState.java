@@ -352,19 +352,26 @@ public class ZeroMQNodeState extends AbstractNodeState {
 
         @Override
         public boolean propertyAdded(PropertyState after) {
-            List<String> values = new ArrayList();
-            if (after.isArray()) {
-                for (int i = 0; i < after.count(); ++i) {
-                    values.add(after.getValue(Type.STRING, i));
-                }
-            } else {
-                try {
-                    values.add(after.getValue(Type.STRING));
-                } catch (ClassCastException e) {
-                    log.error(e.toString());
-                }
-            }
-            properties.put(after.getName(), new ZeroMQPropertyState(after.getName(), after.getType().toString(), values));
+//             List<String> values = new ArrayList();
+//             if (after.isArray()) {
+//                 if (after.getType().equals(Type.BINARIES)) {
+//                     for (int i = 0; i < after.count(); ++i) {
+//                         values.add(ZeroMQPropertyState.blobToString(after.getValue(Type.BINARY, i)));
+//                     }
+//                 } else {
+//                     for (int i = 0; i < after.count(); ++i) {
+//                         values.add(after.getValue(Type.STRING, i));
+//                     }
+//                 }
+//             } else {
+//                 try {
+//                     values.add(after.getValue(Type.STRING));
+//                 } catch (ClassCastException e) {
+//                     log.error(e.toString());
+//                 }
+//             }
+            // properties.put(after.getName(), new ZeroMQPropertyState(after.getName(), after.getType().toString(), values));
+            properties.put(after.getName(), new ZeroMQPropertyState(after));
             return true;
         }
 

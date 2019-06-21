@@ -170,9 +170,22 @@ public class ZeroMQNodeStateTest {
         assertTrue(nsRead.getChildNode("first").hasProperty("6p"));
         ZeroMQPropertyState ps = (ZeroMQPropertyState) nsRead.getChildNode("first").getProperty("6p");
         Blob v = ps.getValue(Type.BINARY);
+        final char[] ref = "Hello world".toCharArray();
         InputStream is = v.getNewStream();
-        for (int i = 0; i < v.length(); ++i) {
-            assertEquals("Hello world".charAt(i), is.read());
+        for (int i = 0; i < ref.length; ++i) {
+            assertEquals((int) ref[i], is.read());
         }
+        assertEquals(-1, is.read());
+    }
+
+    @Test
+    public void stringToBlob() throws IOException {
+        final Blob blob = ZeroMQPropertyState.blobFromString("48656C6C6F20776F726C64");
+        final InputStream is = blob.getNewStream();
+        final char[] ref = "Hello world".toCharArray();
+        for (int i = 0; i < ref.length; ++i) {
+            assertEquals((int) ref[i], is.read());
+        }
+        assertEquals(-1, is.read());
     }
 }

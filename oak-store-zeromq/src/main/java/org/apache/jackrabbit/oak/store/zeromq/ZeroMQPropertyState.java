@@ -22,7 +22,6 @@ package org.apache.jackrabbit.oak.store.zeromq;
 import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.api.PropertyState;
 import org.apache.jackrabbit.oak.api.Type;
-import org.apache.jackrabbit.oak.plugins.memory.StringBasedBlob;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -32,7 +31,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
-import java.text.StringCharacterIterator;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -46,7 +44,7 @@ public class ZeroMQPropertyState implements PropertyState {
     private final Type type;
     private final List<String> values;
 
-    public ZeroMQPropertyState(String name, String type, List<String> values) {
+    ZeroMQPropertyState(String name, String type, List<String> values) {
         this.name = name;
         this.type = Type.fromString(type);
         this.values = values;
@@ -60,8 +58,9 @@ public class ZeroMQPropertyState implements PropertyState {
             for (int i = 0; i < ps.count(); ++i) {
                 this.values.add(valueToString(type.getBaseType(), ps.getValue(type.getBaseType(), i)));
             }
+        } else {
+            this.values.add(valueToString(type, ps.getValue(type)));
         }
-        this.values.add(valueToString(type, ps.getValue(type)));
     }
 
     @Override
@@ -201,23 +200,37 @@ public class ZeroMQPropertyState implements PropertyState {
         }
     }
 
-    private static Blob blobFromString(String s) {
+    static String blobToString(Blob b) {
+        final StringBuilder sb = new StringBuilder();
+        appendBlob(sb, b);
+        return sb.toString();
+    }
+
+    static Blob blobFromString(String s) {
         return new Blob() {
 
             @Override
             public @NotNull InputStream getNewStream() {
                 return new InputStream() {
 
-                    StringCharacterIterator it = new StringCharacterIterator(s);
+                    char[] chars = s.toCharArray();
+                    int cur = 0;
 
                     private int hexCharToInt(char c) {
                         return Character.isDigit(c) ? c - '0' : c - 'A' + 10;
                     }
 
+                    private int next() {
+                        return hexCharToInt(chars[cur++]);
+                    }
+
                     @Override
                     public int read() throws IOException {
-                        final int c = hexCharToInt(it.next());
-                        final int d = hexCharToInt(it.next());
+                        if (cur >= chars.length - 1) {
+                            return -1;
+                        }
+                        final int c = next();
+                        final int d = next();
                         final int ret = c << 4 | d;
                         return ret;
                     }
