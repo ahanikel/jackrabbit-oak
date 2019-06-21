@@ -140,9 +140,17 @@ public class ZeroMQNodeState extends AbstractNodeState {
             return this;
         }
 
-        private Parser appendToWithDecode(List<String> list) {
+        private Parser appendToValues(List<String> list) {
             try {
-                list.add(SafeEncode.safeDecode(last));
+                if (last.startsWith("[")) {
+                    // array
+                    String[] vals = last.substring(1, last.length() - 1).split("[\\[\\],]");
+                    for (String val : vals) {
+                        list.add(SafeEncode.safeDecode(val));
+                    }
+                } else {
+                    list.add(SafeEncode.safeDecode(last));
+                }
             } catch (UnsupportedEncodingException e) {
                 throw new IllegalArgumentException(e);
             }
@@ -213,7 +221,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
             p
                     .parseRegexp("([^ ]+) (.*)").assignToWithDecode(pName)
                     .parseRegexp("<([^>]+)> = (.*)").assignTo(pType)
-                    .parseRegexp("(.*)(.*)").appendToWithDecode(pValues);
+                    .parseRegexp("(.*)(.*)").appendToValues(pValues); // the regexp is correct: we need two groups
             ret.properties.put(pName.val(), new ZeroMQPropertyState(pName.val(), pType.val(), pValues));
         }
         return ret;
