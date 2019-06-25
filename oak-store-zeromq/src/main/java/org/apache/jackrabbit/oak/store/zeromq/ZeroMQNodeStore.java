@@ -23,8 +23,10 @@ import com.google.common.cache.CacheBuilder;
 import org.apache.felix.scr.annotations.Service;
 import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.api.CommitFailedException;
+import org.apache.jackrabbit.oak.api.Type;
 import org.apache.jackrabbit.oak.api.jmx.CheckpointMBean;
 import org.apache.jackrabbit.oak.osgi.OsgiWhiteboard;
+import org.apache.jackrabbit.oak.plugins.memory.MemoryNodeBuilder;
 import org.apache.jackrabbit.oak.spi.commit.CommitHook;
 import org.apache.jackrabbit.oak.spi.commit.CommitInfo;
 import org.apache.jackrabbit.oak.spi.commit.EmptyHook;
@@ -46,6 +48,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 
 import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQEmptyNodeState.EMPTY_NODE;
@@ -118,12 +121,11 @@ public class ZeroMQNodeStore implements NodeStore {
         final String uuid = readRoot();
         if ("undefined".equals(uuid)) {
             final NodeBuilder builder = EMPTY_NODE(this::readNodeState, this::write).builder();
-            //builder.setChildNode("roots").setChildNode("1");
-            try {
-                merge(builder, EmptyHook.INSTANCE, CommitInfo.EMPTY);
-            } catch (CommitFailedException e) {
-                // never happens
-            }
+            builder.setChildNode("root");
+            builder.setChildNode("checkpoints");
+            builder.setChildNode("blobs");
+            NodeState newRoot = builder.getNodeState();
+            setRoot(((ZeroMQNodeState) newRoot).getUuid());
         }
     }
 
@@ -131,8 +133,10 @@ public class ZeroMQNodeStore implements NodeStore {
         String msg;
         while (true) {
             try {
-                journalReader.send("ping");
-                msg = journalReader.recvStr();
+                synchronized (journalReader) {
+                    journalReader.send("ping");
+                    msg = journalReader.recvStr();
+                }
                 break;
             } catch (Throwable t) {
                 log.warn(t.toString());
@@ -147,16 +151,30 @@ public class ZeroMQNodeStore implements NodeStore {
 
     @Override
     public NodeState getRoot() {
+        return getSuperRoot().getChildNode("root");
+    }
+
+    private NodeState getSuperRoot() {
         final String uuid = readRoot();
         return readNodeState(uuid);
+    }
+
+    private NodeState getBlobRoot() {
+        return getSuperRoot().getChildNode("blobs");
+    }
+
+    private NodeState getCheckpointRoot() {
+        return getSuperRoot().getChildNode("checkpoints");
     }
 
     private void setRoot(String uuid) {
         String msg;
         while (true) {
             try {
-                journalWriter.send(uuid);
-                msg = journalWriter.recvStr();
+                synchronized (journalWriter) {
+                    journalWriter.send(uuid);
+                    msg = journalWriter.recvStr();
+                }
                 break;
             } catch (Throwable t) {
                 log.warn(t.toString());
@@ -172,7 +190,10 @@ public class ZeroMQNodeStore implements NodeStore {
     @Override
     public NodeState merge(NodeBuilder builder, CommitHook commitHook, CommitInfo info) throws CommitFailedException {
         final NodeState after = builder.getNodeState();
-        setRoot(((ZeroMQNodeState) after).getUuid());
+        final NodeBuilder rootBuilder = getSuperRoot().builder();
+        rootBuilder.setChildNode("root", after);
+        final NodeState newRoot = rootBuilder.getNodeState();
+        setRoot(((ZeroMQNodeState) newRoot).getUuid());
         return after;
     }
 
@@ -255,17 +276,27 @@ public class ZeroMQNodeStore implements NodeStore {
 
     @Override
     public NodeState reset(NodeBuilder builder) {
-        throw new UnsupportedOperationException("Not supported yet.");
+        final NodeState newBase = getRoot();
+        ((MemoryNodeBuilder) builder).reset(newBase);
+        return newBase;
     }
 
     @Override
     public Blob createBlob(InputStream inputStream) throws IOException {
-        throw new UnsupportedOperationException("Not supported yet.");
+        final NodeBuilder builder = getBlobRoot().builder();
+        final Blob blob = builder.createBlob(inputStream);
+        builder.setProperty(blob.getReference(), blob, Type.BINARY);
+        try {
+            merge(builder, EmptyHook.INSTANCE, CommitInfo.EMPTY);
+        } catch (CommitFailedException e) {
+            throw new IOException(e);
+        }
+        return blob;
     }
 
     @Override
     public Blob getBlob(String reference) {
-        throw new UnsupportedOperationException("Not supported yet.");
+        return getBlobRoot().getProperty(reference).getValue(Type.BINARY);
     }
 
     @Override
