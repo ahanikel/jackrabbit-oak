@@ -22,13 +22,9 @@ package org.apache.jackrabbit.oak.store.zeromq;
 import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.api.PropertyState;
 import org.apache.jackrabbit.oak.api.Type;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -40,18 +36,21 @@ public class ZeroMQPropertyState implements PropertyState {
 
     private static final Logger log = LoggerFactory.getLogger(ZeroMQPropertyState.class);
 
+    private final ZeroMQNodeStore ns;
     private final String name;
     private final Type type;
     private final List<String> values;
 
-    ZeroMQPropertyState(String name, String type, List<String> values) {
+    ZeroMQPropertyState(ZeroMQNodeStore ns, String name, String type, List<String> values) {
+        this.ns = ns;
         this.name = name;
         this.type = Type.fromString(type);
         this.values = values;
     }
 
-    public ZeroMQPropertyState(PropertyState ps) {
+    public ZeroMQPropertyState(ZeroMQNodeStore ns, PropertyState ps) {
         this.values = new ArrayList<>();
+        this.ns = ns;
         this.name = ps.getName();
         this.type = ps.getType();
         if (ps.isArray()) {
@@ -88,7 +87,8 @@ public class ZeroMQPropertyState implements PropertyState {
                     type.equals(PATHS) ||
                     type.equals(REFERENCES) ||
                     type.equals(WEAKREFERENCES) ||
-                    type.equals(URIS)
+                    type.equals(URIS) ||
+                    type.equals(this.type)
             ) {
                 return (T) values;
             } else {
@@ -112,7 +112,7 @@ public class ZeroMQPropertyState implements PropertyState {
         ) {
             return (T) values.get(index);
         } else if (type.equals(BINARY)) {
-            return (T) blobFromString(values.get(index));
+            return (T) ZeroMQBlob.newInstance(this.ns, values.get(index));
         } else if (type.equals(LONG)) {
             return (T) Long.valueOf(values.get(index));
         } else if (type.equals(DOUBLE)) {
@@ -129,6 +129,9 @@ public class ZeroMQPropertyState implements PropertyState {
     @Override
     public long size() {
         // TODO: not sure if that's correct
+        if (count() == 0) {
+            return 0;
+        }
         return values.get(0).length();
     }
 
@@ -145,6 +148,19 @@ public class ZeroMQPropertyState implements PropertyState {
         } else {
             return 1;
         }
+    }
+
+    @Override
+    public boolean equals(Object that) {
+        if (!(that instanceof PropertyState)) {
+            return false;
+        }
+        PropertyState other = (PropertyState) that;
+        return
+            this.getType().equals(other.getType()) &&
+            this.getName().equals(other.getName()) &&
+            this.getValue(this.getType()).equals(other.getValue(other.getType()))
+        ;
     }
 
     public StringBuilder serialise(final StringBuilder sb) {
@@ -186,73 +202,6 @@ public class ZeroMQPropertyState implements PropertyState {
         }
     }
 
-    private static void appendBlob(StringBuilder sb, Blob blob) {
-        final InputStream is = blob.getNewStream();
-        final char[] hex = "0123456789ABCDEF".toCharArray();
-        int b;
-        try {
-            while ((b = is.read()) >= 0) {
-                sb.append(hex[b >> 4]);
-                sb.append(hex[b & 0x0f]);
-            }
-        } catch (IOException ex) {
-            throw new IllegalStateException(ex);
-        }
-    }
-
-    static String blobToString(Blob b) {
-        final StringBuilder sb = new StringBuilder();
-        appendBlob(sb, b);
-        return sb.toString();
-    }
-
-    static Blob blobFromString(String s) {
-        return new Blob() {
-
-            @Override
-            public @NotNull InputStream getNewStream() {
-                return new InputStream() {
-
-                    char[] chars = s.toCharArray();
-                    int cur = 0;
-
-                    private int hexCharToInt(char c) {
-                        return Character.isDigit(c) ? c - '0' : c - 'A' + 10;
-                    }
-
-                    private int next() {
-                        return hexCharToInt(chars[cur++]);
-                    }
-
-                    @Override
-                    public int read() throws IOException {
-                        if (cur >= chars.length - 1) {
-                            return -1;
-                        }
-                        final int c = next();
-                        final int d = next();
-                        final int ret = c << 4 | d;
-                        return ret;
-                    }
-                };
-            }
-
-            @Override
-            public long length() {
-                return s.length() / 2;
-            }
-
-            @Override
-            public @Nullable String getReference() {
-                return null;
-            }
-
-            @Override
-            public @Nullable String getContentIdentity() {
-                return null;
-            }
-        };
-    }
 
     private static String safeEncode(String value) {
         try {
@@ -274,9 +223,7 @@ public class ZeroMQPropertyState implements PropertyState {
         ) {
             return (String) v;
         } else if (from.equals(BINARY)) {
-            final StringBuilder sb = new StringBuilder();
-            appendBlob(sb, (Blob) v);
-            return sb.toString();
+            return ((Blob) v).getReference();
         } else if (
                 from.equals(LONG) ||
                 from.equals(DOUBLE) ||
