@@ -27,9 +27,7 @@ import org.apache.jackrabbit.oak.api.Type;
 import org.apache.jackrabbit.oak.api.jmx.CheckpointMBean;
 import org.apache.jackrabbit.oak.osgi.OsgiWhiteboard;
 import org.apache.jackrabbit.oak.plugins.memory.MemoryNodeBuilder;
-import org.apache.jackrabbit.oak.spi.commit.CommitHook;
-import org.apache.jackrabbit.oak.spi.commit.CommitInfo;
-import org.apache.jackrabbit.oak.spi.commit.EmptyHook;
+import org.apache.jackrabbit.oak.spi.commit.*;
 import org.apache.jackrabbit.oak.spi.state.ConflictAnnotatingRebaseDiff;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
@@ -44,6 +42,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.zeromq.ZMQ;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashMap;
@@ -58,7 +57,7 @@ import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQEmptyNodeState.EMPTY_
  */
 @Component(scope = ServiceScope.SINGLETON, immediate = true, configurationPolicy = ConfigurationPolicy.REQUIRE)
 @Service
-public class ZeroMQNodeStore implements NodeStore {
+public class ZeroMQNodeStore implements NodeStore, Observable {
 
     private static final Logger log = LoggerFactory.getLogger(ZeroMQNodeStore.class.getName());
 
@@ -81,6 +80,8 @@ public class ZeroMQNodeStore implements NodeStore {
     final Cache<String, ZeroMQNodeState> nodeStateCache;
 
     private volatile ComponentContext ctx;
+
+    private volatile ChangeDispatcher changeDispatcher;
 
     public ZeroMQNodeStore() {
 
@@ -115,12 +116,13 @@ public class ZeroMQNodeStore implements NodeStore {
                 , "ZeroMQNodeStore checkpoint management"
                 , new HashMap<>()
                 );
+        changeDispatcher = new ChangeDispatcher(getRoot());
     }
 
-    public void init() {
+    private void init() {
         final String uuid = readRoot();
         if ("undefined".equals(uuid)) {
-            final NodeBuilder builder = EMPTY_NODE(this::readNodeState, this::write).builder();
+            final NodeBuilder builder = EMPTY_NODE(this, this::readNodeState, this::write).builder();
             builder.setChildNode("root");
             builder.setChildNode("checkpoints");
             builder.setChildNode("blobs");
@@ -154,16 +156,16 @@ public class ZeroMQNodeStore implements NodeStore {
         return getSuperRoot().getChildNode("root");
     }
 
-    private NodeState getSuperRoot() {
+    private synchronized NodeState getSuperRoot() {
         final String uuid = readRoot();
         return readNodeState(uuid);
     }
 
-    private NodeState getBlobRoot() {
+    NodeState getBlobRoot() {
         return getSuperRoot().getChildNode("blobs");
     }
 
-    private NodeState getCheckpointRoot() {
+    NodeState getCheckpointRoot() {
         return getSuperRoot().getChildNode("checkpoints");
     }
 
@@ -188,13 +190,19 @@ public class ZeroMQNodeStore implements NodeStore {
     }
 
     @Override
-    public NodeState merge(NodeBuilder builder, CommitHook commitHook, CommitInfo info) throws CommitFailedException {
-        final NodeState after = builder.getNodeState();
+    public synchronized NodeState merge(NodeBuilder builder, CommitHook commitHook, CommitInfo info) throws CommitFailedException {
+        if (!(builder instanceof ZeroMQNodeBuilder)) {
+            throw new IllegalArgumentException();
+        }
+        final NodeState newBase = getRoot();
+        final NodeState after = ((ZeroMQNodeBuilder) builder).applyTo(newBase);
+        final NodeState afterHook = commitHook.processCommit(newBase, after, info);
         final NodeBuilder rootBuilder = getSuperRoot().builder();
-        rootBuilder.setChildNode("root", after);
+        rootBuilder.setChildNode("root", afterHook);
         final NodeState newRoot = rootBuilder.getNodeState();
         setRoot(((ZeroMQNodeState) newRoot).getUuid());
-        return after;
+        changeDispatcher.contentChanged(afterHook, info);
+        return getRoot();
     }
 
     private ZeroMQNodeState readNodeState(String s) {
@@ -202,7 +210,7 @@ public class ZeroMQNodeStore implements NodeStore {
             return nodeStateCache.get(s, () -> {
                 final String sNode = read(s);
                 try {
-                    final ZeroMQNodeState ret = ZeroMQNodeState.deSerialise(sNode, this::readNodeState, this::write);
+                    final ZeroMQNodeState ret = ZeroMQNodeState.deSerialise(this, sNode, this::readNodeState, this::write);
                     return ret;
                 } catch (ZeroMQNodeState.ParseFailure parseFailure) {
                     if ("Node not found".equals(sNode)) {
@@ -283,9 +291,11 @@ public class ZeroMQNodeStore implements NodeStore {
 
     @Override
     public Blob createBlob(InputStream inputStream) throws IOException {
+        final ZeroMQBlob blob = ZeroMQBlob.newInstance(inputStream);
         final NodeBuilder builder = getBlobRoot().builder();
-        final Blob blob = builder.createBlob(inputStream);
-        builder.setProperty(blob.getReference(), blob, Type.BINARY);
+        final String sBlob = blob.serialise();
+        final NodeBuilder nBlob = builder.child(blob.getReference());
+        nBlob.setProperty("blob", sBlob, Type.STRING);
         try {
             merge(builder, EmptyHook.INSTANCE, CommitInfo.EMPTY);
         } catch (CommitFailedException e) {
@@ -296,7 +306,7 @@ public class ZeroMQNodeStore implements NodeStore {
 
     @Override
     public Blob getBlob(String reference) {
-        return getBlobRoot().getProperty(reference).getValue(Type.BINARY);
+        return ZeroMQBlob.newInstance(reference);
     }
 
     @Override
@@ -327,5 +337,10 @@ public class ZeroMQNodeStore implements NodeStore {
     @Override
     public boolean release(String checkpoint) {
         throw new UnsupportedOperationException("Not supported yet.");
+    }
+
+    @Override
+    public Closeable addObserver(Observer observer) {
+        return changeDispatcher.addObserver(observer);
     }
 }
