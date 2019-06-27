@@ -19,7 +19,6 @@
 package org.apache.jackrabbit.oak.store.zeromq;
 
 import org.apache.jackrabbit.oak.api.PropertyState;
-import org.apache.jackrabbit.oak.api.Type;
 import org.apache.jackrabbit.oak.spi.state.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,13 +36,16 @@ public class ZeroMQNodeState extends AbstractNodeState {
 
     private static final Logger log = LoggerFactory.getLogger(ZeroMQNodeState.class);
 
+    protected final ZeroMQNodeStore ns;
     private final String uuid;
     private final Map<String, String> children;
     private final Map<String, ZeroMQPropertyState> properties;
     private final Function<String, ZeroMQNodeState> reader;
     private final Consumer<String> writer;
 
-    ZeroMQNodeState(String uuid, Function<String, ZeroMQNodeState> reader, Consumer<String> writer) {
+    // not private because ZeroMQEmptyNodeState needs it
+    ZeroMQNodeState(ZeroMQNodeStore ns, String uuid, Function<String, ZeroMQNodeState> reader, Consumer<String> writer) {
+        this.ns = ns;
         this.uuid = uuid;
         this.children = new HashMap<>();
         this.properties = new HashMap<>();
@@ -51,7 +53,8 @@ public class ZeroMQNodeState extends AbstractNodeState {
         this.writer = writer;
     }
 
-    private ZeroMQNodeState(String uuid, Map<String, String> children, Map<String, ZeroMQPropertyState> properties, Function<String, ZeroMQNodeState> reader, Consumer<String> writer) {
+    private ZeroMQNodeState(ZeroMQNodeStore ns, String uuid, Map<String, String> children, Map<String, ZeroMQPropertyState> properties, Function<String, ZeroMQNodeState> reader, Consumer<String> writer) {
+        this.ns = ns;
         this.uuid = uuid;
         this.children = children;
         this.properties = properties;
@@ -142,6 +145,10 @@ public class ZeroMQNodeState extends AbstractNodeState {
 
         private Parser appendToValues(List<String> list) {
             try {
+                // TODO: BUG: this means that a STRINGS value like [""] is not possible
+                if (last.startsWith("[]")) {
+                    return this;
+                }
                 if (last.startsWith("[")) {
                     // array
                     String[] vals = last.substring(1, last.length() - 1).split("[\\[\\],]");
@@ -180,7 +187,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
         return ret.val();
     }
 
-    static ZeroMQNodeState deSerialise(String s, Function<String, ZeroMQNodeState> reader, Consumer<String> writer) throws ParseFailure {
+    static ZeroMQNodeState deSerialise(ZeroMQNodeStore ns, String s, Function<String, ZeroMQNodeState> reader, Consumer<String> writer) throws ParseFailure {
         final FinalVar<String> id = new FinalVar();
         final List<String> children = new ArrayList<>();
         final List<String> properties = new ArrayList<>();
@@ -199,7 +206,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
                         "(end properties)\\n(.*)"
                 )
                 .parseString("end ZeroMQNodeState\n");
-        final ZeroMQNodeState ret = new ZeroMQNodeState(id.val(), reader, writer);
+        final ZeroMQNodeState ret = new ZeroMQNodeState(ns, id.val(), reader, writer);
         for (String child : children) {
             Parser p = new Parser(child);
             FinalVar<String> key = new FinalVar<>();
@@ -222,7 +229,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
                     .parseRegexp("([^ ]+) (.*)").assignToWithDecode(pName)
                     .parseRegexp("<([^>]+)> = (.*)").assignTo(pType)
                     .parseRegexp("(.*)(.*)").appendToValues(pValues); // the regexp is correct: we need two groups
-            ret.properties.put(pName.val(), new ZeroMQPropertyState(pName.val(), pType.val(), pValues));
+            ret.properties.put(pName.val(), new ZeroMQPropertyState(ns, pName.val(), pType.val(), pValues));
         }
         return ret;
     }
@@ -263,7 +270,20 @@ public class ZeroMQNodeState extends AbstractNodeState {
     @Override
     public boolean equals(Object other) {
         if (other instanceof ZeroMQNodeState) {
-            return this.uuid.equals(((ZeroMQNodeState) other).uuid);
+            ZeroMQNodeState that = (ZeroMQNodeState) other;
+            if (this.uuid.equals(that.uuid)) {
+                for (String key : children.keySet()) {
+                    if (!children.get(key).equals(that.children.get(key))) {
+                        throw new IllegalStateException();
+                    }
+                }
+                for (String key : properties.keySet()) {
+                    if (!properties.get(key).equals(that.properties.get(key))) {
+                        throw new IllegalStateException();
+                    }
+                }
+                return true;
+            }
         }
         return false;
     }
@@ -295,7 +315,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
         if (children.containsKey(name)) {
             return reader.apply(children.get(name));
         } else {
-            return ZeroMQEmptyNodeState.MISSING_NODE(reader, writer);
+            return ZeroMQEmptyNodeState.MISSING_NODE(ns, reader, writer);
         }
     }
 
@@ -319,15 +339,15 @@ public class ZeroMQNodeState extends AbstractNodeState {
 
     @Override
     public NodeBuilder builder() {
-        return new ZeroMQNodeBuilder(this, reader, writer);
+        return new ZeroMQNodeBuilder(this.ns, this, reader, writer);
     }
 
     public String getUuid() {
         return uuid;
     }
 
-    static ZeroMQNodeStateDiffBuilder getNodeStateDiffBuilder(ZeroMQNodeState before, Function<String, ZeroMQNodeState> reader, Consumer<String> writer) {
-        return new ZeroMQNodeStateDiffBuilder(before, reader, writer);
+    static ZeroMQNodeStateDiffBuilder getNodeStateDiffBuilder(ZeroMQNodeStore ns, ZeroMQNodeState before, Function<String, ZeroMQNodeState> reader, Consumer<String> writer) {
+        return new ZeroMQNodeStateDiffBuilder(ns, before, reader, writer);
     }
 
     static final class ZeroMQNodeStateDiffBuilder implements NodeStateDiff {
@@ -338,48 +358,42 @@ public class ZeroMQNodeState extends AbstractNodeState {
         private Map<String, String> children;
         private Map<String, ZeroMQPropertyState> properties;
 
-        private ZeroMQNodeStateDiffBuilder(ZeroMQNodeState before, Function<String, ZeroMQNodeState> reader, Consumer<String> writer) {
+        private final ZeroMQNodeStore ns;
+        private final ZeroMQNodeState before;
+
+        private boolean dirty;
+
+        private ZeroMQNodeStateDiffBuilder(ZeroMQNodeStore ns, ZeroMQNodeState before, Function<String, ZeroMQNodeState> reader, Consumer<String> writer) {
+            this.ns = ns;
             this.reader = reader;
             this.writer = writer;
+            this.before = before;
             reset();
-            this.children.putAll(before.children);
-            this.properties.putAll(before.properties);
         }
 
         private void reset() {
             this.children = new HashMap<>();
             this.properties = new HashMap<>();
+            this.children.putAll(before.children);
+            this.properties.putAll(before.properties);
+            this.dirty = false;
         }
 
         public ZeroMQNodeState getNodeState() {
-            final String uuid = UUID.randomUUID().toString();
-            final ZeroMQNodeState ret = new ZeroMQNodeState(uuid, this.children, this.properties, reader, writer);
-            ret.serialise(writer);
-            return ret;
+            if (dirty) {
+                final String uuid = UUID.randomUUID().toString();
+                final ZeroMQNodeState ret = new ZeroMQNodeState(this.ns, uuid, this.children, this.properties, reader, writer);
+                ret.serialise(writer);
+                return ret;
+            } else {
+                return before;
+            }
         }
 
         @Override
         public boolean propertyAdded(PropertyState after) {
-//             List<String> values = new ArrayList();
-//             if (after.isArray()) {
-//                 if (after.getType().equals(Type.BINARIES)) {
-//                     for (int i = 0; i < after.count(); ++i) {
-//                         values.add(ZeroMQPropertyState.blobToString(after.getValue(Type.BINARY, i)));
-//                     }
-//                 } else {
-//                     for (int i = 0; i < after.count(); ++i) {
-//                         values.add(after.getValue(Type.STRING, i));
-//                     }
-//                 }
-//             } else {
-//                 try {
-//                     values.add(after.getValue(Type.STRING));
-//                 } catch (ClassCastException e) {
-//                     log.error(e.toString());
-//                 }
-//             }
-            // properties.put(after.getName(), new ZeroMQPropertyState(after.getName(), after.getType().toString(), values));
-            properties.put(after.getName(), new ZeroMQPropertyState(after));
+            properties.put(after.getName(), new ZeroMQPropertyState(this.ns, after));
+            dirty = true;
             return true;
         }
 
@@ -392,6 +406,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
         @Override
         public boolean propertyDeleted(PropertyState before) {
             properties.remove(before.getName());
+            dirty = true;
             return true;
         }
 
@@ -400,12 +415,13 @@ public class ZeroMQNodeState extends AbstractNodeState {
             if (after instanceof ZeroMQNodeState) {
                 this.children.put(name, ((ZeroMQNodeState) after).getUuid());
             } else {
-                final ZeroMQNodeState before = (ZeroMQNodeState) ZeroMQEmptyNodeState.EMPTY_NODE(reader, writer);
-                final ZeroMQNodeStateDiffBuilder diff = getNodeStateDiffBuilder(before, reader, writer);
+                final ZeroMQNodeState before = (ZeroMQNodeState) ZeroMQEmptyNodeState.EMPTY_NODE(this.ns, reader, writer);
+                final ZeroMQNodeStateDiffBuilder diff = getNodeStateDiffBuilder(this.ns, before, reader, writer);
                 after.compareAgainstBaseState(before, diff);
                 final ZeroMQNodeState child = diff.getNodeState();
                 this.children.put(name, child.getUuid());
             }
+            dirty = true;
             return true;
         }
 
@@ -418,6 +434,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
         @Override
         public boolean childNodeDeleted(String name, NodeState before) {
             this.children.remove(name);
+            dirty = true;
             return true;
         }
     }

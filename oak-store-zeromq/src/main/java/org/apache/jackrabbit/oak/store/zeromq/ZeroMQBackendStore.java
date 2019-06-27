@@ -80,7 +80,7 @@ public class ZeroMQBackendStore implements Closeable {
         readerService = context.socket(ZMQ.REP);
         writerService = context.socket(ZMQ.REP);
         store = CacheBuilder.newBuilder().build();
-        ZeroMQNodeState ns = (ZeroMQNodeState) ZeroMQEmptyNodeState.EMPTY_NODE(null, null);
+        ZeroMQNodeState ns = (ZeroMQNodeState) ZeroMQEmptyNodeState.EMPTY_NODE(null, null, null);
         final StringBuilder sb = new StringBuilder();
         ns.serialise(sb::append);
         store.put(ns.getUuid(), sb.toString());
