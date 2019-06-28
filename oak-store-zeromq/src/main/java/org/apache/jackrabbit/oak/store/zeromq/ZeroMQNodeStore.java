@@ -189,6 +189,14 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         log.debug(msg);
     }
 
+    private NodeState mergeRoot(String root, NodeState ns) {
+        final NodeBuilder rootBuilder = getSuperRoot().builder();
+        rootBuilder.setChildNode(root, ns);
+        final NodeState newRoot = rootBuilder.getNodeState();
+        setRoot(((ZeroMQNodeState) newRoot).getUuid());
+        return newRoot;
+    }
+
     @Override
     public synchronized NodeState merge(NodeBuilder builder, CommitHook commitHook, CommitInfo info) throws CommitFailedException {
         if (!(builder instanceof ZeroMQNodeBuilder)) {
@@ -197,12 +205,18 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         final NodeState newBase = getRoot();
         final NodeState after = ((ZeroMQNodeBuilder) builder).applyTo(newBase);
         final NodeState afterHook = commitHook.processCommit(newBase, after, info);
-        final NodeBuilder rootBuilder = getSuperRoot().builder();
-        rootBuilder.setChildNode("root", afterHook);
-        final NodeState newRoot = rootBuilder.getNodeState();
-        setRoot(((ZeroMQNodeState) newRoot).getUuid());
+        mergeRoot("root", afterHook);
+        ((ZeroMQNodeBuilder) builder).reset(afterHook);
         changeDispatcher.contentChanged(afterHook, info);
-        return getRoot();
+        return afterHook;
+    }
+
+    private synchronized NodeState mergeBlob(NodeBuilder builder) {
+        final NodeState newBase = getBlobRoot();
+        final NodeState after = ((ZeroMQNodeBuilder) builder).applyTo(newBase);
+        mergeRoot("blobs", after);
+        ((ZeroMQNodeBuilder) builder).reset(after);
+        return after;
     }
 
     private ZeroMQNodeState readNodeState(String s) {
@@ -270,16 +284,10 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
 
     @Override
     public NodeState rebase(@NotNull NodeBuilder builder) {
-        final NodeState root = getRoot();
-        final NodeState before = builder.getBaseState();
-        final NodeState after = builder.getNodeState();
-        if (root.equals(before)) {
-            return after;
-        } else {
-            final NodeBuilder rootBuilder = root.builder();
-            after.compareAgainstBaseState(before, new ConflictAnnotatingRebaseDiff(rootBuilder));
-            return rootBuilder.getNodeState();
-        }
+        final NodeState newBase = getRoot();
+        final NodeState after = ((ZeroMQNodeBuilder) builder).applyTo(newBase);
+        ((ZeroMQNodeBuilder) builder).reset(after);
+        return after;
     }
 
     @Override
@@ -296,11 +304,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         final String sBlob = blob.serialise();
         final NodeBuilder nBlob = builder.child(blob.getReference());
         nBlob.setProperty("blob", sBlob, Type.STRING);
-        try {
-            merge(builder, EmptyHook.INSTANCE, CommitInfo.EMPTY);
-        } catch (CommitFailedException e) {
-            throw new IOException(e);
-        }
+        mergeBlob(builder);
         return blob;
     }
 
