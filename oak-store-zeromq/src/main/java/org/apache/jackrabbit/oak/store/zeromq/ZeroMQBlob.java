@@ -1,7 +1,9 @@
 package org.apache.jackrabbit.oak.store.zeromq;
 
 import org.apache.jackrabbit.oak.api.Blob;
+import org.apache.jackrabbit.oak.api.PropertyState;
 import org.apache.jackrabbit.oak.api.Type;
+import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -31,8 +33,15 @@ public class ZeroMQBlob implements Blob {
     }
 
     static ZeroMQBlob newInstance(ZeroMQNodeStore ns, String reference) {
-        final String sBlob = ns.getBlobRoot().getChildNode(reference).getProperty("blob").getValue(Type.STRING);
-        return newInstance(bytesFromString(sBlob));
+        try {
+            final NodeState blobRoot = ns.getBlobRoot();
+            final NodeState blobNode = blobRoot.getChildNode(reference);
+            final PropertyState blobProp = blobNode.getProperty("blob");
+            final String sBlob = blobProp.getValue(Type.STRING);
+            return newInstance(bytesFromString(sBlob));
+        } catch (Throwable t) {
+            throw t;
+        }
     }
 
     static ZeroMQBlob newInstance(String serialised) {

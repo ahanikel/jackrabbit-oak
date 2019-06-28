@@ -77,7 +77,7 @@ public class ZeroMQNodeBuilder extends MemoryNodeBuilder {
             throw new IllegalStateException();
         }
         final NodeState after = super.getNodeState();
-        if (after == before) {
+        if (after.equals(before)) {
             return (ZeroMQNodeState) before;
         }
         final ZeroMQNodeState.ZeroMQNodeStateDiffBuilder diff = getNodeStateDiffBuilder(this.ns, (ZeroMQNodeState) before, reader, writer);
@@ -94,7 +94,7 @@ public class ZeroMQNodeBuilder extends MemoryNodeBuilder {
             throw new IllegalStateException();
         }
         final NodeState after = super.getNodeState();
-        if (after == before) {
+        if (after.equals(before)) {
             return (ZeroMQNodeState) base;
         }
         final ZeroMQNodeState.ZeroMQNodeStateDiffBuilder diff = getNodeStateDiffBuilder(this.ns, (ZeroMQNodeState) base, reader, writer);
