@@ -1,0 +1,16 @@
+#!/bin/bash -e
+
+(
+    cd ~/Documents/git/jackrabbit-oak/oak-store-zeromq
+    mvn -DskipTests -Dbaseline.skip clean install
+)
+
+./makeit
+ps auxww|grep java|grep zeromq-service-store|awk '{print $2}'|xargs kill -9 || true
+
+sleep 2
+
+for i in 1 2
+do
+    ./runservice $i 2 &
+done
