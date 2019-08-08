@@ -1,0 +1,15 @@
+#!/bin/bash -e
+
+debugPort=30403
+port=8090
+workDir="/tmp/journal"
+thisDir=$(cd $(dirname $0) && pwd)
+
+rm -rf "$workDir"
+mkdir "$workDir"
+
+(
+    cd "$workDir"
+    java -Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=$debugPort -jar $thisDir/target/oak-store-zeromq-service-journal-*.jar -p $port
+)
+
