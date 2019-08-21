@@ -48,6 +48,15 @@
             </Embed-Dependency>
           </instructions>
         </configuration>
+        <executions>
+            <execution>
+                <id>baseline</id>
+                <goals>
+                    <goal>baseline</goal>
+                </goals>
+                <phase>none</phase>
+            </execution>
+        </executions>
       </plugin>
    </plugins>
   </build>
