@@ -9,7 +9,6 @@ import org.apache.jackrabbit.oak.spi.commit.CommitHook;
 import org.apache.jackrabbit.oak.spi.commit.CommitInfo;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
-import org.apache.jackrabbit.oak.spi.state.NodeStore;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.junit.Test;
@@ -17,18 +16,14 @@ import org.junit.Test;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.*;
 
+import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeStore.clusterInstanceForUuid;
 import static org.junit.Assert.*;
 
 public class ZeroMQNodeStateTest {
 
-    private static final int NUM_UUIDS = 3;
+    private static final int NUM_UUIDS = 6;
     private static final UUID[] UUIDS = new UUID[NUM_UUIDS];
 
     private final Map<String, String> storage = new HashMap<>();
@@ -39,68 +34,78 @@ public class ZeroMQNodeStateTest {
         }
     }
 
-    static ZeroMQNodeStore dummyStore = new ZeroMQNodeStore() {
+    private static ZeroMQNodeStore _dummyStore = null;
 
-        @Override
-        public @NotNull NodeState getRoot() {
-            return null;
-        }
+    static ZeroMQNodeStore dummyStore() {
 
-        @Override
-        public @NotNull NodeState merge(@NotNull NodeBuilder builder, @NotNull CommitHook commitHook, @NotNull CommitInfo info) throws CommitFailedException {
-            return null;
-        }
+        System.setProperty("clusterInstances", "2");
 
-        @Override
-        public @NotNull NodeState rebase(@NotNull NodeBuilder builder) {
-            return null;
-        }
+        if (_dummyStore == null) {
+            _dummyStore = new ZeroMQNodeStore() {
 
-        @Override
-        public NodeState reset(@NotNull NodeBuilder builder) {
-            return null;
-        }
+                @Override
+                public @NotNull NodeState getRoot() {
+                    return null;
+                }
 
-        @Override
-        public @NotNull Blob createBlob(InputStream inputStream) throws IOException {
-            return null;
-        }
+                @Override
+                public @NotNull NodeState merge(@NotNull NodeBuilder builder, @NotNull CommitHook commitHook, @NotNull CommitInfo info) throws CommitFailedException {
+                    return null;
+                }
 
-        @Override
-        public @Nullable Blob getBlob(@NotNull String reference) {
-            return null;
-        }
+                @Override
+                public @NotNull NodeState rebase(@NotNull NodeBuilder builder) {
+                    return null;
+                }
 
-        @Override
-        public @NotNull String checkpoint(long lifetime, @NotNull Map<String, String> properties) {
-            return null;
-        }
+                @Override
+                public NodeState reset(@NotNull NodeBuilder builder) {
+                    return null;
+                }
 
-        @Override
-        public @NotNull String checkpoint(long lifetime) {
-            return null;
-        }
+                @Override
+                public @NotNull Blob createBlob(InputStream inputStream) throws IOException {
+                    return null;
+                }
 
-        @Override
-        public @NotNull Map<String, String> checkpointInfo(@NotNull String checkpoint) {
-            return null;
-        }
+                @Override
+                public @Nullable Blob getBlob(@NotNull String reference) {
+                    return null;
+                }
 
-        @Override
-        public @NotNull Iterable<String> checkpoints() {
-            return null;
-        }
+                @Override
+                public @NotNull String checkpoint(long lifetime, @NotNull Map<String, String> properties) {
+                    return null;
+                }
 
-        @Override
-        public @Nullable NodeState retrieve(@NotNull String checkpoint) {
-            return null;
-        }
+                @Override
+                public @NotNull String checkpoint(long lifetime) {
+                    return null;
+                }
 
-        @Override
-        public boolean release(@NotNull String checkpoint) {
-            return false;
+                @Override
+                public @NotNull Map<String, String> checkpointInfo(@NotNull String checkpoint) {
+                    return null;
+                }
+
+                @Override
+                public @NotNull Iterable<String> checkpoints() {
+                    return null;
+                }
+
+                @Override
+                public @Nullable NodeState retrieve(@NotNull String checkpoint) {
+                    return null;
+                }
+
+                @Override
+                public boolean release(@NotNull String checkpoint) {
+                    return false;
+                }
+            };
         }
-    };
+        return _dummyStore;
+    }
 
     String getSerialised(String sUuid) {
         final UUID uuid = UUID.fromString(sUuid);
@@ -142,7 +147,7 @@ public class ZeroMQNodeStateTest {
         ZeroMQNodeState ret = null;
 
         try {
-            ret = ZeroMQNodeState.deSerialise(dummyStore, serialised, this::staticReader, this::storageWriter);
+            ret = ZeroMQNodeState.deSerialise(dummyStore(), serialised, this::staticReader, this::storageWriter);
         } catch (ZeroMQNodeState.ParseFailure parseFailure) {
         }
 
@@ -152,18 +157,13 @@ public class ZeroMQNodeStateTest {
     private ZeroMQNodeState storageReader(String s) {
         final String ser = storage.get(s);
         try {
-            return ZeroMQNodeState.deSerialise(dummyStore, ser, this::storageReader, this::storageWriter);
+            return ZeroMQNodeState.deSerialise(dummyStore(), ser, this::storageReader, this::storageWriter);
         } catch (ZeroMQNodeState.ParseFailure parseFailure) {
             throw new IllegalStateException(parseFailure);
         }
     }
-    private void storageWriter(String s) {
-        final Pattern uuidPattern = Pattern.compile("begin ZeroMQNodeState ([^\\n]+).*", Pattern.DOTALL);
-        final Matcher m = uuidPattern.matcher(s);
-        if (m.matches()) {
-            final String uuid = m.group(1);
-            storage.put(uuid, s);
-        }
+    private void storageWriter(ZeroMQNodeState.SerialisedZeroMQNodeState ns) {
+        storage.put(ns.getUuid(), ns.getserialisedNodeState());
     }
 
     @Test
@@ -230,7 +230,7 @@ public class ZeroMQNodeStateTest {
     // This test fails without a real node store
     public void diff() throws IOException {
         storage.clear();
-        final ZeroMQNodeState ns = (ZeroMQNodeState) ZeroMQEmptyNodeState.EMPTY_NODE(dummyStore, this::staticReader, this::storageWriter);
+        final ZeroMQNodeState ns = (ZeroMQNodeState) ZeroMQEmptyNodeState.EMPTY_NODE(dummyStore(), this::staticReader, this::storageWriter);
         final NodeBuilder builder = ns.builder();
         builder.child("first")
                 .setProperty("1p", "blurb", Type.STRING)
@@ -314,7 +314,7 @@ public class ZeroMQNodeStateTest {
     public void emptyArray() throws ZeroMQNodeState.ParseFailure {
         storage.clear();
 
-        final ZeroMQNodeState ns = (ZeroMQNodeState) ZeroMQEmptyNodeState.EMPTY_NODE(dummyStore, this::staticReader, this::storageWriter);
+        final ZeroMQNodeState ns = (ZeroMQNodeState) ZeroMQEmptyNodeState.EMPTY_NODE(dummyStore(), this::staticReader, this::storageWriter);
         final NodeBuilder builder = ns.builder();
         builder.setProperty("bla", new ArrayList()  , Type.STRINGS);
         final NodeState ns2 = builder.getNodeState();
@@ -322,11 +322,23 @@ public class ZeroMQNodeStateTest {
         assertTrue(ps.isArray());
         assertTrue(ps.count() == 0);
         assertTrue(ps.size() == 0);
-        final StringBuilder sb = new StringBuilder();
-        ((ZeroMQNodeState) ns2).serialise(sb::append);
-        final String s = sb.toString();
+        final List<ZeroMQNodeState.SerialisedZeroMQNodeState> ser = new ArrayList<>();
+        ((ZeroMQNodeState) ns2).serialise(ser::add);
+        final String s = ser.get(0).getserialisedNodeState();
         assertTrue(s.contains("[]"));
-        final NodeState ns3 = ZeroMQNodeState.deSerialise(dummyStore, s, this::staticReader, this::storageWriter);
+        final NodeState ns3 = ZeroMQNodeState.deSerialise(dummyStore(), s, this::staticReader, this::storageWriter);
         assertTrue(ns3.getProperty("bla").count() == 0);
+    }
+
+    @Test
+    public void testClusterInstanceForSegmentId() {
+        StringBuilder sb = new StringBuilder();
+        for (UUID uuid : UUIDS) {
+            sb.append(uuid.toString());
+            sb.append(": ");
+            sb.append(clusterInstanceForUuid(2, uuid.toString()));
+            sb.append("\n");
+        }
+        throw(new Error(sb.toString()));
     }
 }
