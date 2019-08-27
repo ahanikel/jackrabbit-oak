@@ -64,11 +64,13 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     @NotNull
     final ZMQ.Context context;
 
-    @NotNull
-    final ZMQ.Socket nodeStateReader;
+    private final Integer clusterInstances;
 
     @NotNull
-    final ZMQ.Socket nodeStateWriter;
+    final ZMQ.Socket nodeStateReader[];
+
+    @NotNull
+    final ZMQ.Socket nodeStateWriter[];
 
     @NotNull
     final ZMQ.Socket journalReader;
@@ -87,11 +89,18 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
 
         context = ZMQ.context(1);
 
-        nodeStateReader = context.socket(ZMQ.REQ);
-        nodeStateReader.connect("tcp://localhost:8000");
+        clusterInstances = Integer.getInteger("clusterInstances");
 
-        nodeStateWriter = context.socket(ZMQ.REQ);
-        nodeStateWriter.connect("tcp://localhost:8001");
+        nodeStateReader = new ZMQ.Socket[clusterInstances];
+        nodeStateWriter = new ZMQ.Socket[clusterInstances];
+
+        for (int i = 0; i < clusterInstances; ++i) {
+            nodeStateReader[i] = context.socket(ZMQ.REQ);
+            nodeStateReader[i].connect("tcp://localhost:" + (8000 + 2*i));
+
+            nodeStateWriter[i] = context.socket(ZMQ.REQ);
+            nodeStateWriter[i].connect("tcp://localhost:" + (8001 + 2*i));
+        }
 
         journalReader = context.socket(ZMQ.REQ);
         journalReader.connect("tcp://localhost:9000");
@@ -219,10 +228,10 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         return after;
     }
 
-    private ZeroMQNodeState readNodeState(String s) {
+    private ZeroMQNodeState readNodeState(String uuid) {
         try {
-            return nodeStateCache.get(s, () -> {
-                final String sNode = read(s);
+            return nodeStateCache.get(uuid, () -> {
+                final String sNode = read(uuid);
                 try {
                     final ZeroMQNodeState ret = ZeroMQNodeState.deSerialise(this, sNode, this::readNodeState, this::write);
                     return ret;
@@ -239,15 +248,16 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         }
     }
 
-    private String read(String s) {
+    private String read(String uuid) {
         String msg;
+        int inst = clusterInstanceForSegmentId(uuid);
         while (true) {
             try {
-                synchronized (nodeStateReader) {
-                    nodeStateReader.send(s);
-                    msg = nodeStateReader.recvStr();
+                synchronized (nodeStateReader[inst]) {
+                    nodeStateReader[inst].send(uuid);
+                    msg = nodeStateReader[inst].recvStr();
                 }
-                log.debug("{} read.", s);
+                log.debug("{} read.", uuid);
                 break;
             } catch (Throwable t) {
                 log.warn(t.toString());
@@ -261,13 +271,14 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         return msg;
     }
 
-    private void write(String s) {
-       String msg;
+    private void write(String uuid) {
+        String msg;
+        int inst = clusterInstanceForSegmentId(uuid);
         while (true) {
             try {
-                synchronized (nodeStateWriter) {
-                    nodeStateWriter.send(s);
-                    msg = nodeStateWriter.recvStr(); // wait for confirmation
+                synchronized (nodeStateWriter[inst]) {
+                    nodeStateWriter[inst].send(uuid);
+                    msg = nodeStateWriter[inst].recvStr(); // wait for confirmation
                 }
                 log.debug(msg);
                 break;
@@ -346,5 +357,27 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     @Override
     public Closeable addObserver(Observer observer) {
         return changeDispatcher.addObserver(observer);
+    }
+
+    /**
+     * Divide the uuid space into @ref{clusterInstances} parts, starting from 0.
+     * This implementation limits the number of @ref{clusterInstances} to 2^32-1.
+     * If the space cannot be divided equally, the remaining uuids are assigned
+     * to the @ref{clusterInstances} - 1 part.
+     * @param sUuid
+     * @return
+     */
+    private int clusterInstanceForSegmentId(String sUuid) {
+        final UUID uuid = UUID.fromString(sUuid);
+        final long msb = uuid.getMostSignificantBits();
+        final long msbMsb = 0xffff_ffffL & (msb >> 32);
+        final long inst = msbMsb / (0x1_0000_0000L / clusterInstances);
+        if (inst < 0) {
+            throw new IllegalStateException("inst < 0");
+        }
+        if (inst > clusterInstances) {
+            throw new IllegalStateException("inst > clusterInstances");
+        }
+        return inst == clusterInstances ? clusterInstances - 1 : (int) inst;
     }
 }
