@@ -6,7 +6,7 @@
 )
 
 ./makeit
-ps auxww|grep java|grep zeromq-service-store|awk '{print $2}'|xargs kill -9 || true
+./killit
 
 sleep 2
 

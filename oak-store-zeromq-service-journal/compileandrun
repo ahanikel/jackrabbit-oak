@@ -1,7 +1,7 @@
 #!/bin/bash -e
 
 ./makeit
-ps auxww|grep java|grep zeromq-service-journal|awk '{print $2}'|xargs kill -9 || true
+./killit
 
 sleep 2
 
