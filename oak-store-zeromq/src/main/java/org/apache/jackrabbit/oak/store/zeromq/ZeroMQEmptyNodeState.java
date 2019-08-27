@@ -37,13 +37,13 @@ import static java.util.Collections.emptyList;
 public final class ZeroMQEmptyNodeState extends ZeroMQNodeState {
 
     private final Function<String, ZeroMQNodeState> reader;
-    private final Consumer<String> writer;
+    private final Consumer<SerialisedZeroMQNodeState> writer;
 
-    public static final NodeState EMPTY_NODE(ZeroMQNodeStore ns, Function<String, ZeroMQNodeState> reader, Consumer<String> writer) {
+    public static final NodeState EMPTY_NODE(ZeroMQNodeStore ns, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) {
         return new ZeroMQEmptyNodeState(ns, true, reader, writer);
     }
 
-    public static final NodeState MISSING_NODE(ZeroMQNodeStore ns, Function<String, ZeroMQNodeState> reader, Consumer<String> writer) {
+    public static final NodeState MISSING_NODE(ZeroMQNodeStore ns, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) {
         return new ZeroMQEmptyNodeState(ns, false, reader, writer);
     }
 
@@ -51,7 +51,7 @@ public final class ZeroMQEmptyNodeState extends ZeroMQNodeState {
 
     private final boolean exists;
 
-    private ZeroMQEmptyNodeState(ZeroMQNodeStore ns, boolean exists, Function<String, ZeroMQNodeState> reader, Consumer<String> writer) {
+    private ZeroMQEmptyNodeState(ZeroMQNodeStore ns, boolean exists, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) {
         super(ns, UUID_NULL.toString(), reader, writer);
         this.exists = exists;
         this.reader = reader;

@@ -28,7 +28,6 @@ import org.apache.jackrabbit.oak.api.jmx.CheckpointMBean;
 import org.apache.jackrabbit.oak.osgi.OsgiWhiteboard;
 import org.apache.jackrabbit.oak.plugins.memory.MemoryNodeBuilder;
 import org.apache.jackrabbit.oak.spi.commit.*;
-import org.apache.jackrabbit.oak.spi.state.ConflictAnnotatingRebaseDiff;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
@@ -250,7 +249,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
 
     private String read(String uuid) {
         String msg;
-        int inst = clusterInstanceForSegmentId(uuid);
+        int inst = clusterInstanceForUuid(uuid);
         while (true) {
             try {
                 synchronized (nodeStateReader[inst]) {
@@ -271,13 +270,13 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         return msg;
     }
 
-    private void write(String uuid) {
+    private void write(ZeroMQNodeState.SerialisedZeroMQNodeState nodeState) {
         String msg;
-        int inst = clusterInstanceForSegmentId(uuid);
+        int inst = clusterInstanceForUuid(nodeState.getUuid());
         while (true) {
             try {
                 synchronized (nodeStateWriter[inst]) {
-                    nodeStateWriter[inst].send(uuid);
+                    nodeStateWriter[inst].send(nodeState.getserialisedNodeState());
                     msg = nodeStateWriter[inst].recvStr(); // wait for confirmation
                 }
                 log.debug(msg);
@@ -367,7 +366,11 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
      * @param sUuid
      * @return
      */
-    private int clusterInstanceForSegmentId(String sUuid) {
+    private int clusterInstanceForUuid(String sUuid) {
+        return clusterInstanceForUuid(clusterInstances, sUuid);
+    }
+
+    static int clusterInstanceForUuid(int clusterInstances, String sUuid) {
         final UUID uuid = UUID.fromString(sUuid);
         final long msb = uuid.getMostSignificantBits();
         final long msbMsb = 0xffff_ffffL & (msb >> 32);

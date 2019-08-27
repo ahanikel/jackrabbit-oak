@@ -41,10 +41,10 @@ public class ZeroMQNodeState extends AbstractNodeState {
     private final Map<String, String> children;
     private final Map<String, ZeroMQPropertyState> properties;
     private final Function<String, ZeroMQNodeState> reader;
-    private final Consumer<String> writer;
+    private final Consumer<SerialisedZeroMQNodeState> writer;
 
     // not private because ZeroMQEmptyNodeState needs it
-    ZeroMQNodeState(ZeroMQNodeStore ns, String uuid, Function<String, ZeroMQNodeState> reader, Consumer<String> writer) {
+    ZeroMQNodeState(ZeroMQNodeStore ns, String uuid, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) {
         this.ns = ns;
         this.uuid = uuid;
         this.children = new HashMap<>();
@@ -53,7 +53,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
         this.writer = writer;
     }
 
-    private ZeroMQNodeState(ZeroMQNodeStore ns, String uuid, Map<String, String> children, Map<String, ZeroMQPropertyState> properties, Function<String, ZeroMQNodeState> reader, Consumer<String> writer) {
+    private ZeroMQNodeState(ZeroMQNodeStore ns, String uuid, Map<String, String> children, Map<String, ZeroMQPropertyState> properties, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) {
         this.ns = ns;
         this.uuid = uuid;
         this.children = children;
@@ -187,7 +187,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
         return ret.val();
     }
 
-    static ZeroMQNodeState deSerialise(ZeroMQNodeStore ns, String s, Function<String, ZeroMQNodeState> reader, Consumer<String> writer) throws ParseFailure {
+    static ZeroMQNodeState deSerialise(ZeroMQNodeStore ns, String s, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) throws ParseFailure {
         final FinalVar<String> id = new FinalVar();
         final List<String> children = new ArrayList<>();
         final List<String> properties = new ArrayList<>();
@@ -234,7 +234,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
         return ret;
     }
 
-    public void serialise(Consumer<String> writer) {
+    public void serialise(Consumer<SerialisedZeroMQNodeState> writer) {
         final AtomicReference<Exception> e = new AtomicReference<>();
         final StringBuilder sb = new StringBuilder();
         sb
@@ -264,7 +264,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
         );
         sb.append("end properties\n");
         sb.append("end ZeroMQNodeState\n");
-        writer.accept(sb.toString());
+        writer.accept(new SerialisedZeroMQNodeState(uuid, sb.toString()));
     }
 
     @Override
@@ -346,14 +346,14 @@ public class ZeroMQNodeState extends AbstractNodeState {
         return uuid;
     }
 
-    static ZeroMQNodeStateDiffBuilder getNodeStateDiffBuilder(ZeroMQNodeStore ns, ZeroMQNodeState before, Function<String, ZeroMQNodeState> reader, Consumer<String> writer) {
+    static ZeroMQNodeStateDiffBuilder getNodeStateDiffBuilder(ZeroMQNodeStore ns, ZeroMQNodeState before, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) {
         return new ZeroMQNodeStateDiffBuilder(ns, before, reader, writer);
     }
 
     static final class ZeroMQNodeStateDiffBuilder implements NodeStateDiff {
 
         private final Function<String, ZeroMQNodeState> reader;
-        private final Consumer<String> writer;
+        private final Consumer<SerialisedZeroMQNodeState> writer;
 
         private Map<String, String> children;
         private Map<String, ZeroMQPropertyState> properties;
@@ -363,7 +363,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
 
         private boolean dirty;
 
-        private ZeroMQNodeStateDiffBuilder(ZeroMQNodeStore ns, ZeroMQNodeState before, Function<String, ZeroMQNodeState> reader, Consumer<String> writer) {
+        private ZeroMQNodeStateDiffBuilder(ZeroMQNodeStore ns, ZeroMQNodeState before, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) {
             this.ns = ns;
             this.reader = reader;
             this.writer = writer;
@@ -436,6 +436,25 @@ public class ZeroMQNodeState extends AbstractNodeState {
             this.children.remove(name);
             dirty = true;
             return true;
+        }
+    }
+
+    public static class SerialisedZeroMQNodeState {
+
+        private final String uuid;
+        private final String sNodeState;
+
+        public SerialisedZeroMQNodeState(String uuid, String sNodeState) {
+            this.uuid = uuid;
+            this.sNodeState = sNodeState;
+        }
+
+        public String getUuid() {
+            return uuid;
+        }
+
+        public String getserialisedNodeState() {
+            return sNodeState;
         }
     }
 }
