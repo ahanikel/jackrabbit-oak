@@ -31,6 +31,8 @@ import org.zeromq.ZMQ;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -81,9 +83,9 @@ public class ZeroMQBackendStore implements Closeable {
         writerService = context.socket(ZMQ.REP);
         store = CacheBuilder.newBuilder().build();
         ZeroMQNodeState ns = (ZeroMQNodeState) ZeroMQEmptyNodeState.EMPTY_NODE(null, null, null);
-        final StringBuilder sb = new StringBuilder();
-        ns.serialise(sb::append);
-        store.put(ns.getUuid(), sb.toString());
+        final List<ZeroMQNodeState.SerialisedZeroMQNodeState> sNs = new ArrayList<>();
+        ns.serialise(sNs::add);
+        store.put(ns.getUuid(), sNs.get(0).getserialisedNodeState());
         pollerItems = context.poller(2);
         socketHandler = new Thread("ZeroMQBackendStore Socket Handler") {
             @Override
