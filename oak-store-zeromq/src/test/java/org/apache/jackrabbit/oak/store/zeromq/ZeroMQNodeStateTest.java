@@ -332,13 +332,9 @@ public class ZeroMQNodeStateTest {
 
     @Test
     public void testClusterInstanceForSegmentId() {
-        StringBuilder sb = new StringBuilder();
-        for (UUID uuid : UUIDS) {
-            sb.append(uuid.toString());
-            sb.append(": ");
-            sb.append(clusterInstanceForUuid(2, uuid.toString()));
-            sb.append("\n");
+        final int[] expected = {0, 0, 0, 0, 1, 0};
+        for (int i = 0; i < UUIDS.length; ++i) {
+            assertEquals(expected[i], clusterInstanceForUuid(2, UUIDS[i].toString()));
         }
-        throw(new Error(sb.toString()));
     }
 }
