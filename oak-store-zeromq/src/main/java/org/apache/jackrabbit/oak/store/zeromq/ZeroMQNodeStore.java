@@ -80,6 +80,9 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     @NotNull
     final Cache<String, ZeroMQNodeState> nodeStateCache;
 
+    @NotNull
+    final Cache<String, ZeroMQBlob> blobCache;
+
     private volatile ComponentContext ctx;
 
     private volatile ChangeDispatcher changeDispatcher;
@@ -109,6 +112,9 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
 
         nodeStateCache = CacheBuilder.newBuilder()
             .maximumSize(1000).build();
+
+        blobCache = CacheBuilder.newBuilder()
+                .maximumSize(100).build();
     }
 
     @Activate
@@ -310,6 +316,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     @Override
     public Blob createBlob(InputStream inputStream) throws IOException {
         final ZeroMQBlob blob = ZeroMQBlob.newInstance(inputStream);
+        blobCache.put(blob.getReference(), blob);
         final NodeBuilder builder = getBlobRoot().builder();
         final String sBlob = blob.serialise();
         final NodeBuilder nBlob = builder.child(blob.getReference());
@@ -320,7 +327,12 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
 
     @Override
     public Blob getBlob(String reference) {
-        return ZeroMQBlob.newInstance(reference);
+        try {
+            return blobCache.get(reference, () -> ZeroMQBlob.newInstance(this, reference));
+        } catch (ExecutionException e) {
+            log.warn("Could not load blob: " + e.toString());
+            return null;
+        }
     }
 
     @Override
