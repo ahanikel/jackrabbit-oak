@@ -10,7 +10,48 @@
 
     <name>oak-store-zeromq-service-store</name>
 
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <dkr.registry>${dockerRegistry-Host}</dkr.registry>
+        <dkr.image.namespace>ahanikel</dkr.image.namespace>
+        <dkr.image.name>${dkr.registry}/${dkr.image.namespace}/${project.artifactId}</dkr.image.name>
+    </properties>
+
     <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-resources-plugin</artifactId>
+                    <version>2.7</version>
+                    <executions>
+                        <execution>
+                            <id>copy-resources</id>
+                            <phase>process-sources</phase>
+                            <goals>
+                                <goal>copy-resources</goal>
+                            </goals>
+                            <configuration>
+                                <outputDirectory>${project.basedir}/target/docker</outputDirectory>
+                                <resources>
+                                    <resource>
+                                        <!-- source files can use Maven variables; check the delimiter below -->
+                                        <directory>${project.basedir}/src/main/docker</directory>
+                                        <filtering>true</filtering>
+                                    </resource>
+                                </resources>
+                                <useDefaultDelimiters>false</useDefaultDelimiters>
+                                <delimiters>
+                                    <delimiter>@</delimiter>
+                                </delimiters>
+                                <overwrite>true</overwrite>
+                            </configuration>
+                        </execution>
+                    </executions>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+
         <plugins>
             <plugin>
                 <groupId>org.apache.sling</groupId>
@@ -18,10 +59,32 @@
                 <version>1.3.6</version>
                 <extensions>true</extensions>
             </plugin>
+            <plugin>
+                <groupId>com.spotify</groupId>
+                <artifactId>docker-maven-plugin</artifactId>
+                <version>1.0.0</version>
+                <executions>
+                    <execution>
+                        <id>build-image</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>build</goal>
+                        </goals>
+                        <configuration>
+                            <imageName>${dkr.image.name}</imageName>
+                            <dockerDirectory>${project.basedir}/target</dockerDirectory>
+                            <imageTags>
+                                <imageTag>${project.version}</imageTag>
+                            </imageTags>
+                            <forceTags>true</forceTags>
+                        </configuration>
+                    </execution>
+                </executions>
+                <configuration>
+                    <serverId>${dockerRegistry-Id}</serverId>
+                    <registryUrl>${dockerRegistry-URL}</registryUrl>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
-
-    <properties>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    </properties>
 </project>
