@@ -48,6 +48,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
+import org.apache.jackrabbit.oak.spi.blob.BlobStore;
+import org.apache.jackrabbit.oak.spi.blob.FileBlobStore;
 
 import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQEmptyNodeState.EMPTY_NODE;
 
@@ -87,6 +89,9 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
 
     private volatile ChangeDispatcher changeDispatcher;
 
+    @NotNull
+    final BlobStore blobStore;
+
     public ZeroMQNodeStore() {
 
         context = ZMQ.context(1);
@@ -114,7 +119,9 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
             .maximumSize(1000).build();
 
         blobCache = CacheBuilder.newBuilder()
-                .maximumSize(100).build();
+            .maximumSize(100).build();
+
+        blobStore = new FileBlobStore("/tmp/blobs");
     }
 
     @Activate
@@ -226,11 +233,15 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     }
 
     private synchronized NodeState mergeBlob(NodeBuilder builder) {
-        final NodeState newBase = getBlobRoot();
-        final NodeState after = ((ZeroMQNodeBuilder) builder).applyTo(newBase);
-        mergeRoot("blobs", after);
-        ((ZeroMQNodeBuilder) builder).reset(after);
-        return after;
+        if (true) {
+            throw new IllegalStateException();
+        } else {
+            final NodeState newBase = getBlobRoot();
+            final NodeState after = ((ZeroMQNodeBuilder) builder).applyTo(newBase);
+            mergeRoot("blobs", after);
+            ((ZeroMQNodeBuilder) builder).reset(after);
+            return after;
+        }
     }
 
     private ZeroMQNodeState readNodeState(String uuid) {
@@ -315,20 +326,61 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
 
     @Override
     public Blob createBlob(InputStream inputStream) throws IOException {
-        final ZeroMQBlob blob = ZeroMQBlob.newInstance(inputStream);
-        blobCache.put(blob.getReference(), blob);
-        final NodeBuilder builder = getBlobRoot().builder();
-        final String sBlob = blob.serialise();
-        final NodeBuilder nBlob = builder.child(blob.getReference());
-        nBlob.setProperty("blob", sBlob, Type.STRING);
-        mergeBlob(builder);
-        return blob;
+        if (true) {
+            synchronized (blobStore) {
+                final String ref = blobStore.writeBlob(inputStream);
+                return getBlob(ref);
+            }
+        } else {
+            final ZeroMQBlob blob = ZeroMQBlob.newInstance(inputStream);
+            blobCache.put(blob.getReference(), blob);
+            final NodeBuilder builder = getBlobRoot().builder();
+            final String sBlob = blob.serialise();
+            final NodeBuilder nBlob = builder.child(blob.getReference());
+            nBlob.setProperty("blob", sBlob, Type.STRING);
+            mergeBlob(builder);
+            return blob;
+        }
     }
 
     @Override
     public Blob getBlob(String reference) {
         try {
-            return blobCache.get(reference, () -> ZeroMQBlob.newInstance(this, reference));
+            if (true) {
+                synchronized (blobStore) {
+                    return new Blob() {
+                        @Override
+                        public InputStream getNewStream() {
+                            try {
+                                return blobStore.getInputStream(reference);
+                            } catch (IOException ex) {
+                                return null;
+                            }
+                        }
+
+                        @Override
+                        public long length() {
+                            try {
+                                return blobStore.getBlobLength(reference);
+                            } catch (IOException ex) {
+                                return 0;
+                            }
+                        }
+
+                        @Override
+                        public String getReference() {
+                            return reference;
+                        }
+
+                        @Override
+                        public String getContentIdentity() {
+                            throw new UnsupportedOperationException();
+                        }
+                    };
+                }
+            } else {
+                return blobCache.get(reference, () -> ZeroMQBlob.newInstance(this, reference));
+            }
         } catch (ExecutionException e) {
             log.warn("Could not load blob: " + e.toString());
             return null;
