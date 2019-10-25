@@ -112,7 +112,11 @@ public class ZeroMQPropertyState implements PropertyState {
         ) {
             return (T) values.get(index);
         } else if (type.equals(BINARY)) {
-            return (T) ZeroMQBlob.newInstance(this.ns, values.get(index));
+            if (true) {
+                return (T) ns.getBlob(values.get(index));
+            } else {
+                return (T) ZeroMQBlob.newInstance(this.ns, values.get(index));
+            }
         } else if (type.equals(LONG)) {
             return (T) Long.valueOf(values.get(index));
         } else if (type.equals(DOUBLE)) {
