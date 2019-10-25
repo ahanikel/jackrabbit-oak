@@ -33,6 +33,6 @@ mkdir "$workDir"
 
 (
     cd "$workDir"
-    java -DclusterInstance=$instance -DclusterInstances=$instances -Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=$debugPort -jar $thisDir/target/oak-store-zeromq-service-store-*.jar -p $port
+    java -Xmx10g -DclusterInstance=$instance -DclusterInstances=$instances -Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=$debugPort -jar $thisDir/target/oak-store-zeromq-service-store-*.jar -p $port
 )
 
