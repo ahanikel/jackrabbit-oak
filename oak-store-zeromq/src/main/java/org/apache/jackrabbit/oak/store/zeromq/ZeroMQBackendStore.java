@@ -18,8 +18,6 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq;
 
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.osgi.service.component.ComponentContext;
@@ -32,8 +30,9 @@ import org.zeromq.ZMQ;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
-import java.util.UUID;
+import java.util.Map;
 
 /**
  * A store used for in-memory operations.
@@ -66,7 +65,7 @@ public class ZeroMQBackendStore implements Closeable {
      * we are responsible for
      */
     @NotNull
-    final Cache<String, String> store;
+    final Map<String, String> store;
 
     /**
      * the thread which listens on the sockets and processes messages
@@ -81,7 +80,7 @@ public class ZeroMQBackendStore implements Closeable {
         context = ZMQ.context(1);
         readerService = context.socket(ZMQ.REP);
         writerService = context.socket(ZMQ.REP);
-        store = CacheBuilder.newBuilder().build();
+        store = new HashMap<>();
         ZeroMQNodeState ns = (ZeroMQNodeState) ZeroMQEmptyNodeState.EMPTY_NODE(null, null, null);
         final List<ZeroMQNodeState.SerialisedZeroMQNodeState> sNs = new ArrayList<>();
         ns.serialise(sNs::add);
@@ -120,7 +119,7 @@ public class ZeroMQBackendStore implements Closeable {
     }
 
     void handleReaderService(String msg) {
-        final String sNode = store.getIfPresent(msg);
+        final String sNode = store.getOrDefault(msg, null);
         if (sNode != null) {
             readerService.send(sNode);
         } else {
