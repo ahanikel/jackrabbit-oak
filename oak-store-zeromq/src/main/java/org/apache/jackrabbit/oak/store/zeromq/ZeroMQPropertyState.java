@@ -27,6 +27,9 @@ import org.slf4j.LoggerFactory;
 
 import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
+import java.text.DateFormat;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -35,6 +38,7 @@ import static org.apache.jackrabbit.oak.api.Type.*;
 public class ZeroMQPropertyState implements PropertyState {
 
     private static final Logger log = LoggerFactory.getLogger(ZeroMQPropertyState.class);
+    private static final DateFormat dateParser = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX");
 
     private final ZeroMQNodeStore ns;
     private final String name;
@@ -118,7 +122,15 @@ public class ZeroMQPropertyState implements PropertyState {
                 return (T) ZeroMQBlob.newInstance(this.ns, values.get(index));
             }
         } else if (type.equals(LONG)) {
-            return (T) Long.valueOf(values.get(index));
+            if (this.type.equals(DATE)) {
+                try {
+                    return (T) Long.valueOf(dateParser.parse(values.get(index)).getTime());
+                } catch (ParseException ex) {
+                    throw new IllegalArgumentException(ex);
+                }
+            } else {
+                return (T) Long.valueOf(values.get(index));
+            }
         } else if (type.equals(DOUBLE)) {
             return (T) Double.valueOf(values.get(index));
         } else if (type.equals(BOOLEAN)) {
@@ -205,7 +217,6 @@ public class ZeroMQPropertyState implements PropertyState {
             b.append(newChar);
         }
     }
-
 
     private static String safeEncode(String value) {
         try {
