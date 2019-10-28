@@ -389,31 +389,37 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
 
     @Override
     public String checkpoint(long lifetime, Map<String, String> properties) {
+        log.error("Unsupported");
         throw new UnsupportedOperationException("Not supported yet.");
     }
 
     @Override
     public String checkpoint(long lifetime) {
+        log.error("Unsupported");
         throw new UnsupportedOperationException("Not supported yet.");
     }
 
     @Override
     public Map<String, String> checkpointInfo(String checkpoint) {
+        log.error("Unsupported");
         throw new UnsupportedOperationException("Not supported yet.");
     }
 
     @Override
     public Iterable<String> checkpoints() {
+        log.error("Unsupported");
         throw new UnsupportedOperationException("Not supported yet.");
     }
 
     @Override
     public NodeState retrieve(String checkpoint) {
+        log.error("Unsupported");
         throw new UnsupportedOperationException("Not supported yet.");
     }
 
     @Override
     public boolean release(String checkpoint) {
+        log.error("Unsupported");
         throw new UnsupportedOperationException("Not supported yet.");
     }
 
