@@ -253,8 +253,10 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
                     return ret;
                 } catch (ZeroMQNodeState.ParseFailure parseFailure) {
                     if ("Node not found".equals(sNode)) {
+                        log.error("Node not found");
                         throw new IllegalStateException("Node not found");
                     } else {
+                        log.error(parseFailure.getMessage());
                         throw new IllegalStateException(parseFailure);
                     }
                 }
@@ -327,10 +329,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     @Override
     public Blob createBlob(InputStream inputStream) throws IOException {
         if (true) {
-            synchronized (blobStore) {
-                final String ref = blobStore.writeBlob(inputStream);
-                return getBlob(ref);
-            }
+            final String ref = blobStore.writeBlob(inputStream);
+            return getBlob(ref);
         } else {
             final ZeroMQBlob blob = ZeroMQBlob.newInstance(inputStream);
             blobCache.put(blob.getReference(), blob);
@@ -347,37 +347,35 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     public Blob getBlob(String reference) {
         try {
             if (true) {
-                synchronized (blobStore) {
-                    return new Blob() {
-                        @Override
-                        public InputStream getNewStream() {
-                            try {
-                                return blobStore.getInputStream(reference);
-                            } catch (IOException ex) {
-                                return null;
-                            }
+                return new Blob() {
+                    @Override
+                    public InputStream getNewStream() {
+                        try {
+                            return blobStore.getInputStream(reference);
+                        } catch (IOException ex) {
+                            return null;
                         }
+                    }
 
-                        @Override
-                        public long length() {
-                            try {
-                                return blobStore.getBlobLength(reference);
-                            } catch (IOException ex) {
-                                return 0;
-                            }
+                    @Override
+                    public long length() {
+                        try {
+                            return blobStore.getBlobLength(reference);
+                        } catch (IOException ex) {
+                            return 0;
                         }
+                    }
 
-                        @Override
-                        public String getReference() {
-                            return reference;
-                        }
+                    @Override
+                    public String getReference() {
+                        return reference;
+                    }
 
-                        @Override
-                        public String getContentIdentity() {
-                            throw new UnsupportedOperationException();
-                        }
-                    };
-                }
+                    @Override
+                    public String getContentIdentity() {
+                        throw new UnsupportedOperationException();
+                    }
+                };
             } else {
                 return blobCache.get(reference, () -> ZeroMQBlob.newInstance(this, reference));
             }
