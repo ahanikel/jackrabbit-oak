@@ -140,16 +140,26 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         changeDispatcher = new ChangeDispatcher(getRoot());
     }
 
-    private void init() {
+    public void init() {
         final String uuid = readRoot();
         if ("undefined".equals(uuid)) {
-            final NodeBuilder builder = EMPTY_NODE(this, this::readNodeState, this::write).builder();
-            builder.setChildNode("root");
-            builder.setChildNode("checkpoints");
-            builder.setChildNode("blobs");
-            NodeState newRoot = builder.getNodeState();
-            setRoot(((ZeroMQNodeState) newRoot).getUuid());
+            reset();
         }
+    }
+
+    /**
+     Wipe the complete repo by setting the root to an empty node.
+     The existing nodes remain lingering around unless some GC mechanism (which is
+     not yet implemented) removes them.
+     This is needed for testing.
+    */
+    public void reset() {
+        final NodeBuilder builder = EMPTY_NODE(this, this::readNodeState, this::write).builder();
+        builder.setChildNode("root");
+        builder.setChildNode("checkpoints");
+        builder.setChildNode("blobs");
+        NodeState newRoot = builder.getNodeState();
+        setRoot(((ZeroMQNodeState) newRoot).getUuid());
     }
 
     private String readRoot() {
@@ -179,6 +189,9 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
 
     private synchronized NodeState getSuperRoot() {
         final String uuid = readRoot();
+        if ("undefined".equals(uuid)) {
+            throw new IllegalStateException("root is undefined, forgot to call init()?");
+        }
         return readNodeState(uuid);
     }
 
@@ -228,7 +241,9 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         final NodeState afterHook = commitHook.processCommit(newBase, after, info);
         mergeRoot("root", afterHook);
         ((ZeroMQNodeBuilder) builder).reset(afterHook);
-        changeDispatcher.contentChanged(afterHook, info);
+        if (changeDispatcher != null) {
+            changeDispatcher.contentChanged(afterHook, info);
+        }
         return afterHook;
     }
 
