@@ -259,6 +259,14 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         }
     }
 
+    private synchronized NodeState mergeCheckpoint(NodeBuilder builder) {
+            final NodeState newBase = getCheckpointRoot();
+            final NodeState after = ((ZeroMQNodeBuilder) builder).applyTo(newBase);
+            mergeRoot("checkpoints", after);
+            ((ZeroMQNodeBuilder) builder).reset(after);
+            return after;
+    }
+
     private ZeroMQNodeState readNodeState(String uuid) {
         try {
             return nodeStateCache.get(uuid, () -> {
@@ -401,39 +409,44 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     }
 
     @Override
-    public String checkpoint(long lifetime, Map<String, String> properties) {
-        log.error("Unsupported");
-        throw new UnsupportedOperationException("Not supported yet.");
+    public String checkpoint(long lifetimeMicros, Map<String, String> properties) {
+        final ZeroMQNodeState currentRoot = (ZeroMQNodeState) getRoot();
+        final String nodeName = currentRoot.getUuid().toString() + properties.toString();
+        final NodeBuilder builder = getCheckpointRoot().builder()
+                .setChildNode(nodeName, currentRoot)
+                .setProperty("lifetimeMicros", lifetimeMicros);
+        mergeCheckpoint(builder);
+        return nodeName;
     }
 
     @Override
     public String checkpoint(long lifetime) {
         log.error("Unsupported");
-        throw new UnsupportedOperationException("Not supported yet.");
+        throw new UnsupportedOperationException("checkpoint/1 not supported yet.");
     }
 
     @Override
     public Map<String, String> checkpointInfo(String checkpoint) {
         log.error("Unsupported");
-        throw new UnsupportedOperationException("Not supported yet.");
+        throw new UnsupportedOperationException("checkpointInfo/1 not supported yet.");
     }
 
     @Override
     public Iterable<String> checkpoints() {
         log.error("Unsupported");
-        throw new UnsupportedOperationException("Not supported yet.");
+        throw new UnsupportedOperationException("checkpoints() not supported yet.");
     }
 
     @Override
     public NodeState retrieve(String checkpoint) {
         log.error("Unsupported");
-        throw new UnsupportedOperationException("Not supported yet.");
+        throw new UnsupportedOperationException("retrieve() not supported yet.");
     }
 
     @Override
     public boolean release(String checkpoint) {
         log.error("Unsupported");
-        throw new UnsupportedOperationException("Not supported yet.");
+        throw new UnsupportedOperationException("release() not supported yet.");
     }
 
     @Override
