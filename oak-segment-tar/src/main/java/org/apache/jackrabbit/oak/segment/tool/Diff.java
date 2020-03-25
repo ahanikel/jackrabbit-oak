@@ -29,6 +29,7 @@ import java.io.File;
 import java.io.PrintWriter;
 import java.util.Iterator;
 import java.util.List;
+import org.apache.jackrabbit.oak.segment.LoggingHook;
 
 import org.apache.jackrabbit.oak.segment.RecordId;
 import org.apache.jackrabbit.oak.segment.SegmentIdProvider;
@@ -292,7 +293,7 @@ public class Diff {
                 before = before.getChildNode(name);
                 after = after.getChildNode(name);
             }
-            after.compareAgainstBaseState(before, new PrintingDiff(pw, filter));
+            after.compareAgainstBaseState(before, LoggingHook.newLoggingHook(pw::println));
             return true;
         } catch (SegmentNotFoundException ex) {
             System.out.println(ex.getMessage());
