@@ -302,8 +302,8 @@ public class Replayer implements Runnable {
         private final ExecutorService executor;
         private volatile boolean terminationRequest;
 
-        private static final int THREADWAITTIMEMILLIS = 1000;
-        private static final int NWORKERS = 5;
+        private static final int THREADWAITTIMEMILLIS = 0;
+        private static final int NWORKERS = 1;
 
         public ReplayWorker(final NodeStore store) {
             this.queue = new ConcurrentLinkedQueue();
