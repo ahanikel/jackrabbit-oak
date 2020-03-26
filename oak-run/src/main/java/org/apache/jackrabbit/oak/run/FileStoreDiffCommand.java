@@ -41,6 +41,8 @@ class FileStoreDiffCommand implements Command {
         OptionSpec<?> incrementalO = parser.accepts("incremental", "Runs diffs between each subsequent revisions in the provided interval");
         OptionSpec<String> pathO = parser.accepts("path", "Filter diff by given path").withRequiredArg().ofType(String.class).defaultsTo("/");
         OptionSpec<?> ignoreSNFEsO = parser.accepts("ignore-snfes", "Ignores SegmentNotFoundExceptions and continues running the diff (experimental)");
+        OptionSpec<?> send0 = parser.accepts("send", "Send a stream to stdout");
+        OptionSpec<?> receive0 = parser.accepts("receive", "Receive a stream from stdin");
         OptionSet options = parser.parse(args);
 
         if (options.has(help)) {
@@ -62,6 +64,8 @@ class FileStoreDiffCommand implements Command {
         boolean incremental = options.has(incrementalO);
         String path = pathO.value(options);
         boolean ignoreSNFEs = options.has(ignoreSNFEsO);
+        boolean send = options.has(send0);
+        boolean receive = options.has(receive0);
 
         int statusCode;
         if (listOnly) {
@@ -78,6 +82,8 @@ class FileStoreDiffCommand implements Command {
                 .withIncremental(incremental)
                 .withFilter(path)
                 .withIgnoreMissingSegments(ignoreSNFEs)
+                .withSend(send)
+                .withReceive(receive)
                 .build()
                 .run();
         }
@@ -85,7 +91,6 @@ class FileStoreDiffCommand implements Command {
     }
 
     private File defaultOutFile() {
-        return new File("diff_" + System.currentTimeMillis() + ".log");
+        return new File("/dev/stdout");
     }
-
 }

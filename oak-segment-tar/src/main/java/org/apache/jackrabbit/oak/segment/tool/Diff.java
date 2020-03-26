@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.jackrabbit.oak.segment.tool;
 
 import static com.google.common.base.Preconditions.checkNotNull;
@@ -37,6 +36,7 @@ import org.apache.jackrabbit.oak.segment.SegmentIdProvider;
 import org.apache.jackrabbit.oak.segment.SegmentNotFoundException;
 import org.apache.jackrabbit.oak.segment.file.ReadOnlyFileStore;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
+import org.apache.jackrabbit.oak.spi.state.NodeStore;
 
 /**
  * Shows the differences between two head states.
@@ -68,6 +68,10 @@ public class Diff {
         private String filter;
 
         private boolean ignoreMissingSegments;
+
+        private boolean send;
+
+        private boolean receive;
 
         private Builder() {
             // Prevent external instantiation.
@@ -157,16 +161,28 @@ public class Diff {
             return this;
         }
 
+        public Builder withSend(boolean send) {
+            this.send = send;
+            return this;
+        }
+
+        public Builder withReceive(boolean receive) {
+            this.receive = receive;
+            return this;
+        }
+
         /**
          * Create an executable version of the {@link Diff} command.
          *
          * @return an instance of {@link Runnable}.
          */
         public Diff build() {
-            checkNotNull(path);
-            checkNotNull(interval);
-            checkNotNull(out);
-            checkNotNull(filter);
+            if (!send && !receive) {
+                checkNotNull(path);
+                checkNotNull(interval);
+                checkNotNull(out);
+                checkNotNull(filter);
+            }
             return new Diff(this);
         }
 
@@ -184,6 +200,10 @@ public class Diff {
 
     private final boolean ignoreMissingSegments;
 
+    private final boolean send;
+
+    private final boolean receive;
+
     private Diff(Builder builder) {
         this.path = builder.path;
         this.interval = builder.interval;
@@ -191,6 +211,8 @@ public class Diff {
         this.out = builder.out;
         this.filter = builder.filter;
         this.ignoreMissingSegments = builder.ignoreMissingSegments;
+        this.send = builder.send;
+        this.receive = builder.receive;
     }
 
     public int run() {
@@ -204,13 +226,13 @@ public class Diff {
     }
 
     private void diff() throws Exception {
-        System.out.println("Store " + path);
-        System.out.println("Writing diff to " + out);
+        System.err.println("Store " + path);
+        System.err.println("Writing diff to " + out);
 
         String[] tokens = interval.trim().split("\\.\\.");
 
         if (tokens.length != 2) {
-            System.out.println("Error parsing revision interval '" + interval + "'.");
+            System.err.println("Error parsing revision interval '" + interval + "'.");
             return;
         }
 
@@ -227,7 +249,7 @@ public class Diff {
                     idL = fromString(idProvider, tokens[0]);
                 }
             } catch (IllegalArgumentException e) {
-                System.out.println("Invalid left endpoint for interval " + interval);
+                System.err.println("Invalid left endpoint for interval " + interval);
                 return;
             }
 
@@ -240,7 +262,7 @@ public class Diff {
                     idR = fromString(idProvider, tokens[1]);
                 }
             } catch (IllegalArgumentException e) {
-                System.out.println("Invalid left endpoint for interval " + interval);
+                System.err.println("Invalid left endpoint for interval " + interval);
                 return;
             }
 
@@ -249,12 +271,12 @@ public class Diff {
             try (PrintWriter pw = new PrintWriter(out)) {
                 if (incremental) {
                     List<String> revs = readRevisions(path);
-                    System.out.println("Generating diff between " + idL + " and " + idR + " incrementally. Found " + revs.size() + " revisions.");
+                    System.err.println("Generating diff between " + idL + " and " + idR + " incrementally. Found " + revs.size() + " revisions.");
 
                     int s = revs.indexOf(idL.toString10());
                     int e = revs.indexOf(idR.toString10());
                     if (s == -1 || e == -1) {
-                        System.out.println("Unable to match input revisions with FileStore.");
+                        System.err.println("Unable to match input revisions with FileStore.");
                         return;
                     }
                     List<String> revDiffs = revs.subList(Math.min(s, e), Math.max(s, e) + 1);
@@ -263,7 +285,7 @@ public class Diff {
                         revDiffs = reverse(revDiffs);
                     }
                     if (revDiffs.size() < 2) {
-                        System.out.println("Nothing to diff: " + revDiffs);
+                        System.err.println("Nothing to diff: " + revDiffs);
                         return;
                     }
                     Iterator<String> revDiffsIt = revDiffs.iterator();
@@ -277,22 +299,22 @@ public class Diff {
                         }
                     }
                 } else {
-                    System.out.println("Generating diff between " + idL + " and " + idR);
+                    System.err.println("Generating diff between " + idL + " and " + idR);
                     diff(store, idL, idR, pw);
                 }
             }
 
             long dur = System.currentTimeMillis() - start;
-            System.out.println("Finished in " + dur + " ms.");
+            System.err.println("Finished in " + dur + " ms.");
         }
     }
 
     private boolean diff(ReadOnlyFileStore store, RecordId idL, RecordId idR, PrintWriter pw) {
         pw.println("rev " + idL + ".." + idR);
         try {
-            NodeState before = RecordId.NULL.equals(idL) ?
-                EmptyNodeState.EMPTY_NODE :
-                store.getReader().readNode(idL).getChildNode("root");
+            NodeState before = RecordId.NULL.equals(idL)
+                ? EmptyNodeState.EMPTY_NODE
+                : store.getReader().readNode(idL).getChildNode("root");
             NodeState after = store.getReader().readNode(idR).getChildNode("root");
             for (String name : elements(filter)) {
                 before = before.getChildNode(name);
@@ -301,10 +323,15 @@ public class Diff {
             after.compareAgainstBaseState(before, LoggingHook.newLoggingHook(pw::println));
             return true;
         } catch (SegmentNotFoundException ex) {
-            System.out.println(ex.getMessage());
+            System.err.println(ex.getMessage());
             pw.println("#SNFE " + ex.getSegmentId());
             return false;
         }
+    }
+
+    private void receive(NodeStore store) {
+        final Replayer replayer = new Replayer(System.in, store);
+        replayer.run();
     }
 
 }
