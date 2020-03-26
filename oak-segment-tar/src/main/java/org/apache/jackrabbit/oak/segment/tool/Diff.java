@@ -29,6 +29,7 @@ import java.io.File;
 import java.io.PrintWriter;
 import java.util.Iterator;
 import java.util.List;
+import org.apache.jackrabbit.oak.plugins.memory.EmptyNodeState;
 import org.apache.jackrabbit.oak.segment.LoggingHook;
 
 import org.apache.jackrabbit.oak.segment.RecordId;
@@ -220,6 +221,8 @@ public class Diff {
             try {
                 if (tokens[0].equalsIgnoreCase("head")) {
                     idL = store.getRevisions().getHead();
+                } else if (tokens[0].equalsIgnoreCase("null")) {
+                    idL = RecordId.NULL;
                 } else {
                     idL = fromString(idProvider, tokens[0]);
                 }
@@ -287,7 +290,9 @@ public class Diff {
     private boolean diff(ReadOnlyFileStore store, RecordId idL, RecordId idR, PrintWriter pw) {
         pw.println("rev " + idL + ".." + idR);
         try {
-            NodeState before = store.getReader().readNode(idL).getChildNode("root");
+            NodeState before = RecordId.NULL.equals(idL) ?
+                EmptyNodeState.EMPTY_NODE :
+                store.getReader().readNode(idL).getChildNode("root");
             NodeState after = store.getReader().readNode(idR).getChildNode("root");
             for (String name : elements(filter)) {
                 before = before.getChildNode(name);

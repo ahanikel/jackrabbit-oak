@@ -37,7 +37,7 @@ class FileStoreDiffCommand implements Command {
         OptionSpec<File> storeO = parser.nonOptions("Path to segment store (required)").ofType(File.class);
         OptionSpec<File> outO = parser.accepts("output", "Output file").withRequiredArg().ofType(File.class).defaultsTo(defaultOutFile());
         OptionSpec<?> listOnlyO = parser.accepts("list", "Lists available revisions");
-        OptionSpec<String> intervalO = parser.accepts("diff", "Revision diff interval. Ex '--diff=R0..R1'. 'HEAD' can be used to reference the latest head revision, ie. '--diff=R0..HEAD'").withRequiredArg().ofType(String.class);
+        OptionSpec<String> intervalO = parser.accepts("diff", "Revision diff interval. Ex '--diff=R0..R1'. 'HEAD' can be used to reference the latest head revision, ie. '--diff=R0..HEAD'. Similarly 'NULL' can be used to reference the initial revision.").withRequiredArg().ofType(String.class);
         OptionSpec<?> incrementalO = parser.accepts("incremental", "Runs diffs between each subsequent revisions in the provided interval");
         OptionSpec<String> pathO = parser.accepts("path", "Filter diff by given path").withRequiredArg().ofType(String.class).defaultsTo("/");
         OptionSpec<?> ignoreSNFEsO = parser.accepts("ignore-snfes", "Ignores SegmentNotFoundExceptions and continues running the diff (experimental)");
