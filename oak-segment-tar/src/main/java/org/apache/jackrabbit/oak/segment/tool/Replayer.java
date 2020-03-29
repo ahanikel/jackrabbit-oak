@@ -50,12 +50,21 @@ import org.apache.jackrabbit.oak.spi.state.NodeStore;
 
 public class Replayer implements Runnable {
 
-    private final InputStream is;
+    private InputStream is;
+    private boolean errorsAreFatal;
     private final ReplayWorker worker;
 
-    public Replayer(InputStream is, NodeStore store) {
-        this.is = is;
+    public Replayer(NodeStore store) {
         this.worker = new ReplayWorker(store);
+        this.errorsAreFatal = false;
+    }
+
+    public void setInputStream(InputStream is) {
+        this.is = is;
+    }
+
+    public void errorsAreFatal(boolean fatal) {
+        this.errorsAreFatal = fatal;
     }
 
     @Override
@@ -63,7 +72,7 @@ public class Replayer implements Runnable {
 
         worker.start();
 
-        final ReplayItemIterator it = new ReplayItemIterator(is);
+        final ReplayItemIterator it = new ReplayItemIterator(is, errorsAreFatal);
 
         while (it.hasNext()) {
             worker.add(it.next());
@@ -141,7 +150,10 @@ public class Replayer implements Runnable {
 
         private ReplayItem currentItem = null;
 
-        public ReplayItemIterator(InputStream is) {
+        private final boolean errorsAreFatal;
+
+        public ReplayItemIterator(InputStream is, boolean errorsAreFatal) {
+            this.errorsAreFatal = errorsAreFatal;
             InputStreamReader isr = new InputStreamReader(is);
             reader = new BufferedReader(isr);
             readOne();
@@ -166,7 +178,10 @@ public class Replayer implements Runnable {
                     currentItem = null;
                 } else {
                     final StringTokenizer t = new StringTokenizer(line);
-                    currentItem = parseReplayItem(t);
+                    currentItem = parseReplayItem(t, errorsAreFatal);
+                    if (currentItem == null) {
+                        readOne();
+                    }
                 }
             } catch (IOException ioe) {
                 currentItem = null;
@@ -195,7 +210,7 @@ public class Replayer implements Runnable {
             return ret;
         }
 
-        private static ReplayItem parseReplayItem(StringTokenizer t) {
+        private static ReplayItem parseReplayItem(StringTokenizer t, boolean errorsAreFatal) {
 
             final Calendar cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
             final long millis = Long.parseLong(t.nextToken());
@@ -270,8 +285,12 @@ public class Replayer implements Runnable {
                     final Operation op = Operation.OP_NODE_END;
                     return new ReplayItem(cal, sThread, op, null, null, null, null);
                 }
-                default:
-                    throw new IllegalStateException("Unknown operation: " + sOp);
+                default: {
+                    if (errorsAreFatal) {
+                        throw new IllegalStateException("Unknown operation: " + sOp);
+                    }
+                    return null;
+                }
             }
         }
     }
@@ -302,7 +321,7 @@ public class Replayer implements Runnable {
         private final ExecutorService executor;
         private volatile boolean terminationRequest;
 
-        private static final int THREADWAITTIMEMILLIS = 0;
+        private static final int THREADWAITTIMEMILLIS = 1;
         private static final int NWORKERS = 1;
 
         public ReplayWorker(final NodeStore store) {

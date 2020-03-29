@@ -25,6 +25,7 @@ import static org.apache.jackrabbit.oak.segment.tool.Utils.newBasicReadOnlyBlobS
 import static org.apache.jackrabbit.oak.segment.tool.Utils.readRevisions;
 
 import java.io.File;
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.Iterator;
 import java.util.List;
@@ -33,7 +34,11 @@ import org.apache.jackrabbit.oak.segment.LoggingHook;
 
 import org.apache.jackrabbit.oak.segment.RecordId;
 import org.apache.jackrabbit.oak.segment.SegmentIdProvider;
+import org.apache.jackrabbit.oak.segment.SegmentNodeStoreBuilders;
 import org.apache.jackrabbit.oak.segment.SegmentNotFoundException;
+import org.apache.jackrabbit.oak.segment.file.FileStore;
+import org.apache.jackrabbit.oak.segment.file.FileStoreBuilder;
+import org.apache.jackrabbit.oak.segment.file.InvalidFileStoreVersionException;
 import org.apache.jackrabbit.oak.segment.file.ReadOnlyFileStore;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
@@ -217,7 +222,11 @@ public class Diff {
 
     public int run() {
         try {
-            diff();
+            if (receive) {
+                receive();
+            } else {
+                diff();
+            }
             return 0;
         } catch (Exception e) {
             e.printStackTrace(System.err);
@@ -329,9 +338,11 @@ public class Diff {
         }
     }
 
-    private void receive(NodeStore store) {
-        final Replayer replayer = new Replayer(System.in, store);
+    private void receive() throws IOException, InvalidFileStoreVersionException {
+        final FileStore fs = FileStoreBuilder.fileStoreBuilder(path).build();
+        final NodeStore store = SegmentNodeStoreBuilders.builder(fs).build();
+        final Replayer replayer = new Replayer(store);
+        replayer.setInputStream(System.in);
         replayer.run();
     }
-
 }
