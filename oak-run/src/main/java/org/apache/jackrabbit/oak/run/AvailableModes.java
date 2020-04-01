@@ -64,5 +64,7 @@ public final class AvailableModes {
             .put("search-nodes", new SearchNodesCommand())
             .put("segment-copy", new SegmentCopyCommand())
             .put("server", new ServerCommand())
+            .put("send", new SendCommand())
+            .put("receive", new ReceiveCommand())
             .build());
 }

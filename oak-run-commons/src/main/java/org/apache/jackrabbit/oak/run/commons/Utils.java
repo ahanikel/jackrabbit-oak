@@ -57,7 +57,7 @@ public class Utils {
 
     public static void printProductInfo(String[] args, InputStream pom) {
         if(!Arrays.asList(args).contains("--quiet")) {
-            System.out.println(Utils.getProductInfo(pom));
+            System.err.println(Utils.getProductInfo(pom));
         }
     }
 }
