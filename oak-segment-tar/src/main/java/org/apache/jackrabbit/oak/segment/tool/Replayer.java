@@ -48,6 +48,8 @@ import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
 
+// TODO: this class can be used with any nodestore and should
+// therefore be moved elsewhere
 public class Replayer implements Runnable {
 
     private InputStream is;
@@ -200,7 +202,7 @@ public class Replayer implements Runnable {
         }
 
         private static List<String> urlDecodeList(String s) {
-            List<String> ret = new ArrayList();
+            List<String> ret = new ArrayList<String>();
             if (!s.equals("[]")) {
                 String[] items = s.substring(1, s.length() - 1).split(",");
                 for (int i = 0; i < items.length; ++i) {
@@ -321,11 +323,11 @@ public class Replayer implements Runnable {
         private final ExecutorService executor;
         private volatile boolean terminationRequest;
 
-        private static final int THREADWAITTIMEMILLIS = 1;
+        private static final int THREADWAITTIMEMILLIS = 1000;
         private static final int NWORKERS = 1;
 
         public ReplayWorker(final NodeStore store) {
-            this.queue = new ConcurrentLinkedQueue();
+            this.queue = new ConcurrentLinkedQueue<Replayer.ReplayItem>();
             this.terminationRequest = false;
             this.executor = Executors.newFixedThreadPool(NWORKERS);
 
@@ -335,13 +337,19 @@ public class Replayer implements Runnable {
                 public void run() {
                     while (!terminationRequest) {
                         while (!queue.isEmpty()) {
+                            System.err.println ("queue is not empty: " + queue.peek().getOp());
                             NodeState root = store.getRoot();
                             NodeBuilder builder = root.builder();
-                            run(builder);
                             try {
+                                run(builder);
+                            try {
+                                System.err.println ("Merging ***********************************");
                                 store.merge(builder, EmptyHook.INSTANCE, CommitInfo.EMPTY);
                             } catch (CommitFailedException ex) {
                                 System.err.println(ex.toString());
+                            }
+                            } catch (InterruptedException ex) {
+                                System.err.println ("Transaction timed out, discarding");
                             }
                         }
                         try {
@@ -349,11 +357,14 @@ public class Replayer implements Runnable {
                         } catch (InterruptedException ex) {
                             terminationRequest = true;
                         }
+                        System.err.println ("Queue is empty");
+                        System.err.println ("terminationRequest: " + terminationRequest);
                     }
+                    System.err.println ("Worker Terminated");
                 }
 
-                private void run(NodeBuilder builder) {
-                    for (;;) {
+                private void run(NodeBuilder builder) throws InterruptedException {
+                    for (int toCount = 0; toCount < 10; ++toCount) {
                         for (ReplayItem i = queue.poll(); i != null; i = queue.poll()) {
                             switch (i.getOp()) {
                                 case OP_NODE_END:
@@ -407,6 +418,7 @@ public class Replayer implements Runnable {
                                 }
                             }
                         }
+                        System.err.println ("Transaction not committed yet");
                         try {
                             Thread.sleep(THREADWAITTIMEMILLIS);
                         } catch (InterruptedException ex) {
@@ -414,6 +426,7 @@ public class Replayer implements Runnable {
                             return;
                         }
                     }
+                    throw new InterruptedException ("Transaction timed out");
                 }
             };
         }
@@ -439,7 +452,7 @@ public class Replayer implements Runnable {
                 }
                 // TODO: we should really treat blobs as non-strict
                 case "<BINARIES>": {
-                    List<Blob> blobs = new ArrayList();
+                    List<Blob> blobs = new ArrayList<Blob>();
                     values.forEach(val -> {
                         Blob blob;
                         try {
@@ -456,7 +469,7 @@ public class Replayer implements Runnable {
                     builder.setProperty(name, Long.valueOf(value), Type.LONG);
                     break;
                 case "<LONGS>": {
-                    List<Long> vals = new ArrayList();
+                    List<Long> vals = new ArrayList<Long>();
                     values.forEach(val -> vals.add(Long.valueOf(val)));
                     builder.setProperty(name, vals, Type.LONGS);
                     break;
@@ -465,7 +478,7 @@ public class Replayer implements Runnable {
                     builder.setProperty(name, Double.valueOf(value), Type.DOUBLE);
                     break;
                 case "<DOUBLES>": {
-                    List<Double> vals = new ArrayList();
+                    List<Double> vals = new ArrayList<Double>();
                     values.forEach(val -> vals.add(Double.valueOf(val)));
                     builder.setProperty(name, vals, Type.DOUBLES);
                     break;
@@ -480,7 +493,7 @@ public class Replayer implements Runnable {
                     builder.setProperty(name, Boolean.valueOf(value), Type.BOOLEAN);
                     break;
                 case "<BOOLEANS>": {
-                    List<Boolean> vals = new ArrayList();
+                    List<Boolean> vals = new ArrayList<Boolean>();
                     values.forEach(val -> vals.add(Boolean.valueOf(val)));
                     builder.setProperty(name, vals, Type.BOOLEANS);
                     break;
@@ -519,7 +532,7 @@ public class Replayer implements Runnable {
                     builder.setProperty(name, new BigDecimal(value), Type.DECIMAL);
                     break;
                 case "<DECIMALS>": {
-                    List<BigDecimal> vals = new ArrayList();
+                    List<BigDecimal> vals = new ArrayList<BigDecimal>();
                     values.forEach(val -> vals.add(new BigDecimal(val)));
                     builder.setProperty(name, vals, Type.DECIMALS);
                     break;
@@ -538,12 +551,16 @@ public class Replayer implements Runnable {
         }
 
         public void stop() {
-            terminationRequest = true;
+            this.terminationRequest = true;
+            System.err.println ("Worker asked to stop");
         }
 
         public void join() {
             try {
+                executor.shutdown();
+                System.err.println ("Waiting for executor to terminate");
                 executor.awaitTermination(1, TimeUnit.DAYS);
+                System.err.println ("Executor terminated");
             } catch (InterruptedException ex) {
             }
         }
