@@ -213,9 +213,9 @@ public class Replayer implements Runnable {
         private static ReplayItem parseReplayItem(StringTokenizer t, boolean errorsAreFatal) {
 
             final Calendar cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
-            final long millis = Long.parseLong(t.nextToken());
+            final long millis = 0;
             cal.setTimeInMillis(millis);
-            final String sThread = urlDecode(t.nextToken());
+            final String sThread = "";
             final String sOp = t.nextToken();
 
             switch (sOp) {
