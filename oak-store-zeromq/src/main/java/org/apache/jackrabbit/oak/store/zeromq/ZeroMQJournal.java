@@ -69,10 +69,10 @@ public class ZeroMQJournal implements Closeable {
         context = ZMQ.context(1);
 
         journalReaderService = context.socket(ZMQ.REP);
-        journalReaderService.bind("tcp://localhost:9000");
+        journalReaderService.bind("tcp://*:9000");
 
         journalWriterService = context.socket(ZMQ.REP);
-        journalWriterService.bind("tcp://localhost:9001");
+        journalWriterService.bind("tcp://*:9001");
 
         pollerItems = context.poller(2);
         pollerItems.register(journalReaderService, ZMQ.Poller.POLLIN);
