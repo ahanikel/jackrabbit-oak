@@ -76,7 +76,7 @@ public class ZeroMQBackendStore implements Closeable {
     private final int clusterInstance;
 
     public ZeroMQBackendStore() {
-        clusterInstance = Integer.getInteger("clusterInstance") - 1;
+        clusterInstance = Integer.getInteger("clusterInstance", 0);
         context = ZMQ.context(1);
         readerService = context.socket(ZMQ.REP);
         writerService = context.socket(ZMQ.REP);
@@ -140,8 +140,8 @@ public class ZeroMQBackendStore implements Closeable {
     }
 
     public void open() {
-        readerService.bind("tcp://localhost:" + (8000 + 2 * clusterInstance));
-        writerService.bind("tcp://localhost:" + (8001 + 2 * clusterInstance));
+        readerService.bind("tcp://*:" + (8000 + 2 * clusterInstance));
+        writerService.bind("tcp://*:" + (8001 + 2 * clusterInstance));
         pollerItems.register(readerService, ZMQ.Poller.POLLIN);
         pollerItems.register(writerService, ZMQ.Poller.POLLIN);
         startBackgroundThreads();

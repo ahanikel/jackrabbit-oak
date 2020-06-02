@@ -60,6 +60,13 @@ import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQEmptyNodeState.EMPTY_
 @Service
 public class ZeroMQNodeStore implements NodeStore, Observable {
 
+    public static final String PARAM_CLUSTERINSTANCES = "clusterInstances";
+    public static final String PARAM_BACKEND_PREFIX = "backendPrefix";
+    public static final String PARAM_JOURNAL_PREFIX = "journalPrefix";
+
+    public static String backendPrefix = System.getProperty(PARAM_BACKEND_PREFIX, "localhost");
+    public static String journalPrefix = System.getProperty(PARAM_JOURNAL_PREFIX, "localhost");
+
     private static final Logger log = LoggerFactory.getLogger(ZeroMQNodeStore.class.getName());
 
     @NotNull
@@ -96,24 +103,34 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
 
         context = ZMQ.context(1);
 
-        clusterInstances = Integer.getInteger("clusterInstances");
+        clusterInstances = Integer.getInteger(PARAM_CLUSTERINSTANCES);
 
         nodeStateReader = new ZMQ.Socket[clusterInstances];
         nodeStateWriter = new ZMQ.Socket[clusterInstances];
 
-        for (int i = 0; i < clusterInstances; ++i) {
-            nodeStateReader[i] = context.socket(ZMQ.REQ);
-            nodeStateReader[i].connect("tcp://localhost:" + (8000 + 2*i));
+        if ("localhost".equals(backendPrefix)) {
+            for (int i = 0; i < clusterInstances; ++i) {
+                nodeStateReader[i] = context.socket(ZMQ.REQ);
+                nodeStateReader[i].connect("tcp://localhost:" + (8000 + 2*i));
 
-            nodeStateWriter[i] = context.socket(ZMQ.REQ);
-            nodeStateWriter[i].connect("tcp://localhost:" + (8001 + 2*i));
+                nodeStateWriter[i] = context.socket(ZMQ.REQ);
+                nodeStateWriter[i].connect("tcp://localhost:" + (8001 + 2*i));
+            }
+        } else {
+            for (int i = 0; i < clusterInstances; ++i) {
+                nodeStateReader[i] = context.socket(ZMQ.REQ);
+                nodeStateReader[i].connect(String.format("tcp://%s%d:8000", backendPrefix, i));
+
+                nodeStateWriter[i] = context.socket(ZMQ.REQ);
+                nodeStateWriter[i].connect(String.format("tcp://%s%d:8001", backendPrefix, i));
+            }
         }
 
         journalReader = context.socket(ZMQ.REQ);
-        journalReader.connect("tcp://localhost:9000");
+        journalReader.connect("tcp://" + journalPrefix + ":9000");
 
         journalWriter = context.socket(ZMQ.REQ);
-        journalWriter.connect("tcp://localhost:9001");
+        journalWriter.connect("tcp://" + journalPrefix + ":9001");
 
         nodeStateCache = CacheBuilder.newBuilder()
             .maximumSize(1000).build();
