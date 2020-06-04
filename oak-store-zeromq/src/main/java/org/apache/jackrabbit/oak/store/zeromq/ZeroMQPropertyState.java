@@ -16,7 +16,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
 package org.apache.jackrabbit.oak.store.zeromq;
 
 import org.apache.jackrabbit.oak.api.Blob;
@@ -26,43 +25,93 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.UnsupportedEncodingException;
-import java.math.BigDecimal;
 import java.text.DateFormat;
-import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 
 import static org.apache.jackrabbit.oak.api.Type.*;
+import org.apache.jackrabbit.oak.plugins.value.Conversions;
+import org.apache.jackrabbit.oak.plugins.value.Conversions.Converter;
 
 public class ZeroMQPropertyState implements PropertyState {
 
-    private static final Logger log = LoggerFactory.getLogger(ZeroMQPropertyState.class);
-    private static final DateFormat dateParser = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX");
+    private static final Logger log = LoggerFactory.getLogger(
+            ZeroMQPropertyState.class);
+
+    private static final DateFormat dateParser = new SimpleDateFormat(
+            "yyyy-MM-dd'T'HH:mm:ss.SSSXXX");
 
     private final ZeroMQNodeStore ns;
-    private final String name;
-    private final Type type;
-    private final List<String> values;
 
-    ZeroMQPropertyState(ZeroMQNodeStore ns, String name, String type, List<String> values) {
+    private final String name;
+
+    private final Type type;
+
+    private final List<String> stringValues;
+
+    private final List<Object> values;
+
+    private Object convertTo(String value, Type type) {
+        if (isStringBased(type)) {
+            return value;
+        }
+
+        if (type.equals(BINARY)) {
+            return ns.getBlob(value);
+        }
+
+        Converter conv = Conversions.convert(value);
+
+        if (type.equals(BOOLEAN)) {
+            return conv.toBoolean();
+        }
+
+        if (type.equals(DECIMAL)) {
+            return conv.toDecimal();
+        }
+
+        if (type.equals(DOUBLE)) {
+            return conv.toDouble();
+        }
+
+        if (type.equals(LONG)) {
+            return conv.toLong();
+        }
+
+        throw new IllegalArgumentException("Unknown type: " + type.toString());
+    }
+
+    ZeroMQPropertyState(ZeroMQNodeStore ns, String name, String type,
+                        List<String> values) {
         this.ns = ns;
         this.name = name;
         this.type = Type.fromString(type);
-        this.values = values;
+        this.stringValues = values;
+        this.values = new ArrayList();
+        values.stream()
+                .forEach(v  -> this.values.add(convertTo(v, this.type
+                                                          .getBaseType())));
     }
 
     public ZeroMQPropertyState(ZeroMQNodeStore ns, PropertyState ps) {
-        this.values = new ArrayList<>();
         this.ns = ns;
         this.name = ps.getName();
         this.type = ps.getType();
+        this.stringValues = new ArrayList();
+        this.values = new ArrayList();
+
         if (ps.isArray()) {
             for (int i = 0; i < ps.count(); ++i) {
-                this.values.add(valueToString(type.getBaseType(), ps.getValue(type.getBaseType(), i)));
+                stringValues.add(ps.getValue(STRING, i));
+                values.add(ps.getValue(type.getBaseType(), i));
             }
-        } else {
-            this.values.add(valueToString(type, ps.getValue(type)));
+        }
+        else {
+            stringValues.add(ps.getValue(STRING));
+            values.add(ps.getValue(type));
         }
     }
 
@@ -81,87 +130,94 @@ public class ZeroMQPropertyState implements PropertyState {
         return type;
     }
 
+    private static boolean isStringBased(Type<?> type) {
+        return type.equals(STRING) || type.equals(DATE) || type.equals(NAME)
+                       || type.equals(PATH) || type.equals(REFERENCE) || type
+                .equals(
+                        WEAKREFERENCE) || type.equals(URI);
+    }
+
+    private static boolean areStringBased(Type<?> type) {
+        return type.equals(STRINGS) || type.equals(DATES) || type.equals(NAMES)
+                       || type.equals(PATHS) || type.equals(REFERENCES) || type
+                .equals(
+                        WEAKREFERENCES) || type.equals(URIS);
+    }
+
     @Override
     public <T> T getValue(Type<T> type) {
         if (type.isArray()) {
-            if (
-                    type.equals(STRINGS) ||
-                    type.equals(DATES) ||
-                    type.equals(NAMES) ||
-                    type.equals(PATHS) ||
-                    type.equals(REFERENCES) ||
-                    type.equals(WEAKREFERENCES) ||
-                    type.equals(URIS) ||
-                    type.equals(this.type)
-            ) {
-                return (T) values;
-            } else {
-                throw new IllegalStateException(type.toString());
+            if (this.type.equals(type)) {
+                return (T) Collections.unmodifiableList(values);
             }
-        } else {
-            return getValue(type, 0);
+            else if (type.equals(STRINGS)) {
+                return (T) Collections.unmodifiableList(stringValues);
+            }
+            else {
+                return (T) stringValues.stream()
+                        .map(v  -> convertTo(v, type));
+            }
+        }
+        else {
+            if (this.type.equals(type)) {
+                return (T) values.get(0);
+            }
+            else if (type.equals(STRING)) {
+                return (T) stringValues.get(0);
+            }
+            else {
+                return (T) convertTo(stringValues.get(0), type);
+            }
         }
     }
 
     @Override
     public <T> T getValue(Type<T> type, int index) {
-        if (
-                type.equals(STRING) ||
-                type.equals(DATE) ||
-                type.equals(NAME) ||
-                type.equals(PATH) ||
-                type.equals(REFERENCE) ||
-                type.equals(WEAKREFERENCE) ||
-                type.equals(URI)
-        ) {
-            return (T) values.get(index);
-        } else if (type.equals(BINARY)) {
-            if (true) {
-                return (T) ns.getBlob(values.get(index));
-            } else {
-                return (T) ZeroMQBlob.newInstance(this.ns, values.get(index));
-            }
-        } else if (type.equals(LONG)) {
-            if (this.type.equals(DATE)) {
-                try {
-                    return (T) Long.valueOf(dateParser.parse(values.get(index)).getTime());
-                } catch (ParseException ex) {
-                    throw new IllegalArgumentException(ex);
-                }
-            } else {
-                return (T) Long.valueOf(values.get(index));
-            }
-        } else if (type.equals(DOUBLE)) {
-            return (T) Double.valueOf(values.get(index));
-        } else if (type.equals(BOOLEAN)) {
-            return (T) Boolean.valueOf(values.get(index));
-        } else if (type.equals(DECIMAL)) {
-            return (T) new BigDecimal(values.get(index));
-        } else {
+        if (index < 0 || index >= this.count()) {
+            throw new IndexOutOfBoundsException(String.format(
+                    "index %d requested but we only have %d values", index,
+                    count()));
+        }
+
+        if (type.isArray() || type.equals(Type.UNDEFINED)) {
             throw new IllegalArgumentException(type.toString());
+        }
+
+        if (this.type.equals(type)) {
+            return (T) values.get(0);
+        }
+        else if (type.equals(STRING)) {
+            return (T) stringValues.get(0);
+        }
+        else {
+            return (T) convertTo(stringValues.get(0), type);
         }
     }
 
     @Override
     public long size() {
-        // TODO: not sure if that's correct
-        if (count() == 0) {
-            return 0;
+        if (this.isArray()) {
+            throw new IllegalStateException();
         }
-        return values.get(0).length();
+        return stringValues.get(0).length();
     }
 
     @Override
     public long size(int index) {
-        return values.get(index).length();
+        if (index < 0 || index >= this.count()) {
+            throw new IndexOutOfBoundsException(String.format(
+                    "index %d requested but we only have %d values", index,
+                    count()));
+        }
+        return stringValues.get(index).length();
     }
 
     @Override
     public int count() {
-        // TODO: not sure if that's correct
         if (type.isArray()) {
             return values.size();
-        } else {
+        }
+        else {
             return 1;
         }
     }
@@ -172,11 +228,19 @@ public class ZeroMQPropertyState implements PropertyState {
             return false;
         }
         PropertyState other = (PropertyState) that;
-        return
-            this.getType().equals(other.getType()) &&
-            this.getName().equals(other.getName()) &&
-            this.getValue(this.getType()).equals(other.getValue(other.getType()))
-        ;
+        return this.getType()
+                .equals(other.getType()) && this.getName()
+                .equals(other.getName()) && this.getValue(this.getType())
+                .equals(other.getValue(other.getType()));
+    }
+
+    @Override
+    public int hashCode() {
+        int hash = 7;
+        hash = 11 * hash + Objects.hashCode(this.name);
+        hash = 11 * hash + Objects.hashCode(this.type);
+        hash = 11 * hash + Objects.hashCode(this.stringValues);
+        return hash;
     }
 
     public StringBuilder serialise(final StringBuilder sb) {
@@ -186,34 +250,40 @@ public class ZeroMQPropertyState implements PropertyState {
         sb.append("> ");
         if (isArray()) {
             sb.append("= [");
-            values.forEach((String s) -> {
+            stringValues.forEach((String s)  -> {
                 if (type.equals(BINARIES)) {
                     sb.append(s);
-                } else {
+                }
+                else {
                     sb.append(safeEncode(s));
                 }
                 sb.append(',');
             });
             replaceOrAppendLastChar(sb, ',', ']');
-        } else {
+        }
+        else {
             try {
                 sb.append("= ");
                 if (type.equals(BINARY)) {
-                    sb.append(values.get(0));
-                } else {
-                    sb.append(safeEncode(values.get(0)));
+                    sb.append(stringValues.get(0));
                 }
-            } catch (ClassCastException e) {
+                else {
+                    sb.append(safeEncode(stringValues.get(0)));
+                }
+            }
+            catch (ClassCastException e) {
                 log.error(e.toString());
             }
         }
         return sb;
     }
 
-    private static void replaceOrAppendLastChar(StringBuilder b, char oldChar, char newChar) {
+    private static void replaceOrAppendLastChar(StringBuilder b, char oldChar,
+                                                char newChar) {
         if (b.charAt(b.length() - 1) == oldChar) {
             b.setCharAt(b.length() - 1, newChar);
-        } else {
+        }
+        else {
             b.append(newChar);
         }
     }
@@ -221,32 +291,27 @@ public class ZeroMQPropertyState implements PropertyState {
     private static String safeEncode(String value) {
         try {
             return SafeEncode.safeEncode(value);
-        } catch (UnsupportedEncodingException e) {
+        }
+        catch (UnsupportedEncodingException e) {
             return "ERROR: " + e;
         }
     }
 
     private static <T> String valueToString(Type<T> from, T v) {
-        if (
-                from.equals(STRING) ||
-                from.equals(DATE) ||
-                from.equals(NAME) ||
-                from.equals(PATH) ||
-                from.equals(REFERENCE) ||
-                from.equals(WEAKREFERENCE) ||
-                from.equals(URI)
-        ) {
+        if (from.equals(STRING) || from.equals(DATE) || from.equals(NAME)
+                    || from.equals(PATH) || from.equals(REFERENCE) || from
+                .equals(
+                        WEAKREFERENCE) || from.equals(URI)) {
             return (String) v;
-        } else if (from.equals(BINARY)) {
+        }
+        else if (from.equals(BINARY)) {
             return ((Blob) v).getReference();
-        } else if (
-                from.equals(LONG) ||
-                from.equals(DOUBLE) ||
-                from.equals(BOOLEAN) ||
-                from.equals(DECIMAL)
-        ) {
+        }
+        else if (from.equals(LONG) || from.equals(DOUBLE) || from
+                .equals(BOOLEAN) || from.equals(DECIMAL)) {
             return v.toString();
-        } else {
+        }
+        else {
             throw new IllegalArgumentException(from.toString());
         }
     }
