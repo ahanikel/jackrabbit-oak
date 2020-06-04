@@ -15,11 +15,11 @@
         <dkr.registry>${dockerRegistry-Host}</dkr.registry>
         <dkr.image.namespace>ahanikel</dkr.image.namespace>
         <dkr.image.name>${dkr.registry}/${dkr.image.namespace}/${project.artifactId}</dkr.image.name>
-        <quickstartdir>/Users/axel/Documents/git/quickstart</quickstartdir>
+        <quickstartdir>${HOME}/Downloads</quickstartdir>
         <quickstartfile>cq-quickstart-6.6.0-1.12.0.nosegment.jar</quickstartfile>
-        <zeromqarchivedir>/Users/axel/Documents/git/jackrabbit-oak/oak-store-zeromq/target</zeromqarchivedir>
+        <zeromqarchivedir>${HOME}/Source/jackrabbit-oak/oak-store-zeromq/target</zeromqarchivedir>
         <zeromqarchivefile>oak-store-zeromq-1.12.0.jar</zeromqarchivefile>
-        <licensedir>/Users/axel/Downloads</licensedir>
+        <licensedir>${HOME}/Downloads</licensedir>
         <licensefile>license.properties</licensefile>
     </properties>
 
