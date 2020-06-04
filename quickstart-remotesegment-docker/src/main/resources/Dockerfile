@@ -1,4 +1,4 @@
-FROM docker-asr-release.dr.corp.adobe.com/asr/java_v11:1.7
+FROM openjdk:11
 ENV slingarchive=cq-quickstart-6.6.0-1.12.0.nosegment.jar
 ENV zeromqarchive=oak-store-zeromq-1.12.0.jar
 ENV configfile=org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeStore.config
