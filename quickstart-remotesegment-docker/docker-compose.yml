@@ -1,23 +1,25 @@
 version: "3"
 services:
   backend0:
-    image: docker2-aemupgrades-release-local.dr.corp.adobe.com/ahanikel/oak-store-zeromq-service-store
+    image: myhub/ahanikel/oak-store-zeromq-service-store
     ports:
       - "8000-8001"
   backend1:
-    image: docker2-aemupgrades-release-local.dr.corp.adobe.com/ahanikel/oak-store-zeromq-service-store
+    image: myhub/ahanikel/oak-store-zeromq-service-store
     ports:
       - "8000-8001"
   journal:
-    image: docker2-aemupgrades-release-local.dr.corp.adobe.com/ahanikel/oak-store-zeromq-service-journal
+    image: myhub/ahanikel/oak-store-zeromq-service-journal
     ports:
       - "9000-9001"
   quickstart:
-    image: docker2-aemupgrades-release-local.dr.corp.adobe.com/ahanikel/quickstart-remotesegment-docker
+    image: myhub/ahanikel/quickstart-remotesegment-docker
     ports:
       - "4502:4502"
+      - "5005:5005"
     environment:
       - clusterInstances=2
       - backendPrefix=backend
       - journalPrefix=journal
+      - javaargs=-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=*:5005
       - jarargs=-nofork -nobrowser
