@@ -92,8 +92,10 @@ public class ZeroMQPropertyState implements PropertyState {
         this.stringValues = values;
         this.values = new ArrayList();
         values.stream()
-                .forEach(v  -> this.values.add(convertTo(v, this.type
-                                                          .getBaseType())));
+                .forEach(v  -> this.values.add(convertTo(v, this.type.isArray()
+                                                                     ? this.type
+                                                                  .getBaseType()
+                                                                     : this.type)));
     }
 
     public ZeroMQPropertyState(ZeroMQNodeStore ns, PropertyState ps) {
@@ -105,13 +107,28 @@ public class ZeroMQPropertyState implements PropertyState {
 
         if (ps.isArray()) {
             for (int i = 0; i < ps.count(); ++i) {
-                stringValues.add(ps.getValue(STRING, i));
-                values.add(ps.getValue(type.getBaseType(), i));
+                if (type.getBaseType()
+                        .equals(BINARY)) {
+                    final Blob blob = (Blob) ps.getValue(type.getBaseType(), i);
+                    stringValues.add(blob.getReference());
+                    values.add(blob);
+                }
+                else {
+                    stringValues.add(ps.getValue(STRING, i));
+                    values.add(ps.getValue(type.getBaseType(), i));
+                }
             }
         }
         else {
-            stringValues.add(ps.getValue(STRING));
-            values.add(ps.getValue(type));
+            if (type.equals(BINARY)) {
+                final Blob blob = (Blob) ps.getValue(type);
+                stringValues.add(blob.getReference());
+                values.add(blob);
+            }
+            else {
+                stringValues.add(ps.getValue(STRING));
+                values.add(ps.getValue(type));
+            }
         }
     }
 
@@ -154,8 +171,11 @@ public class ZeroMQPropertyState implements PropertyState {
                 return (T) Collections.unmodifiableList(stringValues);
             }
             else {
-                return (T) stringValues.stream()
-                        .map(v  -> convertTo(v, type));
+                List ret = new ArrayList();
+                stringValues.stream()
+                        .forEach(v  -> ret
+                                .add(convertTo(v, type.getBaseType())));
+                return (T) ret;
             }
         }
         else {
@@ -184,13 +204,13 @@ public class ZeroMQPropertyState implements PropertyState {
         }
 
         if (this.type.equals(type)) {
-            return (T) values.get(0);
+            return (T) values.get(index);
         }
         else if (type.equals(STRING)) {
-            return (T) stringValues.get(0);
+            return (T) stringValues.get(index);
         }
         else {
-            return (T) convertTo(stringValues.get(0), type);
+            return (T) convertTo(stringValues.get(index), type);
         }
     }
 
@@ -199,7 +219,8 @@ public class ZeroMQPropertyState implements PropertyState {
         if (this.isArray()) {
             throw new IllegalStateException();
         }
-        return stringValues.get(0).length();
+        return stringValues.get(0)
+                .length();
     }
 
     @Override
@@ -209,7 +230,8 @@ public class ZeroMQPropertyState implements PropertyState {
                     "index %d requested but we only have %d values", index,
                     count()));
         }
-        return stringValues.get(index).length();
+        return stringValues.get(index)
+                .length();
     }
 
     @Override
