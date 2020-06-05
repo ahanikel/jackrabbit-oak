@@ -26,7 +26,6 @@ public class ZeroMQFixture extends NodeStoreFixture {
 
     @Override
     public NodeStore createNodeStore() {
-        System.setProperty("clusterInstance", "1");
         System.setProperty("clusterInstances", "1");
         final ZeroMQNodeStore ns = new ZeroMQNodeStore();
         ns.reset();
