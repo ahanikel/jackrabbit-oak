@@ -48,6 +48,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
+import org.apache.jackrabbit.oak.plugins.memory.AbstractBlob;
 import org.apache.jackrabbit.oak.spi.blob.BlobStore;
 import org.apache.jackrabbit.oak.spi.blob.FileBlobStore;
 
@@ -394,7 +395,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     public Blob getBlob(String reference) {
         try {
             if (true) {
-                return new Blob() {
+                return new AbstractBlob() {
                     @Override
                     public InputStream getNewStream() {
                         try {
@@ -416,11 +417,6 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
                     @Override
                     public String getReference() {
                         return reference;
-                    }
-
-                    @Override
-                    public String getContentIdentity() {
-                        throw new UnsupportedOperationException();
                     }
                 };
             } else {
