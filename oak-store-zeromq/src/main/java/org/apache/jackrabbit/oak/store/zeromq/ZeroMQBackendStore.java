@@ -111,11 +111,7 @@ public class ZeroMQBackendStore implements Closeable {
     }
 
     public void deactivate() {
-        try {
-            close();
-        } catch (IOException ioe) {
-            log.warn(ioe.toString());
-        }
+        close();
     }
 
     void handleReaderService(String msg) {
@@ -148,7 +144,7 @@ public class ZeroMQBackendStore implements Closeable {
     }
 
     @Override
-    public void close() throws IOException {
+    public void close() {
         stopBackgroundThreads();
         pollerItems.close();
         writerService.close();
