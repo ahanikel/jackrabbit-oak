@@ -382,6 +382,15 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         }
     }
 
+    Blob createBlob(Blob blob) throws IOException {
+        String ref = blob.getReference();
+        Blob ret = getBlob(ref);
+        if (ref == null || ret == null || ret.getReference() == null) {
+            ret = createBlob(blob.getNewStream());
+        }
+        return ret;
+    }
+
     @Override
     public Blob getBlob(String reference) {
         try {
