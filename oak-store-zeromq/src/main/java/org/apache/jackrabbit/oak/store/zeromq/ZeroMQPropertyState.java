@@ -263,19 +263,12 @@ public class ZeroMQPropertyState implements PropertyState {
             return false;
         }
         PropertyState other = (PropertyState) that;
-        return this.getType()
-                .equals(other.getType()) && this.getName()
-                .equals(other.getName()) && this.getValue(this.getType())
-                .equals(other.getValue(other.getType()));
+        return AbstractPropertyState.equal(this, other);
     }
 
     @Override
     public int hashCode() {
-        int hash = 7;
-        hash = 11 * hash + Objects.hashCode(this.name);
-        hash = 11 * hash + Objects.hashCode(this.type);
-        hash = 11 * hash + Objects.hashCode(this.stringValues);
-        return hash;
+        return AbstractPropertyState.hashCode(this);
     }
 
     public StringBuilder serialise(final StringBuilder sb) {
