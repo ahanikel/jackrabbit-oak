@@ -36,6 +36,14 @@ public class ZeroMQNodeState extends AbstractNodeState {
 
     private static final Logger log = LoggerFactory.getLogger(ZeroMQNodeState.class);
 
+	private static final Pattern uuidPattern = Pattern.compile("([^\\n]+\\n).*", Pattern.DOTALL);
+	private static final Pattern endChildrenPattern = Pattern.compile("(end children\\n).*", Pattern.DOTALL);
+	private static final Pattern endPropertiesPattern = Pattern.compile("(end properties\\n).*", Pattern.DOTALL);
+	private static final Pattern tabSeparatedPattern = Pattern.compile("([^\\t]+\\t).*", Pattern.DOTALL);
+	private static final Pattern spaceSeparatedPattern = Pattern.compile("([^ ]+ ).*", Pattern.DOTALL);
+	private static final Pattern propertyTypePattern = Pattern.compile("([^>]+> = ).*", Pattern.DOTALL);
+	private static final Pattern allTheRestPattern = Pattern.compile("(.*)", Pattern.DOTALL);
+
     protected final ZeroMQNodeStore ns;
     private final String uuid;
     private final Map<String, String> children;
@@ -113,15 +121,22 @@ public class ZeroMQNodeState extends AbstractNodeState {
             return this;
         }
 
-        private Parser parseRegexp(String re) throws ParseFailure {
-            final Pattern p = Pattern.compile(re, Pattern.DOTALL);
+        private Parser parseLine() throws ParseFailure {
+            int nNewLine = s.indexOf('\n');
+            last = s.substring(0, nNewLine);
+            s = s.substring(nNewLine + 1);
+            return this;
+        }
+
+        private Parser parseRegexp(Pattern p, int nTrimEnd) throws ParseFailure {
             final Matcher m = p.matcher(s);
             if (m.matches()) {
                 last = m.group(1);
-                s = m.group(2);
+                s = s.substring(last.length());
+                last = last.substring(0, last.length() - nTrimEnd);
                 return this;
             }
-            throw new ParseFailure("Failed to parse " + re);
+            throw new ParseFailure("Failed to parse " + p.pattern());
         }
 
         private Parser assignTo(FinalVar<String> var) {
@@ -164,16 +179,16 @@ public class ZeroMQNodeState extends AbstractNodeState {
             return this;
         }
 
-        private Parser parseRegexpUntil(SupplierWithException<Parser, ParseFailure> f, String until) throws ParseFailure {
+        private Parser parseRegexpUntil(SupplierWithException<Parser, ParseFailure> f, Pattern p, int nTrimEnd) throws ParseFailure {
             Parser parser = this;
-            final Pattern p = Pattern.compile(until, Pattern.DOTALL);
             Matcher m = p.matcher(parser.s);
             while (!m.matches()) {
                 parser = f.get();
                 m = p.matcher(parser.s);
             }
             last = m.group(1);
-            s = m.group(2);
+            s = s.substring(last.length());
+            last = last.substring(0, last.length() - nTrimEnd);
             return this;
         }
     }
@@ -182,8 +197,9 @@ public class ZeroMQNodeState extends AbstractNodeState {
         final Parser parser = new Parser(s);
         final FinalVar<String> ret = new FinalVar<>();
         parser
-                .parseRegexp("begin ZeroMQNodeState ([^\\n]+)\\n(.*)")
-                .assignTo(ret);
+            .parseString("begin ZeroMQNodeState ")
+            .parseRegexp(uuidPattern, 1)
+            .assignTo(ret);
         return ret.val();
     }
 
@@ -193,27 +209,30 @@ public class ZeroMQNodeState extends AbstractNodeState {
         final List<String> properties = new ArrayList<>();
         final Parser parser = new Parser(s);
         parser
-                .parseRegexp("begin ZeroMQNodeState ([^\\n]+)\\n(.*)")
-                .assignTo(id)
-                .parseString("begin children\n")
-                .parseRegexpUntil(
-                        () -> parser.parseRegexp("([^\\n]*)\\n(.*)").appendTo(children),
-                       "(end children)\\n(.*)"
-                )
-                .parseString("begin properties\n")
-                .parseRegexpUntil(
-                        () -> parser.parseRegexp("([^\\n]*)\\n(.*)").appendTo(properties),
-                        "(end properties)\\n(.*)"
-                )
-                .parseString("end ZeroMQNodeState\n");
+            .parseString("begin ZeroMQNodeState ")
+            .parseRegexp(uuidPattern, 1)
+            .assignTo(id)
+            .parseString("begin children\n")
+            .parseRegexpUntil(
+                () -> parser.parseLine().appendTo(children),
+                endChildrenPattern,
+                1
+            )
+            .parseString("begin properties\n")
+            .parseRegexpUntil(
+                () -> parser.parseLine().appendTo(properties),
+                endPropertiesPattern,
+                1
+            )
+            .parseString("end ZeroMQNodeState\n");
         final ZeroMQNodeState ret = new ZeroMQNodeState(ns, id.val(), reader, writer);
         for (String child : children) {
             Parser p = new Parser(child);
             FinalVar<String> key = new FinalVar<>();
             FinalVar<String> value = new FinalVar<>();
             p
-                    .parseRegexp("([^\\t]+)\\t(.*)").assignTo(key)
-                    .parseRegexp("(.*)(.*)").assignTo(value);
+                    .parseRegexp(tabSeparatedPattern, 1).assignTo(key)
+                    .parseRegexp(allTheRestPattern, 0).assignTo(value);
             try {
                 ret.children.put(SafeEncode.safeDecode(key.val), value.val);
             } catch (UnsupportedEncodingException e) {
@@ -226,9 +245,10 @@ public class ZeroMQNodeState extends AbstractNodeState {
             List<String> pValues   = new ArrayList<>();
             Parser p = new Parser(prop);
             p
-                    .parseRegexp("([^ ]+) (.*)").assignToWithDecode(pName)
-                    .parseRegexp("<([^>]+)> = (.*)").assignTo(pType)
-                    .parseRegexp("(.*)(.*)").appendToValues(pValues); // the regexp is correct: we need two groups
+                    .parseRegexp(spaceSeparatedPattern, 1).assignToWithDecode(pName)
+                    .parseString("<")
+                    .parseRegexp(propertyTypePattern, 4).assignTo(pType)
+                    .parseRegexp(allTheRestPattern, 0).appendToValues(pValues);
             ret.properties.put(pName.val(), new ZeroMQPropertyState(ns, pName.val(), pType.val(), pValues));
         }
         return ret;
