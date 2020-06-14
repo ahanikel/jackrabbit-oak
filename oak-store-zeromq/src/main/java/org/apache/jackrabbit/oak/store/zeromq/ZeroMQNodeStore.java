@@ -165,11 +165,10 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     }
 
     /**
-     Wipe the complete repo by setting the root to an empty node.
-     The existing nodes remain lingering around unless some GC mechanism (which is
-     not yet implemented) removes them.
-     This is needed for testing.
-    */
+     * Wipe the complete repo by setting the root to an empty node. The existing
+     * nodes remain lingering around unless some GC mechanism (which is not yet
+     * implemented) removes them. This is needed for testing.
+     */
     public void reset() {
         final NodeBuilder builder = EMPTY_NODE(this, this::readNodeState, this::write).builder();
         builder.setChildNode("root");
