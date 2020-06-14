@@ -16,19 +16,38 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
 package org.apache.jackrabbit.oak.store.zeromq;
 
 import org.apache.jackrabbit.oak.fixture.NodeStoreFixture;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
+import static org.junit.Assert.assertEquals;
 
 public class ZeroMQFixture extends NodeStoreFixture {
 
+    final static ZeroMQJournal journal = ZeroMQJournal.newZeroMQJournal();
+
+    final static ZeroMQBackendStore store = new ZeroMQBackendStore();
+
+    final static ZeroMQNodeStore ns = new ZeroMQNodeStore();
+
+    static volatile boolean isInitialized = false;
+
     @Override
     public NodeStore createNodeStore() {
-        System.setProperty("clusterInstances", "1");
-        final ZeroMQNodeStore ns = new ZeroMQNodeStore();
-        ns.reset();
+        synchronized(ns) {
+            if (!isInitialized) {
+                store.open();
+                ns.reset();
+                isInitialized = true;
+            }
+        }
         return ns;
+    }
+
+    @Override
+    public void dispose(NodeStore nodeStore) {
+        super.dispose(nodeStore);
+        assertEquals(ns, nodeStore);
+        ns.reset();
     }
 }
