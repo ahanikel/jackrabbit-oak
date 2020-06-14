@@ -18,6 +18,7 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq;
 
+import java.io.IOException;
 import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.api.PropertyState;
 import org.apache.jackrabbit.oak.api.Type;
@@ -30,9 +31,9 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
 
 import static org.apache.jackrabbit.oak.api.Type.*;
+import org.apache.jackrabbit.oak.plugins.memory.AbstractPropertyState;
 import org.apache.jackrabbit.oak.plugins.value.Conversions;
 import org.apache.jackrabbit.oak.plugins.value.Conversions.Converter;
 
@@ -109,7 +110,13 @@ public class ZeroMQPropertyState implements PropertyState {
             for (int i = 0; i < ps.count(); ++i) {
                 if (type.getBaseType()
                         .equals(BINARY)) {
-                    final Blob blob = (Blob) ps.getValue(type.getBaseType(), i);
+                    Blob blob = (Blob) ps.getValue(type.getBaseType(), i);
+                    try {
+                        blob = ns.createBlob(blob); // ensure blob exists in the blobstore
+                    }
+                    catch (IOException ex) {
+                        throw new IllegalStateException(ex);
+                    }
                     stringValues.add(blob.getReference());
                     values.add(blob);
                 }
@@ -121,7 +128,13 @@ public class ZeroMQPropertyState implements PropertyState {
         }
         else {
             if (type.equals(BINARY)) {
-                final Blob blob = (Blob) ps.getValue(type);
+                Blob blob = (Blob) ps.getValue(type);
+                try {
+                    blob = ns.createBlob(blob); // ensure blob exists in the blobstore
+                }
+                catch (IOException ex) {
+                    throw new IllegalStateException(ex);
+                }
                 stringValues.add(blob.getReference());
                 values.add(blob);
             }
