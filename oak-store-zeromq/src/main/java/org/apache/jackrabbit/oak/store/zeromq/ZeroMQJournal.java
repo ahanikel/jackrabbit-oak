@@ -101,7 +101,7 @@ public class ZeroMQJournal implements Closeable {
     }
 
     @NotNull
-    public static ZeroMQJournal newZeroMQJournal() throws IOException {
+    public static ZeroMQJournal newZeroMQJournal() {
         final ZeroMQJournal zmqJournal = new ZeroMQJournal();
         return zmqJournal;
     }
