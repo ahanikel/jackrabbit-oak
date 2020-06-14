@@ -316,12 +316,16 @@ public class ZeroMQNodeStateTest {
 
         final ZeroMQNodeState ns = (ZeroMQNodeState) ZeroMQEmptyNodeState.EMPTY_NODE(dummyStore(), this::staticReader, this::storageWriter);
         final NodeBuilder builder = ns.builder();
-        builder.setProperty("bla", new ArrayList()  , Type.STRINGS);
+        builder.setProperty("bla", new ArrayList<String>()  , Type.STRINGS);
         final NodeState ns2 = builder.getNodeState();
         final PropertyState ps = ns2.getProperty("bla");
         assertTrue(ps.isArray());
         assertTrue(ps.count() == 0);
-        assertTrue(ps.size() == 0);
+        try {
+            ps.size();
+            assertTrue("PropertyState.size() should throw IllegalStateException if isArray()", false);
+        } catch (IllegalStateException e) {
+        }
         final List<ZeroMQNodeState.SerialisedZeroMQNodeState> ser = new ArrayList<>();
         ((ZeroMQNodeState) ns2).serialise(ser::add);
         final String s = ser.get(0).getserialisedNodeState();
