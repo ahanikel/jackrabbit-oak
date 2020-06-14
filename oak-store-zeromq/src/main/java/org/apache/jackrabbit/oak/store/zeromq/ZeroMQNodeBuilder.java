@@ -106,4 +106,11 @@ public class ZeroMQNodeBuilder extends MemoryNodeBuilder {
     protected MemoryNodeBuilder createChildBuilder(String name) {
         return new ZeroMQNodeBuilder(this.ns, this, name);
     }
+
+    public NodeState rebase(NodeState newBase) {
+        final NodeState after = applyTo(newBase);
+        reset(newBase);
+        set(after);
+        return after;
+    }
 }

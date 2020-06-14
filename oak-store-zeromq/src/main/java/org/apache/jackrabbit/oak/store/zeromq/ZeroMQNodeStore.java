@@ -352,10 +352,9 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
 
     @Override
     public NodeState rebase(@NotNull NodeBuilder builder) {
+        final ZeroMQNodeBuilder zmqBuilder = ((ZeroMQNodeBuilder) builder);
         final NodeState newBase = getRoot();
-        final NodeState after = ((ZeroMQNodeBuilder) builder).applyTo(newBase);
-        ((ZeroMQNodeBuilder) builder).reset(after);
-        return after;
+        return zmqBuilder.rebase(newBase);
     }
 
     @Override
