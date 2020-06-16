@@ -36,13 +36,13 @@ public class ZeroMQNodeState extends AbstractNodeState {
 
     private static final Logger log = LoggerFactory.getLogger(ZeroMQNodeState.class);
 
-	private static final Pattern uuidPattern = Pattern.compile("([^\\n]+\\n).*", Pattern.DOTALL);
-	private static final Pattern endChildrenPattern = Pattern.compile("(end children\\n).*", Pattern.DOTALL);
-	private static final Pattern endPropertiesPattern = Pattern.compile("(end properties\\n).*", Pattern.DOTALL);
-	private static final Pattern tabSeparatedPattern = Pattern.compile("([^\\t]+\\t).*", Pattern.DOTALL);
-	private static final Pattern spaceSeparatedPattern = Pattern.compile("([^ ]+ ).*", Pattern.DOTALL);
-	private static final Pattern propertyTypePattern = Pattern.compile("([^>]+> = ).*", Pattern.DOTALL);
-	private static final Pattern allTheRestPattern = Pattern.compile("(.*)", Pattern.DOTALL);
+    private static final Pattern uuidPattern = Pattern.compile("([^\\n]+\\n).*", Pattern.DOTALL);
+    private static final Pattern endChildrenPattern = Pattern.compile("(end children\\n).*", Pattern.DOTALL);
+    private static final Pattern endPropertiesPattern = Pattern.compile("(end properties\\n).*", Pattern.DOTALL);
+    private static final Pattern tabSeparatedPattern = Pattern.compile("([^\\t]+\\t).*", Pattern.DOTALL);
+    private static final Pattern spaceSeparatedPattern = Pattern.compile("([^ ]+ ).*", Pattern.DOTALL);
+    private static final Pattern propertyTypePattern = Pattern.compile("([^>]+> = ).*", Pattern.DOTALL);
+    private static final Pattern allTheRestPattern = Pattern.compile("(.*)", Pattern.DOTALL);
 
     protected final ZeroMQNodeStore ns;
     private final String uuid;
