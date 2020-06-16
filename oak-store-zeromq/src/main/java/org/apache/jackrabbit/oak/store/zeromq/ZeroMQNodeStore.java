@@ -18,6 +18,8 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq;
 
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import org.apache.felix.scr.annotations.Service;
@@ -51,6 +53,7 @@ import java.util.concurrent.ExecutionException;
 import org.apache.jackrabbit.oak.plugins.memory.AbstractBlob;
 import org.apache.jackrabbit.oak.spi.blob.BlobStore;
 import org.apache.jackrabbit.oak.spi.blob.FileBlobStore;
+import org.apache.jackrabbit.oak.spi.state.ConflictAnnotatingRebaseDiff;
 
 import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQEmptyNodeState.EMPTY_NODE;
 
@@ -254,7 +257,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
             throw new IllegalArgumentException();
         }
         final NodeState newBase = getRoot();
-        final NodeState after = ((ZeroMQNodeBuilder) builder).applyTo(newBase);
+        rebase(builder, newBase);
+        final NodeState after = builder.getNodeState();
         final NodeState afterHook = commitHook.processCommit(newBase, after, info);
         mergeRoot("root", afterHook);
         ((ZeroMQNodeBuilder) builder).reset(afterHook);
@@ -269,7 +273,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
             throw new IllegalStateException();
         } else {
             final NodeState newBase = getBlobRoot();
-            final NodeState after = ((ZeroMQNodeBuilder) builder).applyTo(newBase);
+            rebase(builder, newBase);
+            final NodeState after = builder.getNodeState();
             mergeRoot("blobs", after);
             ((ZeroMQNodeBuilder) builder).reset(after);
             return after;
@@ -278,7 +283,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
 
     private synchronized NodeState mergeCheckpoint(NodeBuilder builder) {
             final NodeState newBase = getCheckpointRoot();
-            final NodeState after = ((ZeroMQNodeBuilder) builder).applyTo(newBase);
+            rebase(builder, newBase);
+            final NodeState after = builder.getNodeState();
             mergeRoot("checkpoints", after);
             ((ZeroMQNodeBuilder) builder).reset(after);
             return after;
@@ -352,10 +358,21 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     }
 
     @Override
-    public NodeState rebase(@NotNull NodeBuilder builder) {
-        final ZeroMQNodeBuilder zmqBuilder = ((ZeroMQNodeBuilder) builder);
+    public NodeState rebase (@NotNull NodeBuilder builder) {
         final NodeState newBase = getRoot();
-        return zmqBuilder.rebase(newBase);
+        return rebase(builder, newBase);
+    }
+    public NodeState rebase(@NotNull NodeBuilder builder, NodeState newBase) {
+        checkArgument(builder instanceof ZeroMQNodeBuilder);
+        NodeState head = checkNotNull(builder).getNodeState();
+        NodeState base = builder.getBaseState();
+        if (base != newBase) {
+            ((MemoryNodeBuilder) builder).reset(newBase);
+            head.compareAgainstBaseState(
+                    base, new ConflictAnnotatingRebaseDiff(builder));
+            head = builder.getNodeState();
+        }
+        return head;
     }
 
     @Override

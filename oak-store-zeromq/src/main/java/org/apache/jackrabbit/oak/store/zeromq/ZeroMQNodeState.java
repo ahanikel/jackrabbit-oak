@@ -447,8 +447,13 @@ public class ZeroMQNodeState extends AbstractNodeState {
 
         @Override
         public boolean childNodeChanged(String name, NodeState before, NodeState after) {
+            final ZeroMQNodeStateDiffBuilder diff = getNodeStateDiffBuilder(this.ns, (ZeroMQNodeState) before, reader, writer);
+            after.compareAgainstBaseState(before, diff);
+            final ZeroMQNodeState child = diff.getNodeState();
             this.children.remove(name);
-            return childNodeAdded(name, after);
+            this.children.put(name, child.getUuid());
+            dirty = true;
+            return true;
         }
 
         @Override
@@ -475,6 +480,10 @@ public class ZeroMQNodeState extends AbstractNodeState {
 
         public String getserialisedNodeState() {
             return sNodeState;
+        }
+
+        public String toString() {
+            return getserialisedNodeState();
         }
     }
 }

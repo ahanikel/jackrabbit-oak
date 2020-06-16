@@ -18,18 +18,9 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq;
 
-import com.google.common.io.ByteStreams;
-import org.apache.jackrabbit.oak.api.Blob;
-import org.apache.jackrabbit.oak.plugins.memory.ArrayBasedBlob;
 import org.apache.jackrabbit.oak.plugins.memory.MemoryNodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.jetbrains.annotations.NotNull;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -85,32 +76,8 @@ public class ZeroMQNodeBuilder extends MemoryNodeBuilder {
         return diff.getNodeState();
     }
 
-    public ZeroMQNodeState applyTo(NodeState base) {
-        final NodeState before = getBaseState();
-        if (!(before instanceof ZeroMQNodeState)) {
-            throw new IllegalStateException();
-        }
-        if (!(base instanceof ZeroMQNodeState)) {
-            throw new IllegalStateException();
-        }
-        final NodeState after = super.getNodeState();
-        if (after.equals(before)) {
-            return (ZeroMQNodeState) base;
-        }
-        final ZeroMQNodeState.ZeroMQNodeStateDiffBuilder diff = getNodeStateDiffBuilder(this.ns, (ZeroMQNodeState) base, reader, writer);
-        after.compareAgainstBaseState(before, diff);
-        return diff.getNodeState();
-    }
-
     @Override
     protected MemoryNodeBuilder createChildBuilder(String name) {
         return new ZeroMQNodeBuilder(this.ns, this, name);
-    }
-
-    public NodeState rebase(NodeState newBase) {
-        final NodeState after = applyTo(newBase);
-        reset(newBase);
-        set(after);
-        return after;
     }
 }
