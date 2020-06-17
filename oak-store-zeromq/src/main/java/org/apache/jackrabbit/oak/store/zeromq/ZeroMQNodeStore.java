@@ -367,7 +367,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         NodeState head = checkNotNull(builder).getNodeState();
         NodeState base = builder.getBaseState();
         if (base != newBase) {
-            ((MemoryNodeBuilder) builder).reset(newBase);
+            ((ZeroMQNodeBuilder) builder).reset(newBase);
             head.compareAgainstBaseState(
                     base, new ConflictAnnotatingRebaseDiff(builder));
             head = builder.getNodeState();
