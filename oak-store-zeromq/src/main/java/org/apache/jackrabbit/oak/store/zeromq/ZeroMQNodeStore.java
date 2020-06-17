@@ -158,7 +158,6 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
                 , "ZeroMQNodeStore checkpoint management"
                 , new HashMap<>()
                 );
-        changeDispatcher = new ChangeDispatcher(getRoot());
     }
 
     public void init() {
@@ -166,6 +165,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         if ("undefined".equals(uuid)) {
             reset();
         }
+        changeDispatcher = new ChangeDispatcher(getRoot());
     }
 
     /**

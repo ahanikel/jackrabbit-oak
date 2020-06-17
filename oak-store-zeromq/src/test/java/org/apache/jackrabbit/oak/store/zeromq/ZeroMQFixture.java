@@ -37,6 +37,7 @@ public class ZeroMQFixture extends NodeStoreFixture {
         synchronized(ns) {
             if (!isInitialized) {
                 store.open();
+                ns.init();
                 ns.reset();
                 isInitialized = true;
             }
