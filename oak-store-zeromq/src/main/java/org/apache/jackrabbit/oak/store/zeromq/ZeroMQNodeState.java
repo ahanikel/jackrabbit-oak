@@ -295,7 +295,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
                 return true;
             } else {
                 for (String key : children.keySet()) {
-                    if (!children.get(key).equals(that.children.get(key))) {
+                    if (!this.getChildNode(key).equals(that.getChildNode(key))) {
                         return false;
                     }
                 }
