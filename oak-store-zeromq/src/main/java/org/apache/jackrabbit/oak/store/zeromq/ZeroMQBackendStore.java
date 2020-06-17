@@ -126,8 +126,10 @@ public class ZeroMQBackendStore implements Closeable {
 
     void handleWriterService(String msg) {
         try {
-            final String uuid = ZeroMQNodeState.parseUuidFromSerialisedNodeState(msg);
-            store.put(uuid, msg);
+            final int firstLineSep = msg.indexOf('\n');
+            final String uuid = msg.substring(0, firstLineSep);
+            final String ser =  msg.substring(firstLineSep + 1);
+            store.putIfAbsent(uuid, ser);
             writerService.send(uuid + " confirmed.");
             log.debug("Received our node {}", uuid);
         } catch (Exception e) {

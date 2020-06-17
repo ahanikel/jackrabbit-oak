@@ -36,7 +36,6 @@ public class ZeroMQNodeState extends AbstractNodeState {
 
     private static final Logger log = LoggerFactory.getLogger(ZeroMQNodeState.class);
 
-    private static final Pattern uuidPattern = Pattern.compile("([^\\n]+\\n).*", Pattern.DOTALL);
     private static final Pattern endChildrenPattern = Pattern.compile("(end children\\n).*", Pattern.DOTALL);
     private static final Pattern endPropertiesPattern = Pattern.compile("(end properties\\n).*", Pattern.DOTALL);
     private static final Pattern tabSeparatedPattern = Pattern.compile("([^\\t]+\\t).*", Pattern.DOTALL);
@@ -50,24 +49,35 @@ public class ZeroMQNodeState extends AbstractNodeState {
     private final Map<String, ZeroMQPropertyState> properties;
     private final Function<String, ZeroMQNodeState> reader;
     private final Consumer<SerialisedZeroMQNodeState> writer;
+    private final String serialised;
 
     // not private because ZeroMQEmptyNodeState needs it
-    ZeroMQNodeState(ZeroMQNodeStore ns, String uuid, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) {
+    ZeroMQNodeState(ZeroMQNodeStore ns, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) {
         this.ns = ns;
-        this.uuid = uuid;
         this.children = new HashMap<>();
         this.properties = new HashMap<>();
         this.reader = reader;
         this.writer = writer;
+        serialised = serialise();
+        this.uuid = ZeroMQEmptyNodeState.UUID_NULL.toString();
     }
 
-    private ZeroMQNodeState(ZeroMQNodeStore ns, String uuid, Map<String, String> children, Map<String, ZeroMQPropertyState> properties, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) {
+    private ZeroMQNodeState(ZeroMQNodeStore ns, Map<String, String> children, Map<String, ZeroMQPropertyState> properties, String serialised, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) {
         this.ns = ns;
-        this.uuid = uuid;
         this.children = children;
         this.properties = properties;
         this.reader = reader;
         this.writer = writer;
+        if (serialised == null) {
+            this.serialised = serialise();
+        } else {
+            this.serialised = serialised;
+        }
+        try {
+            this.uuid = generateUuid();
+        } catch (UnsupportedEncodingException ex) {
+            throw new IllegalStateException(ex);
+        }
     }
 
     static class ParseFailure extends Exception {
@@ -193,25 +203,14 @@ public class ZeroMQNodeState extends AbstractNodeState {
         }
     }
 
-    static String parseUuidFromSerialisedNodeState(String s) throws Exception {
-        final Parser parser = new Parser(s);
-        final FinalVar<String> ret = new FinalVar<>();
-        parser
-            .parseString("begin ZeroMQNodeState ")
-            .parseRegexp(uuidPattern, 1)
-            .assignTo(ret);
-        return ret.val();
-    }
-
     static ZeroMQNodeState deSerialise(ZeroMQNodeStore ns, String s, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) throws ParseFailure {
-        final FinalVar<String> id = new FinalVar();
         final List<String> children = new ArrayList<>();
         final List<String> properties = new ArrayList<>();
+        final Map<String, String> childrenMap = new HashMap<>();
+        final Map<String, ZeroMQPropertyState> propertiesMap = new HashMap<>();
         final Parser parser = new Parser(s);
         parser
-            .parseString("begin ZeroMQNodeState ")
-            .parseRegexp(uuidPattern, 1)
-            .assignTo(id)
+            .parseString("begin ZeroMQNodeState\n")
             .parseString("begin children\n")
             .parseRegexpUntil(
                 () -> parser.parseLine().appendTo(children),
@@ -225,7 +224,6 @@ public class ZeroMQNodeState extends AbstractNodeState {
                 1
             )
             .parseString("end ZeroMQNodeState\n");
-        final ZeroMQNodeState ret = new ZeroMQNodeState(ns, id.val(), reader, writer);
         for (String child : children) {
             Parser p = new Parser(child);
             FinalVar<String> key = new FinalVar<>();
@@ -234,7 +232,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
                     .parseRegexp(tabSeparatedPattern, 1).assignTo(key)
                     .parseRegexp(allTheRestPattern, 0).assignTo(value);
             try {
-                ret.children.put(SafeEncode.safeDecode(key.val), value.val);
+                childrenMap.put(SafeEncode.safeDecode(key.val), value.val);
             } catch (UnsupportedEncodingException e) {
                 throw new IllegalStateException(e);
             }
@@ -249,18 +247,21 @@ public class ZeroMQNodeState extends AbstractNodeState {
                     .parseString("<")
                     .parseRegexp(propertyTypePattern, 4).assignTo(pType)
                     .parseRegexp(allTheRestPattern, 0).appendToValues(pValues);
-            ret.properties.put(pName.val(), new ZeroMQPropertyState(ns, pName.val(), pType.val(), pValues));
+            propertiesMap.put(pName.val(), new ZeroMQPropertyState(ns, pName.val(), pType.val(), pValues));
         }
+        final ZeroMQNodeState ret = new ZeroMQNodeState(ns, childrenMap, propertiesMap, s, reader, writer);
         return ret;
     }
 
     public void serialise(Consumer<SerialisedZeroMQNodeState> writer) {
+        writer.accept(new SerialisedZeroMQNodeState(uuid, serialised));
+    }
+
+    private String serialise() {
         final AtomicReference<Exception> e = new AtomicReference<>();
         final StringBuilder sb = new StringBuilder();
         sb
-            .append("begin ZeroMQNodeState ")
-            .append(uuid)
-            .append('\n')
+            .append("begin ZeroMQNodeState\n")
             .append("begin children\n");
         children.forEach((name, uuid) ->
         {
@@ -284,7 +285,14 @@ public class ZeroMQNodeState extends AbstractNodeState {
         );
         sb.append("end properties\n");
         sb.append("end ZeroMQNodeState\n");
-        writer.accept(new SerialisedZeroMQNodeState(uuid, sb.toString()));
+        return sb.toString();
+    }
+
+    private String generateUuid() throws UnsupportedEncodingException {
+        if (children.isEmpty() && properties.isEmpty()) {
+            return ZeroMQEmptyNodeState.UUID_NULL.toString();
+        }
+        return UUID.nameUUIDFromBytes(serialised.getBytes("UTF-8")).toString();
     }
 
     @Override
@@ -292,18 +300,6 @@ public class ZeroMQNodeState extends AbstractNodeState {
         if (other instanceof ZeroMQNodeState) {
             ZeroMQNodeState that = (ZeroMQNodeState) other;
             if (this.uuid.equals(that.uuid)) {
-                return true;
-            } else {
-                for (String key : children.keySet()) {
-                    if (!this.getChildNode(key).equals(that.getChildNode(key))) {
-                        return false;
-                    }
-                }
-                for (String key : properties.keySet()) {
-                    if (!properties.get(key).equals(that.properties.get(key))) {
-                        return false;
-                    }
-                }
                 return true;
             }
         }
@@ -403,8 +399,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
 
         public ZeroMQNodeState getNodeState() {
             if (dirty) {
-                final String uuid = UUID.randomUUID().toString();
-                final ZeroMQNodeState ret = new ZeroMQNodeState(this.ns, uuid, this.children, this.properties, reader, writer);
+                final ZeroMQNodeState ret = new ZeroMQNodeState(this.ns, this.children, this.properties, null, reader, writer);
                 ret.serialise(writer);
                 return ret;
             } else {
@@ -449,11 +444,18 @@ public class ZeroMQNodeState extends AbstractNodeState {
 
         @Override
         public boolean childNodeChanged(String name, NodeState before, NodeState after) {
-            final ZeroMQNodeStateDiffBuilder diff = getNodeStateDiffBuilder(this.ns, (ZeroMQNodeState) before, reader, writer);
-            after.compareAgainstBaseState(before, diff);
-            final ZeroMQNodeState child = diff.getNodeState();
+            //final ZeroMQNodeStateDiffBuilder diff = getNodeStateDiffBuilder(this.ns, (ZeroMQNodeState) before, reader, writer);
+            //after.compareAgainstBaseState(before, diff);
+            //final ZeroMQNodeState child = diff.getNodeState();
             this.children.remove(name);
-            this.children.put(name, child.getUuid());
+            if (after instanceof ZeroMQNodeState) {
+                this.children.put(name, ((ZeroMQNodeState) after).getUuid());
+            } else {
+                final ZeroMQNodeStateDiffBuilder diff = getNodeStateDiffBuilder(this.ns, (ZeroMQNodeState) before, reader, writer);
+                after.compareAgainstBaseState(before, diff);
+                final ZeroMQNodeState child = diff.getNodeState();
+                this.children.put(name, child.getUuid());
+            }
             dirty = true;
             return true;
         }
