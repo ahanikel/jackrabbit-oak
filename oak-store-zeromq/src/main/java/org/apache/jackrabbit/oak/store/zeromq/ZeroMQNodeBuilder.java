@@ -80,4 +80,13 @@ public class ZeroMQNodeBuilder extends MemoryNodeBuilder {
     protected MemoryNodeBuilder createChildBuilder(String name) {
         return new ZeroMQNodeBuilder(this.ns, this, name);
     }
+
+    @Override
+    public void reset(NodeState newBase) {
+        try {
+            super.reset(newBase);
+        } catch (IllegalStateException e) {
+            throw new IllegalArgumentException(e);
+        }
+    }
 }
