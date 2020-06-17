@@ -47,12 +47,12 @@ public final class ZeroMQEmptyNodeState extends ZeroMQNodeState {
         return new ZeroMQEmptyNodeState(ns, false, reader, writer);
     }
 
-    private static final UUID UUID_NULL = new UUID(0L, 0L);
+    static final UUID UUID_NULL = new UUID(0L, 0L);
 
     private final boolean exists;
 
     private ZeroMQEmptyNodeState(ZeroMQNodeStore ns, boolean exists, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) {
-        super(ns, UUID_NULL.toString(), reader, writer);
+        super(ns, reader, writer);
         this.exists = exists;
         this.reader = reader;
         this.writer = writer;

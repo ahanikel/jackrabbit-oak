@@ -112,7 +112,7 @@ public class ZeroMQNodeStateTest {
         final StringBuilder sb = new StringBuilder();
         if (uuid.equals(UUIDS[0])) {
             sb
-                    .append("begin ZeroMQNodeState ").append(uuid.toString()).append('\n')
+                    .append("begin ZeroMQNodeState\n")
                     .append("begin children\n")
                     .append("cOne\t").append(UUIDS[1]).append('\n')
                     .append("cTwo\t").append(UUIDS[2]).append('\n')
@@ -130,7 +130,7 @@ public class ZeroMQNodeStateTest {
                     .append("end ZeroMQNodeState\n");
         } else {
             sb
-                    .append("begin ZeroMQNodeState ").append(uuid.toString()).append('\n')
+                    .append("begin ZeroMQNodeState\n")
                     .append("begin children\n")
                     .append("end children\n")
                     .append("begin properties\n")
