@@ -292,14 +292,16 @@ public class ZeroMQNodeState extends AbstractNodeState {
         if (other instanceof ZeroMQNodeState) {
             ZeroMQNodeState that = (ZeroMQNodeState) other;
             if (this.uuid.equals(that.uuid)) {
+                return true;
+            } else {
                 for (String key : children.keySet()) {
                     if (!children.get(key).equals(that.children.get(key))) {
-                        throw new IllegalStateException();
+                        return false;
                     }
                 }
                 for (String key : properties.keySet()) {
                     if (!properties.get(key).equals(that.properties.get(key))) {
-                        throw new IllegalStateException();
+                        return false;
                     }
                 }
                 return true;
