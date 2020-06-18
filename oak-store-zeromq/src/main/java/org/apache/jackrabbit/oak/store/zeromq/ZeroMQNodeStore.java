@@ -450,41 +450,55 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     public String checkpoint(long lifetimeMicros, Map<String, String> properties) {
         final ZeroMQNodeState currentRoot = (ZeroMQNodeState) getRoot();
         final String nodeName = currentRoot.getUuid().toString() + properties.toString();
-        final NodeBuilder builder = getCheckpointRoot().builder()
-                .setChildNode(nodeName, currentRoot)
-                .setProperty("lifetimeMicros", lifetimeMicros);
+        final NodeBuilder builder = getCheckpointRoot().builder();
+        final NodeBuilder cpBuilder = builder.child(nodeName);
+        cpBuilder.setChildNode("root", currentRoot);
+        cpBuilder.setProperty("lifetimeMicros", lifetimeMicros);
+        properties.forEach(cpBuilder.child("props")::setProperty);
         mergeCheckpoint(builder);
         return nodeName;
     }
 
     @Override
     public String checkpoint(long lifetime) {
-        log.error("Unsupported");
-        throw new UnsupportedOperationException("checkpoint/1 not supported yet.");
+        return checkpoint(lifetime, new HashMap<>());
     }
 
     @Override
     public Map<String, String> checkpointInfo(String checkpoint) {
-        log.error("Unsupported");
-        throw new UnsupportedOperationException("checkpointInfo/1 not supported yet.");
+        // TODO: parse the checkpoint name, no need to read the repo
+        final NodeState cpRoot = getCheckpointRoot();
+        final NodeState cpNode = cpRoot.getChildNode(checkpoint).getChildNode("props");
+        Map<String, String> ret = new HashMap<>();
+        cpNode.getProperties().forEach(ps -> ret.put(ps.getName(), ps.getValue(Type.STRING)));
+        return ret;
     }
 
     @Override
     public Iterable<String> checkpoints() {
-        log.error("Unsupported");
-        throw new UnsupportedOperationException("checkpoints() not supported yet.");
+        final NodeState cpRoot = getCheckpointRoot();
+        return cpRoot.getChildNodeNames();
     }
 
     @Override
     public NodeState retrieve(String checkpoint) {
-        log.error("Unsupported");
-        throw new UnsupportedOperationException("retrieve() not supported yet.");
+        final NodeState cpRoot = getCheckpointRoot();
+        final NodeState cp = cpRoot.getChildNode(checkpoint);
+        if (cp.exists()) {
+            return cp.getChildNode("root");
+        } else {
+            return null;
+        }
     }
 
     @Override
     public boolean release(String checkpoint) {
-        log.error("Unsupported");
-        throw new UnsupportedOperationException("release() not supported yet.");
+        final NodeBuilder cpRoot = getCheckpointRoot().builder();
+        boolean ret = cpRoot.getChildNode(checkpoint).remove();
+        if (ret) {
+            mergeCheckpoint(cpRoot);
+        }
+        return ret;
     }
 
     @Override
