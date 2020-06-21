@@ -259,11 +259,16 @@ public class ZeroMQPropertyState implements PropertyState {
 
     @Override
     public boolean equals(Object that) {
+        if (that instanceof ZeroMQPropertyState) {
+            ZeroMQPropertyState other = (ZeroMQPropertyState) that;
+            if (this.getType().equals(BINARY) && other.getType().equals(BINARY)) {
+                return this.stringValues.get(0).equals(other.stringValues.get(0));
+            }
+        }
         if (!(that instanceof PropertyState)) {
             return false;
         }
-        PropertyState other = (PropertyState) that;
-        return AbstractPropertyState.equal(this, other);
+        return AbstractPropertyState.equal(this, (PropertyState) that);
     }
 
     @Override
