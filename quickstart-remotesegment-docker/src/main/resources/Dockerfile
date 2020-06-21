@@ -1,6 +1,6 @@
 FROM openjdk:11
-ENV slingarchive=cq-quickstart-6.6.0-1.12.0.nosegment.jar
-ENV zeromqarchive=oak-store-zeromq-1.12.0.jar
+ENV slingarchive=cq-quickstart-6.6.0-1.30.0.nosegment.jar
+ENV zeromqarchive=oak-store-zeromq-1.30.0.jar
 ENV configfile=org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeStore.config
 ENV license=license.properties
 ENV javaargs="-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*:5005"
