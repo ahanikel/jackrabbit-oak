@@ -71,6 +71,7 @@ public class ZeroMQNodeBuilder extends MemoryNodeBuilder {
         if (after.equals(before)) {
             return (ZeroMQNodeState) before;
         }
+        // TODO: Don't compareAgainstBaseState, just getChildren, getProperties
         final ZeroMQNodeState.ZeroMQNodeStateDiffBuilder diff = getNodeStateDiffBuilder(this.ns, (ZeroMQNodeState) before, reader, writer);
         after.compareAgainstBaseState(before, diff);
         return diff.getNodeState();
