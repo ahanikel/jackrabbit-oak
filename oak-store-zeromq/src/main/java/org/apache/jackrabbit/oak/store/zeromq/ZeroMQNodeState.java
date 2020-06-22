@@ -254,7 +254,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
     }
 
     public void serialise(Consumer<SerialisedZeroMQNodeState> writer) {
-        writer.accept(new SerialisedZeroMQNodeState(uuid, serialised));
+        writer.accept(new SerialisedZeroMQNodeState(uuid, serialised, this));
     }
 
     private String serialise() {
@@ -472,10 +472,12 @@ public class ZeroMQNodeState extends AbstractNodeState {
 
         private final String uuid;
         private final String sNodeState;
+        private final ZeroMQNodeState ns;
 
-        public SerialisedZeroMQNodeState(String uuid, String sNodeState) {
+        public SerialisedZeroMQNodeState(String uuid, String sNodeState, ZeroMQNodeState ns) {
             this.uuid = uuid;
             this.sNodeState = sNodeState;
+            this.ns = ns;
         }
 
         public String getUuid() {
@@ -484,6 +486,10 @@ public class ZeroMQNodeState extends AbstractNodeState {
 
         public String getserialisedNodeState() {
             return sNodeState;
+        }
+
+        public ZeroMQNodeState getNodeState() {
+            return ns;
         }
 
         public String toString() {
