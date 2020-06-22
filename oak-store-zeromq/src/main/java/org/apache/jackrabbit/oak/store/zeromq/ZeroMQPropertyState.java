@@ -34,6 +34,7 @@ import java.util.List;
 
 import static org.apache.jackrabbit.oak.api.Type.*;
 import org.apache.jackrabbit.oak.plugins.memory.AbstractPropertyState;
+import org.apache.jackrabbit.oak.plugins.memory.BinaryPropertyState;
 import org.apache.jackrabbit.oak.plugins.value.Conversions;
 import org.apache.jackrabbit.oak.plugins.value.Conversions.Converter;
 
@@ -263,6 +264,12 @@ public class ZeroMQPropertyState implements PropertyState {
             ZeroMQPropertyState other = (ZeroMQPropertyState) that;
             if (this.getType().equals(BINARY) && other.getType().equals(BINARY)) {
                 return this.stringValues.get(0).equals(other.stringValues.get(0));
+            }
+        }
+        if (that instanceof BinaryPropertyState) {
+            BinaryPropertyState other = (BinaryPropertyState) that;
+            if (this.getType().equals(BINARY) && other.getType().equals(BINARY)) {
+                return this.stringValues.get(0).equals(other.getValue().getReference());
             }
         }
         if (!(that instanceof PropertyState)) {
