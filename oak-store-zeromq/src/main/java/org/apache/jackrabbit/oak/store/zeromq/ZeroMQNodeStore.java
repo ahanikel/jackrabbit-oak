@@ -344,6 +344,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
                 synchronized (nodeStateWriter[inst]) {
                     nodeStateWriter[inst].send(uuid + "\n" + nodeState.getserialisedNodeState());
                     msg = nodeStateWriter[inst].recvStr(); // wait for confirmation
+                    nodeStateCache.put(uuid, nodeState.getNodeState());
                 }
                 log.debug(msg);
                 break;
