@@ -137,7 +137,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         journalWriter.connect("tcp://" + journalPrefix + ":9001");
 
         nodeStateCache = CacheBuilder.newBuilder()
-            .maximumSize(1000).build();
+            .maximumSize(10000).build();
 
         blobCache = CacheBuilder.newBuilder()
             .maximumSize(100).build();

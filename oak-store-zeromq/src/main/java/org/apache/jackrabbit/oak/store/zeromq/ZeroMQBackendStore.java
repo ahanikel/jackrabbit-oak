@@ -28,7 +28,6 @@ import org.slf4j.LoggerFactory;
 import org.zeromq.ZMQ;
 
 import java.io.Closeable;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -80,7 +79,7 @@ public class ZeroMQBackendStore implements Closeable {
         context = ZMQ.context(1);
         readerService = context.socket(ZMQ.REP);
         writerService = context.socket(ZMQ.REP);
-        store = new HashMap<>();
+        store = new HashMap<>(1000000);
         ZeroMQNodeState ns = (ZeroMQNodeState) ZeroMQEmptyNodeState.EMPTY_NODE(null, null, null);
         final List<ZeroMQNodeState.SerialisedZeroMQNodeState> sNs = new ArrayList<>();
         ns.serialise(sNs::add);
