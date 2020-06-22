@@ -337,6 +337,9 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
 
     private void write(ZeroMQNodeState.SerialisedZeroMQNodeState nodeState) {
         final String uuid = nodeState.getUuid();
+        if (nodeStateCache.getIfPresent(uuid) != null) {
+            return;
+        }
         String msg;
         int inst = clusterInstanceForUuid(uuid);
         while (true) {
