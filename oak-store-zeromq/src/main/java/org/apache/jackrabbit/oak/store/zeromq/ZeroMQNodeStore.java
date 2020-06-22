@@ -417,30 +417,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     public Blob getBlob(String reference) {
         try {
             if (true) {
-                return new AbstractBlob() {
-                    @Override
-                    public InputStream getNewStream() {
-                        try {
-                            return blobStore.getInputStream(reference);
-                        } catch (IOException ex) {
-                            return null;
-                        }
-                    }
-
-                    @Override
-                    public long length() {
-                        try {
-                            return blobStore.getBlobLength(reference);
-                        } catch (IOException ex) {
-                            return 0;
-                        }
-                    }
-
-                    @Override
-                    public String getReference() {
-                        return reference;
-                    }
-                };
+                return new ZeroMQBlobStoreBlob(blobStore, reference);
             } else {
                 return blobCache.get(reference, () -> ZeroMQBlob.newInstance(this, reference));
             }
