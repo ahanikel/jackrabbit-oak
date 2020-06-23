@@ -62,7 +62,8 @@ public class ZeroMQNodeState extends AbstractNodeState {
         this.uuid = ZeroMQEmptyNodeState.UUID_NULL.toString();
     }
 
-    private ZeroMQNodeState(ZeroMQNodeStore ns, Map<String, String> children, Map<String, ZeroMQPropertyState> properties, String serialised, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) {
+    // not private because ZeroMQBuilder needs it
+    ZeroMQNodeState(ZeroMQNodeStore ns, Map<String, String> children, Map<String, ZeroMQPropertyState> properties, String serialised, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) {
         this.ns = ns;
         this.children = children;
         this.properties = properties;
@@ -366,6 +367,18 @@ public class ZeroMQNodeState extends AbstractNodeState {
 
     static ZeroMQNodeStateDiffBuilder getNodeStateDiffBuilder(ZeroMQNodeStore ns, ZeroMQNodeState before, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) {
         return new ZeroMQNodeStateDiffBuilder(ns, before, reader, writer);
+    }
+
+    static ZeroMQNodeState fromNodeState(ZeroMQNodeStore ns, NodeState nodeState, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) {
+        if (nodeState instanceof ZeroMQNodeState) {
+            return (ZeroMQNodeState) nodeState;
+        }
+        // not sure if we can encounter other NodeState implementations?
+        Map<String, String> children = new HashMap<>();
+        Map<String, ZeroMQPropertyState> properties = new HashMap<>();
+        nodeState.getChildNodeEntries().forEach(e -> children.put(e.getName(), fromNodeState(ns, e.getNodeState(), reader, writer).getUuid()));
+        nodeState.getProperties().forEach(p -> properties.put(p.getName(), new ZeroMQPropertyState(ns, p)));
+        return new ZeroMQNodeState(ns, children, properties, null, reader, writer);
     }
 
     static final class ZeroMQNodeStateDiffBuilder implements NodeStateDiff {

@@ -100,7 +100,7 @@ public class ZeroMQPropertyState implements PropertyState {
                                                                      : this.type)));
     }
 
-    public ZeroMQPropertyState(ZeroMQNodeStore ns, PropertyState ps) {
+    private ZeroMQPropertyState(ZeroMQNodeStore ns, PropertyState ps) {
         this.ns = ns;
         this.name = ps.getName();
         this.type = ps.getType();
@@ -144,6 +144,13 @@ public class ZeroMQPropertyState implements PropertyState {
                 values.add(ps.getValue(type));
             }
         }
+    }
+
+    static ZeroMQPropertyState fromPropertyState(ZeroMQNodeStore ns, PropertyState p) {
+        if (p instanceof ZeroMQPropertyState) {
+            return (ZeroMQPropertyState) p;
+        }
+        return new ZeroMQPropertyState(ns, p);
     }
 
     @Override

@@ -39,11 +39,11 @@ public final class ZeroMQEmptyNodeState extends ZeroMQNodeState {
     private final Function<String, ZeroMQNodeState> reader;
     private final Consumer<SerialisedZeroMQNodeState> writer;
 
-    public static final NodeState EMPTY_NODE(ZeroMQNodeStore ns, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) {
+    public static final ZeroMQNodeState EMPTY_NODE(ZeroMQNodeStore ns, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) {
         return new ZeroMQEmptyNodeState(ns, true, reader, writer);
     }
 
-    public static final NodeState MISSING_NODE(ZeroMQNodeStore ns, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) {
+    public static final ZeroMQNodeState MISSING_NODE(ZeroMQNodeStore ns, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) {
         return new ZeroMQEmptyNodeState(ns, false, reader, writer);
     }
 
