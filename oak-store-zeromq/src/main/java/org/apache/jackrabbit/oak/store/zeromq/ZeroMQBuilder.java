@@ -165,12 +165,12 @@ public class ZeroMQBuilder implements NodeBuilder {
             return childrenAdded.get(name);
         }
         if (baseState.hasChildNode(name)) {
-            final ZeroMQBuilder child = new ZeroMQBuilder(ns, (ZeroMQNodeState) baseState.getChildNode(name), reader, writer);
+            final ZeroMQBuilder child = new ZeroMQBuilder(name, ns, this, (ZeroMQNodeState) baseState.getChildNode(name), reader, writer);
             childrenChanged.put(name, child);
             return child;
         }
         final ZeroMQNodeState childBase = ZeroMQEmptyNodeState.EMPTY_NODE(ns, reader, writer);
-        final ZeroMQBuilder child = new ZeroMQBuilder(ns, childBase, reader, writer);
+        final ZeroMQBuilder child = new ZeroMQBuilder(name, ns, this, childBase, reader, writer);
         childrenAdded.put(name, child);
         return child;
     }
@@ -180,7 +180,7 @@ public class ZeroMQBuilder implements NodeBuilder {
         validateName(name);
         if (childrenRemoved.contains(name)) {
             final ZeroMQNodeState childBase = ZeroMQEmptyNodeState.MISSING_NODE(ns, reader, writer);
-            final ZeroMQBuilder child = new ZeroMQBuilder(ns, childBase, reader, writer);
+            final ZeroMQBuilder child = new ZeroMQBuilder(name, ns, this, childBase, reader, writer);
             return child;
         }
         if (childrenChanged.containsKey(name)) {
@@ -190,12 +190,12 @@ public class ZeroMQBuilder implements NodeBuilder {
             return childrenAdded.get(name);
         }
         if (baseState.hasChildNode(name)) {
-            final ZeroMQBuilder child = new ZeroMQBuilder(ns, (ZeroMQNodeState) baseState.getChildNode(name), reader, writer);
+            final ZeroMQBuilder child = new ZeroMQBuilder(name, ns, this, (ZeroMQNodeState) baseState.getChildNode(name), reader, writer);
             childrenChanged.put(name, child);
             return child;
         }
         final ZeroMQNodeState childBase = ZeroMQEmptyNodeState.MISSING_NODE(ns, reader, writer);
-        final ZeroMQBuilder child = new ZeroMQBuilder(ns, childBase, reader, writer);
+        final ZeroMQBuilder child = new ZeroMQBuilder(name, ns, this, childBase, reader, writer);
         return child;
     }
 
@@ -212,12 +212,12 @@ public class ZeroMQBuilder implements NodeBuilder {
             childrenAdded.remove(name);
         }
         if (baseState.hasChildNode(name)) {
-            final ZeroMQBuilder child = new ZeroMQBuilder(ns, (ZeroMQNodeState) baseState.getChildNode(name), reader, writer);
+            final ZeroMQBuilder child = new ZeroMQBuilder(name, ns, this, (ZeroMQNodeState) baseState.getChildNode(name), reader, writer);
             childrenChanged.put(name, child);
             return child;
         }
         final ZeroMQNodeState childBase = ZeroMQEmptyNodeState.EMPTY_NODE(ns, reader, writer);
-        final ZeroMQBuilder child = new ZeroMQBuilder(ns, childBase, reader, writer);
+        final ZeroMQBuilder child = new ZeroMQBuilder(name, ns, this, childBase, reader, writer);
         childrenAdded.put(name, child);
         return child;
     }
@@ -235,7 +235,7 @@ public class ZeroMQBuilder implements NodeBuilder {
         if (childrenAdded.containsKey(name)) {
             childrenAdded.remove(name);
         }
-        final ZeroMQBuilder child = new ZeroMQBuilder(ns, (ZeroMQNodeState) nodeState, reader, writer);
+        final ZeroMQBuilder child = new ZeroMQBuilder(name, ns, this, (ZeroMQNodeState) nodeState, reader, writer);
         if (baseState.hasChildNode(name)) {
             childrenChanged.put(name, child);
         } else {
