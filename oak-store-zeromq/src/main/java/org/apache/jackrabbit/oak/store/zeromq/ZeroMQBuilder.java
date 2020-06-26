@@ -406,7 +406,7 @@ public class ZeroMQBuilder implements NodeBuilder {
             propertiesAdded.remove(name);
         }
         final ZeroMQPropertyState zmqProperty = ZeroMQPropertyState.fromPropertyState(ns, property);
-        if (baseState.hasChildNode(name)) {
+        if (baseState.hasProperty(name)) {
             propertiesChanged.put(name, zmqProperty);
         } else {
             propertiesAdded.put(name, zmqProperty);
@@ -416,22 +416,34 @@ public class ZeroMQBuilder implements NodeBuilder {
 
     @Override
     public @NotNull <T> NodeBuilder setProperty(String name, @NotNull T value) throws IllegalArgumentException {
-        return null;
+        return setProperty(ZeroMQPropertyState.fromValue(ns, name, value));
     }
 
     @Override
     public @NotNull <T> NodeBuilder setProperty(String name, @NotNull T value, Type<T> type) throws IllegalArgumentException {
-        return null;
+        return setProperty(name, value);
     }
 
     @Override
     public @NotNull NodeBuilder removeProperty(String name) {
-        return null;
+        if (propertiesRemoved.contains(name)) {
+            propertiesRemoved.remove(name);
+        }
+        if (propertiesChanged.containsKey(name)) {
+            propertiesChanged.remove(name);
+        }
+        if (propertiesAdded.containsKey(name)) {
+            propertiesAdded.remove(name);
+        }
+        if (baseState.hasProperty(name)) {
+            propertiesRemoved.add(name);
+        }
+        return this;
     }
 
     @Override
     public Blob createBlob(InputStream stream) throws IOException {
-        return null;
+        return ns.createBlob(stream);
     }
 
     private void validateName(@NotNull String name) throws IllegalArgumentException {

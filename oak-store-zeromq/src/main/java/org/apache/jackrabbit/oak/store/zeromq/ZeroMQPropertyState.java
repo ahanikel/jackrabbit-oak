@@ -18,14 +18,21 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq;
 
-import java.io.IOException;
 import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.api.PropertyState;
 import org.apache.jackrabbit.oak.api.Type;
+import org.apache.jackrabbit.oak.plugins.memory.AbstractPropertyState;
+import org.apache.jackrabbit.oak.plugins.memory.BinaryPropertyState;
+import org.apache.jackrabbit.oak.plugins.value.Conversions;
+import org.apache.jackrabbit.oak.plugins.value.Conversions.Converter;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.math.BigDecimal;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -33,10 +40,6 @@ import java.util.Collections;
 import java.util.List;
 
 import static org.apache.jackrabbit.oak.api.Type.*;
-import org.apache.jackrabbit.oak.plugins.memory.AbstractPropertyState;
-import org.apache.jackrabbit.oak.plugins.memory.BinaryPropertyState;
-import org.apache.jackrabbit.oak.plugins.value.Conversions;
-import org.apache.jackrabbit.oak.plugins.value.Conversions.Converter;
 
 public class ZeroMQPropertyState implements PropertyState {
 
@@ -93,19 +96,35 @@ public class ZeroMQPropertyState implements PropertyState {
         this.type = Type.fromString(type);
         this.stringValues = values;
         this.values = new ArrayList();
-        values.stream()
-                .forEach(v  -> this.values.add(convertTo(v, this.type.isArray()
-                                                                     ? this.type
-                                                                  .getBaseType()
-                                                                     : this.type)));
+        values.forEach(v  ->
+                this.values.add(convertTo(v, this.type.isArray()
+                        ? this.type.getBaseType()
+                        : this.type)));
+    }
+
+    <T> ZeroMQPropertyState(ZeroMQNodeStore ns, String name, Type<T> type, T value) {
+        this.ns = ns;
+        this.name = name;
+        this.type = type;
+        this.stringValues = new ArrayList();
+        this.values = new ArrayList();
+        if (type.isArray()) {
+            ((Iterable<?>) value).forEach(this.values::add);
+        } else {
+            this.values.add(value);
+        }
+        this.values.forEach(v -> {
+            final String sVal = valueToString(type.isArray() ? type.getBaseType() : type, v);
+            this.stringValues.add(sVal);
+        });
     }
 
     private ZeroMQPropertyState(ZeroMQNodeStore ns, PropertyState ps) {
         this.ns = ns;
         this.name = ps.getName();
         this.type = ps.getType();
-        this.stringValues = new ArrayList();
-        this.values = new ArrayList();
+        this.stringValues = new ArrayList<String>();
+        this.values = new ArrayList<Object>();
 
         if (ps.isArray()) {
             for (int i = 0; i < ps.count(); ++i) {
@@ -153,8 +172,53 @@ public class ZeroMQPropertyState implements PropertyState {
         return new ZeroMQPropertyState(ns, p);
     }
 
+    static ZeroMQPropertyState fromValue(ZeroMQNodeStore ns, String name, Object value) {
+        final List<String> ret = new ArrayList<>();
+        if (value instanceof String) {
+            ret.add((String) value);
+            return new ZeroMQPropertyState(ns, name, STRING.toString(), ret);
+        }
+        if (value instanceof Blob) {
+            try {
+                ret.add(ns.createBlob((Blob) value).getReference());
+            } catch (IOException e) {
+                throw new IllegalStateException(e);
+            }
+            return new ZeroMQPropertyState(ns, name, BINARY.toString(), ret);
+        }
+        if (value instanceof byte[]) {
+            try {
+                ret.add(ns.createBlob(new ByteArrayInputStream((byte[]) value)).getReference());
+            } catch (IOException e) {
+                throw new IllegalStateException(e);
+            }
+            return new ZeroMQPropertyState(ns, name, BINARY.toString(), ret);
+        }
+        if (value instanceof Long) {
+            ret.add(((Long) value).toString());
+            return new ZeroMQPropertyState(ns, name, LONG.toString(), ret);
+        }
+        if (value instanceof Integer) {
+            ret.add(((Integer) value).toString());
+            return new ZeroMQPropertyState(ns, name, LONG.toString(), ret);
+        }
+        if (value instanceof Double) {
+            ret.add(((Double) value).toString());
+            return new ZeroMQPropertyState(ns, name, DOUBLE.toString(), ret);
+        }
+        if (value instanceof Boolean) {
+            ret.add(((Boolean) value).toString());
+            return new ZeroMQPropertyState(ns, name, BOOLEAN.toString(), ret);
+        }
+        if (value instanceof BigDecimal) {
+            ret.add(((BigDecimal) value).toString());
+            return new ZeroMQPropertyState(ns, name, DECIMAL.toString(), ret);
+        }
+        else throw new IllegalArgumentException(value.getClass().toString());
+    }
+
     @Override
-    public String getName() {
+    public @NotNull String getName() {
         return name;
     }
 
@@ -183,7 +247,7 @@ public class ZeroMQPropertyState implements PropertyState {
     }
 
     @Override
-    public <T> T getValue(Type<T> type) {
+    public <T> @NotNull T getValue(Type<T> type) {
         if (type.isArray()) {
             if (this.type.equals(type)) {
                 return (T) Collections.unmodifiableList(values);
@@ -213,7 +277,7 @@ public class ZeroMQPropertyState implements PropertyState {
     }
 
     @Override
-    public <T> T getValue(Type<T> type, int index) {
+    public <T> @NotNull T getValue(Type<T> type, int index) {
         if (index < 0 || index >= this.count()) {
             throw new IndexOutOfBoundsException(String.format(
                     "index %d requested but we only have %d values", index,
@@ -344,7 +408,7 @@ public class ZeroMQPropertyState implements PropertyState {
         }
     }
 
-    private static <T> String valueToString(Type<T> from, T v) {
+    private static String valueToString(Type<?> from, Object v) {
         if (from.equals(STRING) || from.equals(DATE) || from.equals(NAME)
                     || from.equals(PATH) || from.equals(REFERENCE) || from
                 .equals(
