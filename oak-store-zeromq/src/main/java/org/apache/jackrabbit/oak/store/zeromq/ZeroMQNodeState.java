@@ -358,7 +358,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
 
     @Override
     public NodeBuilder builder() {
-        return new ZeroMQNodeBuilder(this.ns, this, reader, writer);
+        return new ZeroMQBuilder(null, ns, null, this, reader, writer);
     }
 
     public String getUuid() {
@@ -377,7 +377,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
         Map<String, String> children = new HashMap<>();
         Map<String, ZeroMQPropertyState> properties = new HashMap<>();
         nodeState.getChildNodeEntries().forEach(e -> children.put(e.getName(), fromNodeState(ns, e.getNodeState(), reader, writer).getUuid()));
-        nodeState.getProperties().forEach(p -> properties.put(p.getName(), new ZeroMQPropertyState(ns, p)));
+        nodeState.getProperties().forEach(p -> properties.put(p.getName(), ZeroMQPropertyState.fromPropertyState(ns, p)));
         return new ZeroMQNodeState(ns, children, properties, null, reader, writer);
     }
 
@@ -422,7 +422,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
 
         @Override
         public boolean propertyAdded(PropertyState after) {
-            properties.put(after.getName(), new ZeroMQPropertyState(this.ns, after));
+            properties.put(after.getName(), ZeroMQPropertyState.fromPropertyState(this.ns, after));
             dirty = true;
             return true;
         }

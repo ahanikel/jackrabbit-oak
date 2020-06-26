@@ -45,6 +45,7 @@ public class ZeroMQNodeBuilder extends MemoryNodeBuilder {
         this.ns = ns;
         this.reader = reader;
         this.writer = writer;
+        throw new IllegalStateException("ZeroMQBuilder should be used");
     }
 
     private ZeroMQNodeBuilder(
@@ -56,6 +57,7 @@ public class ZeroMQNodeBuilder extends MemoryNodeBuilder {
         this.ns = ns;
         this.reader = parent.reader;
         this.writer = parent.writer;
+        throw new IllegalStateException("ZeroMQBuilder should be used");
     }
 
     //-------------------------------------------------------< NodeBuilder >--

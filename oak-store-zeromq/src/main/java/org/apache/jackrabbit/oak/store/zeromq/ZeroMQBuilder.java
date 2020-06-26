@@ -395,7 +395,8 @@ public class ZeroMQBuilder implements NodeBuilder {
 
     @Override
     public @NotNull NodeBuilder setProperty(@NotNull PropertyState property) throws IllegalArgumentException {
-        validateName(property.getName());
+        final String name = property.getName();
+        validateName(name);
         if (propertiesRemoved.contains(name)) {
             propertiesRemoved.remove(name);
         }
