@@ -253,7 +253,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
 
     @Override
     public synchronized NodeState merge(NodeBuilder builder, CommitHook commitHook, CommitInfo info) throws CommitFailedException {
-        if (!(builder instanceof ZeroMQNodeBuilder)) {
+        if (!(builder instanceof ZeroMQBuilder)) {
             throw new IllegalArgumentException();
         }
         final NodeState newBase = getRoot();
@@ -261,7 +261,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         final NodeState after = builder.getNodeState();
         final NodeState afterHook = commitHook.processCommit(newBase, after, info);
         mergeRoot("root", afterHook);
-        ((ZeroMQNodeBuilder) builder).reset(afterHook);
+        ((ZeroMQBuilder) builder).reset(afterHook);
         if (changeDispatcher != null) {
             changeDispatcher.contentChanged(afterHook, info);
         }
@@ -276,7 +276,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
             rebase(builder, newBase);
             final NodeState after = builder.getNodeState();
             mergeRoot("blobs", after);
-            ((ZeroMQNodeBuilder) builder).reset(after);
+            ((ZeroMQBuilder) builder).reset(after);
             return after;
         }
     }
@@ -286,7 +286,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
             rebase(builder, newBase);
             final NodeState after = builder.getNodeState();
             mergeRoot("checkpoints", after);
-            ((ZeroMQNodeBuilder) builder).reset(after);
+            ((ZeroMQBuilder) builder).reset(after);
             return after;
     }
 
@@ -368,11 +368,11 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         return rebase(builder, newBase);
     }
     public NodeState rebase(@NotNull NodeBuilder builder, NodeState newBase) {
-        checkArgument(builder instanceof ZeroMQNodeBuilder);
+        checkArgument(builder instanceof ZeroMQBuilder);
         NodeState head = checkNotNull(builder).getNodeState();
         NodeState base = builder.getBaseState();
         if (base != newBase) {
-            ((ZeroMQNodeBuilder) builder).reset(newBase);
+            ((ZeroMQBuilder) builder).reset(newBase);
             head.compareAgainstBaseState(
                     base, new ConflictAnnotatingRebaseDiff(builder));
             head = builder.getNodeState();

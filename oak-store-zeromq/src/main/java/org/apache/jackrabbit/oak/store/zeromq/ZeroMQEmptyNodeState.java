@@ -142,7 +142,7 @@ public final class ZeroMQEmptyNodeState extends ZeroMQNodeState {
 
     @Override @NotNull
     public NodeBuilder builder() {
-        return new ZeroMQNodeBuilder(this.ns, this, reader, writer);
+        return new ZeroMQBuilder(null, this.ns, null, this, reader, writer);
     }
 
     @Override

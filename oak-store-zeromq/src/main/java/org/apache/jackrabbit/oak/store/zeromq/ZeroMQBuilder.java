@@ -14,11 +14,14 @@ import java.util.*;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
+
 public class ZeroMQBuilder implements NodeBuilder {
     private String name;
     private final ZeroMQNodeStore ns;
     private ZeroMQBuilder parent;
-    private final ZeroMQNodeState baseState;
+    private ZeroMQNodeState baseState;
     private final Function<String, ZeroMQNodeState> reader;
     private final Consumer<ZeroMQNodeState.SerialisedZeroMQNodeState> writer;
 
@@ -445,6 +448,22 @@ public class ZeroMQBuilder implements NodeBuilder {
     @Override
     public Blob createBlob(InputStream stream) throws IOException {
         return ns.createBlob(stream);
+    }
+
+    /**
+     * Throws away all changes in this builder and resets the base to the
+     * given node state.
+     *
+     * @param newBase new base state
+     */
+    public void reset(@NotNull NodeState newBase) {
+        childrenAdded.clear();
+        childrenChanged.clear();
+        childrenRemoved.clear();
+        propertiesAdded.clear();
+        propertiesChanged.clear();
+        propertiesRemoved.clear();
+        baseState = (ZeroMQNodeState) newBase;
     }
 
     private void validateName(@NotNull String name) throws IllegalArgumentException {
