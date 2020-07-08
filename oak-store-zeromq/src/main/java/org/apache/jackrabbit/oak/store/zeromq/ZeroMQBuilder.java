@@ -158,6 +158,7 @@ public class ZeroMQBuilder implements NodeBuilder {
     @Override
     public @NotNull NodeBuilder child(@NotNull String name) throws IllegalArgumentException {
         validateName(name);
+        dirty = true;
         if (childrenRemoved.contains(name)) {
             childrenRemoved.remove(name);
         }
@@ -195,6 +196,7 @@ public class ZeroMQBuilder implements NodeBuilder {
         if (baseState.hasChildNode(name)) {
             final ZeroMQBuilder child = new ZeroMQBuilder(name, ns, this, (ZeroMQNodeState) baseState.getChildNode(name), reader, writer);
             childrenChanged.put(name, child);
+            dirty = true;
             return child;
         }
         final ZeroMQNodeState childBase = ZeroMQEmptyNodeState.MISSING_NODE(ns, reader, writer);
@@ -205,6 +207,7 @@ public class ZeroMQBuilder implements NodeBuilder {
     @Override
     public @NotNull NodeBuilder setChildNode(@NotNull String name) throws IllegalArgumentException {
         validateName(name);
+        dirty = true;
         if (childrenRemoved.contains(name)) {
             childrenRemoved.remove(name);
         }
@@ -228,6 +231,7 @@ public class ZeroMQBuilder implements NodeBuilder {
     @Override
     public @NotNull NodeBuilder setChildNode(@NotNull String name, @NotNull NodeState nodeState) throws IllegalArgumentException {
         validateName(name);
+        dirty = true;
         ZeroMQNodeState zmqNodeState = ZeroMQNodeState.fromNodeState(ns, nodeState, reader, writer);
         if (childrenRemoved.contains(name)) {
             childrenRemoved.remove(name);
@@ -255,6 +259,7 @@ public class ZeroMQBuilder implements NodeBuilder {
         parent.childrenAdded.remove(name);
         parent.childrenChanged.remove(name);
         parent.childrenRemoved.add(name);
+        parent.dirty = true;
         parent = null;
         return true;
     }
@@ -400,6 +405,7 @@ public class ZeroMQBuilder implements NodeBuilder {
     public @NotNull NodeBuilder setProperty(@NotNull PropertyState property) throws IllegalArgumentException {
         final String name = property.getName();
         validateName(name);
+        dirty = true;
         if (propertiesRemoved.contains(name)) {
             propertiesRemoved.remove(name);
         }
@@ -430,6 +436,7 @@ public class ZeroMQBuilder implements NodeBuilder {
 
     @Override
     public @NotNull NodeBuilder removeProperty(String name) {
+        dirty = true;
         if (propertiesRemoved.contains(name)) {
             propertiesRemoved.remove(name);
         }
@@ -457,6 +464,7 @@ public class ZeroMQBuilder implements NodeBuilder {
      * @param newBase new base state
      */
     public void reset(@NotNull NodeState newBase) {
+        dirty = false;
         childrenAdded.clear();
         childrenChanged.clear();
         childrenRemoved.clear();
