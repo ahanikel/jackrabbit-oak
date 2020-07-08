@@ -431,7 +431,7 @@ public class ZeroMQBuilder implements NodeBuilder {
 
     @Override
     public @NotNull <T> NodeBuilder setProperty(String name, @NotNull T value, Type<T> type) throws IllegalArgumentException {
-        return setProperty(name, value);
+        return setProperty(ZeroMQPropertyState.fromValue(ns, name, type, value));
     }
 
     @Override
