@@ -228,6 +228,25 @@ public class ZeroMQBuilder implements NodeBuilder {
         return child;
     }
 
+    void setChildBuilder(String name, ZeroMQBuilder builder) {
+        validateName(name);
+        dirty = true;
+        if (childrenRemoved.contains(name)) {
+            childrenRemoved.remove(name);
+        }
+        if (childrenChanged.containsKey(name)) {
+            childrenChanged.remove(name);
+        }
+        if (childrenAdded.containsKey(name)) {
+            childrenAdded.remove(name);
+        }
+        if (baseState.hasChildNode(name)) {
+            childrenChanged.put(name, builder);
+        } else {
+            childrenAdded.put(name, builder);
+        }
+    }
+
     @Override
     public @NotNull NodeBuilder setChildNode(@NotNull String name, @NotNull NodeState nodeState) throws IllegalArgumentException {
         validateName(name);
@@ -285,6 +304,7 @@ public class ZeroMQBuilder implements NodeBuilder {
         remove();
         parent = (ZeroMQBuilder) newParent;
         name = newName;
+        parent.setChildBuilder(name, this);
         return true;
     }
 
