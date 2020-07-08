@@ -309,6 +309,7 @@ public class ZeroMQBuilder implements NodeBuilder {
             @Override
             public Iterator<PropertyState> iterator() {
                 final Iterator<? extends PropertyState> baseProperties = baseState.getProperties().iterator();
+                final Iterator<ZeroMQPropertyState> added = propertiesAdded.values().iterator();
                 return new Iterator<PropertyState>() {
                     private PropertyState next = null;
 
@@ -324,7 +325,6 @@ public class ZeroMQBuilder implements NodeBuilder {
                             }
                             next = null;
                         }
-                        Iterator<ZeroMQPropertyState> added = propertiesAdded.values().iterator();
                         if (added.hasNext()) {
                             next = added.next();
                             return true;
