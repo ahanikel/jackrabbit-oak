@@ -289,7 +289,7 @@ public class ZeroMQPropertyState implements PropertyState {
             return new ZeroMQPropertyState(ns, name, Type.LONG.toString(), props);
         }
         if (value instanceof Integer) {
-            final List<String> props = fromValueToInternal(ns, name, Type.LONG, (Long) value);
+            final List<String> props = fromValueToInternal(ns, name, Type.LONG, ((Integer) value).longValue());
             return new ZeroMQPropertyState(ns, name, Type.LONG.toString(), props);
         }
         if (value instanceof Double) {

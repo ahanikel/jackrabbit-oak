@@ -79,6 +79,9 @@ public class ZeroMQNodeState extends AbstractNodeState {
         } catch (UnsupportedEncodingException ex) {
             throw new IllegalStateException(ex);
         }
+        if (serialised == null) {
+            serialise(writer);
+        }
     }
 
     static class ParseFailure extends Exception {
