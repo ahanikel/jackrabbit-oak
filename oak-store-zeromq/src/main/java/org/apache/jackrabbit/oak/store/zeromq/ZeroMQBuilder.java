@@ -3,6 +3,7 @@ package org.apache.jackrabbit.oak.store.zeromq;
 import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.api.PropertyState;
 import org.apache.jackrabbit.oak.api.Type;
+import org.apache.jackrabbit.oak.spi.state.ConflictAnnotatingRebaseDiff;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.jetbrains.annotations.NotNull;
@@ -14,8 +15,7 @@ import java.util.*;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.base.Preconditions.*;
 
 public class ZeroMQBuilder implements NodeBuilder {
     private String name;
@@ -94,7 +94,15 @@ public class ZeroMQBuilder implements NodeBuilder {
 
     @Override
     public boolean isNew() {
-        return baseState == null || (parent != null && parent.baseState != null && !parent.baseState.hasChildNode(name));
+        if (baseState == null) {
+            return true;
+        }
+        if (parent == null) {
+            return false;
+        }
+        return parent.isNew()
+                || parent.childrenAdded.containsKey(name)
+                || (parent.baseState != null && !parent.baseState.hasChildNode(name));
     }
 
     @Override
@@ -293,7 +301,7 @@ public class ZeroMQBuilder implements NodeBuilder {
             } else {
                 childrenRemoved.add(name);
             }
-        } else {
+        } else if (nodeState.exists()) {
             childrenAdded.put(name, child);
         }
         return child;
@@ -325,7 +333,7 @@ public class ZeroMQBuilder implements NodeBuilder {
             return false;
         }
         final NodeState nodeState = getNodeState();
-        newParent.setChildNode(name, nodeState);
+        newParent.setChildNode(newName, nodeState);
         remove();
         return true;
     }
@@ -508,8 +516,25 @@ public class ZeroMQBuilder implements NodeBuilder {
         propertiesAdded.clear();
         propertiesChanged.clear();
         propertiesRemoved.clear();
-        builders.clear();
         baseState = (ZeroMQNodeState) newBase;
+        builders.forEach((n, b) -> {
+            if (newBase.hasChildNode(n)) {
+                b.reset(newBase.getChildNode(n));
+            } else {
+                //builders.remove(n);
+            }
+        });
+    }
+
+    public NodeState rebase(ZeroMQNodeState newBase) {
+        NodeState head = getNodeState();
+        NodeState base = getBaseState();
+        if (base != newBase) {
+            reset(newBase);
+            head.compareAgainstBaseState(base, new ConflictAnnotatingRebaseDiff(this));
+            head = getNodeState();
+        }
+        return head;
     }
 
     private void validateName(@NotNull String name) throws IllegalArgumentException {

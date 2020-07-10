@@ -256,12 +256,13 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         if (!(builder instanceof ZeroMQBuilder)) {
             throw new IllegalArgumentException();
         }
-        final NodeState newBase = getRoot();
-        rebase(builder, newBase);
+        final ZeroMQBuilder zeroMQBuilder = (ZeroMQBuilder) builder;
+        final ZeroMQNodeState newBase = (ZeroMQNodeState) getRoot();
+        zeroMQBuilder.rebase(newBase);
         final NodeState after = builder.getNodeState();
         final NodeState afterHook = commitHook.processCommit(newBase, after, info);
         mergeRoot("root", afterHook);
-        ((ZeroMQBuilder) builder).reset(afterHook);
+        zeroMQBuilder.reset(afterHook); // should this be rebase?
         if (changeDispatcher != null) {
             changeDispatcher.contentChanged(afterHook, info);
         }
@@ -272,22 +273,30 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         if (true) {
             throw new IllegalStateException();
         } else {
-            final NodeState newBase = getBlobRoot();
-            rebase(builder, newBase);
+            if (!(builder instanceof ZeroMQBuilder)) {
+                throw new IllegalArgumentException();
+            }
+            final ZeroMQBuilder zeroMQBuilder = (ZeroMQBuilder) builder;
+            final ZeroMQNodeState newBase = (ZeroMQNodeState) getBlobRoot();
+            zeroMQBuilder.rebase(newBase);
             final NodeState after = builder.getNodeState();
             mergeRoot("blobs", after);
-            ((ZeroMQBuilder) builder).reset(after);
+            zeroMQBuilder.reset(after); // should this be rebase?
             return after;
         }
     }
 
     private synchronized NodeState mergeCheckpoint(NodeBuilder builder) {
-            final NodeState newBase = getCheckpointRoot();
-            rebase(builder, newBase);
-            final NodeState after = builder.getNodeState();
-            mergeRoot("checkpoints", after);
-            ((ZeroMQBuilder) builder).reset(after);
-            return after;
+        if (!(builder instanceof ZeroMQBuilder)) {
+            throw new IllegalArgumentException();
+        }
+        final ZeroMQBuilder zeroMQBuilder = (ZeroMQBuilder) builder;
+        final ZeroMQNodeState newBase = (ZeroMQNodeState) getCheckpointRoot();
+        zeroMQBuilder.rebase(newBase);
+        final NodeState after = builder.getNodeState();
+        mergeRoot("checkpoints", after);
+        zeroMQBuilder.reset(after); // should this be rebase?
+        return after;
     }
 
     private ZeroMQNodeState readNodeState(String uuid) {
@@ -363,27 +372,15 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     }
 
     @Override
-    public NodeState rebase (@NotNull NodeBuilder builder) {
-        final NodeState newBase = getRoot();
-        return rebase(builder, newBase);
-    }
-    public NodeState rebase(@NotNull NodeBuilder builder, NodeState newBase) {
-        checkArgument(builder instanceof ZeroMQBuilder);
-        NodeState head = checkNotNull(builder).getNodeState();
-        NodeState base = builder.getBaseState();
-        if (base != newBase) {
-            ((ZeroMQBuilder) builder).reset(newBase);
-            head.compareAgainstBaseState(
-                    base, new ConflictAnnotatingRebaseDiff(builder));
-            head = builder.getNodeState();
-        }
-        return head;
+    public NodeState rebase(@NotNull NodeBuilder builder) {
+        final ZeroMQNodeState newBase = (ZeroMQNodeState) getRoot();
+        return ((ZeroMQBuilder) builder).rebase(newBase);
     }
 
     @Override
     public NodeState reset(NodeBuilder builder) {
         final NodeState newBase = getRoot();
-        ((MemoryNodeBuilder) builder).reset(newBase);
+        ((ZeroMQBuilder) builder).reset(newBase);
         return newBase;
     }
 
