@@ -3,7 +3,7 @@ package org.apache.jackrabbit.oak.store.zeromq;
 import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.api.PropertyState;
 import org.apache.jackrabbit.oak.api.Type;
-import org.apache.jackrabbit.oak.spi.state.ConflictAnnotatingRebaseDiff;
+import org.apache.jackrabbit.oak.spi.state.ApplyDiff;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.jetbrains.annotations.NotNull;
@@ -12,10 +12,9 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.function.Function;
-
-import static com.google.common.base.Preconditions.*;
 
 public class ZeroMQBuilder implements NodeBuilder {
     private String name;
@@ -25,14 +24,14 @@ public class ZeroMQBuilder implements NodeBuilder {
     private final Function<String, ZeroMQNodeState> reader;
     private final Consumer<ZeroMQNodeState.SerialisedZeroMQNodeState> writer;
 
-    private final Map<String,ZeroMQBuilder> childrenAdded = new HashMap<>();
-    private final Map<String,ZeroMQBuilder> childrenChanged = new HashMap<>();
+    private final Map<String, ZeroMQBuilder> childrenAdded = new ConcurrentHashMap<>();
+    private final Map<String, ZeroMQBuilder> childrenChanged = new ConcurrentHashMap<>();
     private final List<String> childrenRemoved = new ArrayList<>();
 
-    private final Map<String,ZeroMQPropertyState> propertiesAdded = new HashMap<>();
-    private final Map<String,ZeroMQPropertyState> propertiesChanged = new HashMap<>();
-    private final List<String> propertiesRemoved = new ArrayList<>();
-    private final Map<String, ZeroMQBuilder> builders = new HashMap<>();
+    private final Map<String, ZeroMQPropertyState> propertiesAdded = new ConcurrentHashMap<>();
+    private final Map<String, ZeroMQPropertyState> propertiesChanged = new ConcurrentHashMap<>();
+    private final Set<String> propertiesRemoved = new HashSet<>();
+    private final Map<String, ZeroMQBuilder> builders = new ConcurrentHashMap<>();
 
     private boolean dirty = false;
 
@@ -46,10 +45,9 @@ public class ZeroMQBuilder implements NodeBuilder {
     }
 
     ZeroMQBuilder getChildBuilder(String name, ZeroMQNodeState baseState) {
-        ZeroMQBuilder child;
-        if (builders.containsKey(name)) {
-            child = builders.get(name);
-            child.baseState = baseState; // TODO: reset?
+        ZeroMQBuilder child = builders.get(name);
+        if (child != null && child.baseState.equals(baseState)) {
+            //child.baseState = baseState; // TODO: reset?
             child.parent = this;
         } else {
             child = new ZeroMQBuilder(name, ns, this, baseState, reader, writer);
@@ -65,13 +63,13 @@ public class ZeroMQBuilder implements NodeBuilder {
             return baseState;
         }
 
-        final Map<@NotNull String, @NotNull String> children = new HashMap<>();
+        final Map<@NotNull String, @NotNull String> children = new ConcurrentHashMap<>();
         baseState.getChildNodeEntries().forEach(e -> children.put(e.getName(), ((ZeroMQNodeState) e.getNodeState()).getUuid()));
         childrenRemoved.forEach(children::remove);
         childrenChanged.forEach((k, v) -> children.put(k, ((ZeroMQNodeState) v.getNodeState()).getUuid()));
-        childrenAdded.forEach((k,v ) -> children.put(k, ((ZeroMQNodeState) v.getNodeState()).getUuid()));
+        childrenAdded.forEach((k, v) -> children.put(k, ((ZeroMQNodeState) v.getNodeState()).getUuid()));
 
-        final Map<String, ZeroMQPropertyState> properties = new HashMap<>();
+        final Map<String, ZeroMQPropertyState> properties = new ConcurrentHashMap<>();
         baseState.getProperties().forEach(p -> properties.put(p.getName(), (ZeroMQPropertyState) p));
         propertiesRemoved.forEach(properties::remove);
         propertiesChanged.forEach(properties::put);
@@ -117,13 +115,13 @@ public class ZeroMQBuilder implements NodeBuilder {
 
     @Override
     public boolean isReplaced() {
-        return false;
+        return parent != null && (parent.childrenChanged.containsKey(name) || parent.childrenRemoved.contains(name));
     }
 
     @Override
     public boolean isReplaced(String name) {
         checkBuilderDeleted();
-        return baseState.exists();
+        return propertiesChanged.containsKey(name) || propertiesRemoved.contains(name);
     }
 
     @Override
@@ -141,6 +139,7 @@ public class ZeroMQBuilder implements NodeBuilder {
             public Iterator<String> iterator() {
                 final Iterator<String> baseChildren = baseState.getChildNodeNames().iterator();
                 final Iterator<String> added = childrenAdded.keySet().iterator();
+                final List<String> removed = Collections.unmodifiableList(childrenRemoved);
                 return new Iterator<String>() {
                     private String next = null;
 
@@ -151,7 +150,7 @@ public class ZeroMQBuilder implements NodeBuilder {
                         }
                         while (baseChildren.hasNext()) {
                             next = baseChildren.next();
-                            if (!childrenRemoved.contains(next)) {
+                            if (!removed.contains(next)) {
                                 return true;
                             }
                             next = null;
@@ -187,24 +186,26 @@ public class ZeroMQBuilder implements NodeBuilder {
     public @NotNull NodeBuilder child(@NotNull String name) throws IllegalArgumentException {
         validateName(name);
         checkBuilderDeleted();
-        dirty = true;
-        if (childrenRemoved.contains(name)) {
-            childrenRemoved.remove(name);
-        }
+        setDirty();
         if (childrenChanged.containsKey(name)) {
             return childrenChanged.get(name);
         }
         if (childrenAdded.containsKey(name)) {
             return childrenAdded.get(name);
         }
-        if (baseState.hasChildNode(name)) {
+        if (baseState.hasChildNode(name) && !childrenRemoved.contains(name)) {
             final ZeroMQBuilder child = getChildBuilder(name, (ZeroMQNodeState) baseState.getChildNode(name));
             childrenChanged.put(name, child);
             return child;
         }
         final ZeroMQNodeState childBase = ZeroMQEmptyNodeState.EMPTY_NODE(ns, reader, writer);
         final ZeroMQBuilder child = getChildBuilder(name, childBase);
-        childrenAdded.put(name, child);
+        if (childrenRemoved.contains(name)) {
+            childrenRemoved.remove(name);
+            childrenChanged.put(name, child);
+        } else {
+            childrenAdded.put(name, child);
+        }
         return child;
     }
 
@@ -226,7 +227,7 @@ public class ZeroMQBuilder implements NodeBuilder {
         if (baseState.hasChildNode(name)) {
             final ZeroMQBuilder child = getChildBuilder(name, (ZeroMQNodeState) baseState.getChildNode(name));
             childrenChanged.put(name, child);
-            dirty = true;
+            setDirty();
             return child;
         }
         final ZeroMQNodeState childBase = ZeroMQEmptyNodeState.MISSING_NODE(ns, reader, writer);
@@ -238,7 +239,7 @@ public class ZeroMQBuilder implements NodeBuilder {
     public @NotNull NodeBuilder setChildNode(@NotNull String name) throws IllegalArgumentException {
         validateName(name);
         checkBuilderDeleted();
-        dirty = true;
+        setDirty();
         if (childrenRemoved.contains(name)) {
             childrenRemoved.remove(name);
         }
@@ -262,7 +263,7 @@ public class ZeroMQBuilder implements NodeBuilder {
     void setChildBuilder(String name, ZeroMQBuilder builder) {
         validateName(name);
         checkBuilderDeleted();
-        dirty = true;
+        setDirty();
         if (childrenRemoved.contains(name)) {
             childrenRemoved.remove(name);
         }
@@ -283,7 +284,8 @@ public class ZeroMQBuilder implements NodeBuilder {
     public @NotNull NodeBuilder setChildNode(@NotNull String name, @NotNull NodeState nodeState) throws IllegalArgumentException {
         validateName(name);
         checkBuilderDeleted();
-        dirty = true;
+        checkExists(nodeState);
+        setDirty();
         ZeroMQNodeState zmqNodeState = ZeroMQNodeState.fromNodeState(ns, nodeState, reader, writer);
         if (childrenRemoved.contains(name)) {
             childrenRemoved.remove(name);
@@ -296,15 +298,34 @@ public class ZeroMQBuilder implements NodeBuilder {
         }
         final ZeroMQBuilder child = getChildBuilder(name, zmqNodeState);
         if (baseState.hasChildNode(name)) {
-            if (nodeState.exists()) {
-                childrenChanged.put(name, child);
-            } else {
-                childrenRemoved.add(name);
-            }
-        } else if (nodeState.exists()) {
+            childrenChanged.put(name, child);
+        } else {
             childrenAdded.put(name, child);
         }
         return child;
+    }
+
+    void removeChildNode(@NotNull String name) {
+        validateName(name);
+        checkBuilderDeleted();
+        setDirty();
+        if (childrenRemoved.contains(name)) {
+            childrenRemoved.remove(name);
+        }
+        if (childrenChanged.containsKey(name)) {
+            childrenChanged.remove(name);
+        }
+        if (childrenAdded.containsKey(name)) {
+            childrenAdded.remove(name);
+        }
+        /*
+        if (builders.containsKey(name)) {
+            builders.remove(name);
+        }
+        */
+        if (baseState.hasChildNode(name)) {
+            childrenRemoved.add(name);
+        }
     }
 
     @Override
@@ -313,10 +334,9 @@ public class ZeroMQBuilder implements NodeBuilder {
         if (parent == null) {
             return false;
         }
-        // we assume setting a missing child node is the same as deleting it
-        parent.setChildNode(name, ZeroMQEmptyNodeState.MISSING_NODE(ns, reader, writer));
+        parent.removeChildNode(name);
         parent = null;
-        baseState = null;
+        //baseState = null;
         return true;
     }
 
@@ -352,7 +372,8 @@ public class ZeroMQBuilder implements NodeBuilder {
             @Override
             public Iterator<PropertyState> iterator() {
                 final Iterator<? extends PropertyState> baseProperties = baseState.getProperties().iterator();
-                final Iterator<ZeroMQPropertyState> added = propertiesAdded.values().iterator();
+                final Iterator<ZeroMQPropertyState> changed = Collections.unmodifiableCollection(propertiesChanged.values()).iterator();
+                final Iterator<ZeroMQPropertyState> added = Collections.unmodifiableCollection(propertiesAdded.values()).iterator();
                 return new Iterator<PropertyState>() {
                     private PropertyState next = null;
 
@@ -363,10 +384,14 @@ public class ZeroMQBuilder implements NodeBuilder {
                         }
                         while (baseProperties.hasNext()) {
                             next = baseProperties.next();
-                            if (!propertiesRemoved.contains(next.getName())) {
+                            if (!propertiesRemoved.contains(next.getName()) && !propertiesChanged.containsKey(next.getName())) {
                                 return true;
                             }
                             next = null;
+                        }
+                        if (changed.hasNext()) {
+                            next = changed.next();
+                            return true;
                         }
                         if (added.hasNext()) {
                             next = added.next();
@@ -449,7 +474,7 @@ public class ZeroMQBuilder implements NodeBuilder {
         final String name = property.getName();
         validateName(name);
         checkBuilderDeleted();
-        dirty = true;
+        setDirty();
         if (propertiesRemoved.contains(name)) {
             propertiesRemoved.remove(name);
         }
@@ -481,7 +506,7 @@ public class ZeroMQBuilder implements NodeBuilder {
     @Override
     public @NotNull NodeBuilder removeProperty(String name) {
         checkBuilderDeleted();
-        dirty = true;
+        setDirty();
         if (propertiesRemoved.contains(name)) {
             propertiesRemoved.remove(name);
         }
@@ -527,14 +552,74 @@ public class ZeroMQBuilder implements NodeBuilder {
     }
 
     public NodeState rebase(ZeroMQNodeState newBase) {
-        NodeState head = getNodeState();
+        //NodeState head = getNodeState();
         NodeState base = getBaseState();
         if (base != newBase) {
-            reset(newBase);
-            head.compareAgainstBaseState(base, new ConflictAnnotatingRebaseDiff(this));
-            head = getNodeState();
+            //reset(newBase);
+            //head.compareAgainstBaseState(base, new ConflictAnnotatingRebaseDiff(this));
+            //head.compareAgainstBaseState(base, new ApplyDiff(this));
+            newBase.compareAgainstBaseState(base, new ApplyDiff(this));
+            baseState = newBase;
+            builders.forEach((k, v) -> {
+                if (newBase.hasChildNode(k)) {
+                    v.rebase((ZeroMQNodeState) newBase.getChildNode(k));
+                } else {
+                    if (childrenRemoved.contains(k)) {
+                        childrenRemoved.remove(k);
+                    } else {
+                        v.rebase(ZeroMQEmptyNodeState.EMPTY_NODE(ns, reader, writer));
+                    }
+                }
+            });
+            final Map<String, ZeroMQBuilder> toChildrenAdded = new ConcurrentHashMap<>();
+            childrenChanged.forEach((k, v) -> {
+                if (!newBase.hasChildNode(k)) {
+                    toChildrenAdded.put(k, v);
+                }
+            });
+            toChildrenAdded.forEach((k, v) -> {
+                childrenChanged.remove(k);
+                childrenAdded.put(k, v);
+            });
+            final Map<String, ZeroMQBuilder> toChildrenChanged = new ConcurrentHashMap<>();
+            childrenAdded.forEach((k, v) -> {
+                if (newBase.hasChildNode(k)) {
+                    toChildrenChanged.put(k, v);
+                }
+            });
+            toChildrenChanged.forEach((k, v) -> {
+                childrenAdded.remove(k);
+                childrenChanged.put(k, v);
+            });
+            final Set<String> toRemoveProperties = new HashSet<>();
+            propertiesRemoved.forEach(k -> {
+                if (!newBase.hasProperty(k)) {
+                    toRemoveProperties.add(k);
+                }
+            });
+            propertiesRemoved.removeAll(toRemoveProperties);
+            final Map<String, ZeroMQPropertyState> toPropertiesAdded = new ConcurrentHashMap<>();
+            propertiesChanged.forEach((k, v) -> {
+                if (!newBase.hasProperty(k)) {
+                    toPropertiesAdded.put(k, v);
+                }
+            });
+            toPropertiesAdded.forEach((k, v) -> {
+                propertiesChanged.remove(k);
+                propertiesAdded.put(k, v);
+            });
+            final Map<String, ZeroMQPropertyState> toPropertiesChanged = new ConcurrentHashMap<>();
+            propertiesAdded.forEach((k, v) -> {
+                if (newBase.hasProperty(k)) {
+                    toPropertiesChanged.put(k, v);
+                }
+            });
+            toPropertiesChanged.forEach((k, v) -> {
+                propertiesAdded.remove(k);
+                propertiesChanged.put(k, v);
+            });
         }
-        return head;
+        return getNodeState();
     }
 
     private void validateName(@NotNull String name) throws IllegalArgumentException {
@@ -550,5 +635,15 @@ public class ZeroMQBuilder implements NodeBuilder {
         if (baseState == null) {
             throw new IllegalStateException("Builder was deleted");
         }
+    }
+
+    private void checkExists(@NotNull NodeState nodeState) {
+        if (!nodeState.exists()) {
+            throw new IllegalArgumentException("NodeState does not exist");
+        }
+    }
+
+    private void setDirty() {
+        dirty = true;
     }
 }

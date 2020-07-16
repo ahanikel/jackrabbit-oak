@@ -38,6 +38,7 @@ import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.GregorianCalendar;
 import java.util.List;
 
 public class ZeroMQPropertyState implements PropertyState {
@@ -309,6 +310,10 @@ public class ZeroMQPropertyState implements PropertyState {
         if (value instanceof BigDecimal) {
             final List<String> props = fromValueToInternal(ns, name, Type.DECIMAL, (BigDecimal) value);
             return new ZeroMQPropertyState(ns, name, Type.DECIMAL.toString(), props);
+        }
+        if (value instanceof GregorianCalendar) {
+            final List<String> props = fromValueToInternal(ns, name, Type.DATE, (((GregorianCalendar) value).toString()));
+            return new ZeroMQPropertyState(ns, name, Type.DATE.toString(), props);
         }
         else throw new IllegalArgumentException(value.getClass().toString());
     }

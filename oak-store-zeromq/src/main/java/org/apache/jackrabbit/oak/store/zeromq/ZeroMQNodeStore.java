@@ -137,7 +137,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         journalWriter.connect("tcp://" + journalPrefix + ":9001");
 
         nodeStateCache = CacheBuilder.newBuilder()
-            .maximumSize(10000).build();
+            .concurrencyLevel(10)
+            .maximumSize(1000000).build();
 
         blobCache = CacheBuilder.newBuilder()
             .maximumSize(100).build();
@@ -349,6 +350,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         if (nodeStateCache.getIfPresent(uuid) != null) {
             return;
         }
+        nodeStateCache.put(uuid, nodeState.getNodeState());
         String msg;
         int inst = clusterInstanceForUuid(uuid);
         while (true) {
@@ -356,7 +358,6 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
                 synchronized (nodeStateWriter[inst]) {
                     nodeStateWriter[inst].send(uuid + "\n" + nodeState.getserialisedNodeState());
                     msg = nodeStateWriter[inst].recvStr(); // wait for confirmation
-                    nodeStateCache.put(uuid, nodeState.getNodeState());
                 }
                 log.debug(msg);
                 break;
