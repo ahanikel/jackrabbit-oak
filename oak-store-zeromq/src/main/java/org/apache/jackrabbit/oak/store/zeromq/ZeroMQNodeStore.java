@@ -259,7 +259,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         final ZeroMQBuilder zeroMQBuilder = (ZeroMQBuilder) builder;
         final ZeroMQNodeState newBase = (ZeroMQNodeState) getRoot();
         zeroMQBuilder.rebase(newBase);
-        final NodeState after = builder.getNodeState();
+        final NodeState after = zeroMQBuilder.getNodeState();
         final NodeState afterHook = commitHook.processCommit(newBase, after, info);
         mergeRoot("root", afterHook);
         zeroMQBuilder.reset(afterHook); // should this be rebase?
@@ -374,7 +374,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     @Override
     public NodeState rebase(@NotNull NodeBuilder builder) {
         final ZeroMQNodeState newBase = (ZeroMQNodeState) getRoot();
-        return ((ZeroMQBuilder) builder).rebase(newBase);
+        final ZeroMQBuilder zeroMQBuilder = (ZeroMQBuilder) builder;
+        return zeroMQBuilder.rebase(newBase);
     }
 
     @Override
