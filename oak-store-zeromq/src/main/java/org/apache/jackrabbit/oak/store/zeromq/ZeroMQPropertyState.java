@@ -175,14 +175,20 @@ public class ZeroMQPropertyState implements PropertyState {
         final List<String> ret = new ArrayList<>();
         switch (type.tag()) {
             case PropertyType.STRING:
-            if (type.isArray()) {
-                for (String v : (Iterable<String>) value) {
-                    ret.add(v);
+            case PropertyType.NAME:
+            case PropertyType.PATH:
+            case PropertyType.REFERENCE:
+            case PropertyType.DATE:
+            case PropertyType.WEAKREFERENCE:
+            case PropertyType.URI:
+                if (type.isArray()) {
+                    for (String v : (Iterable<String>) value) {
+                        ret.add(v);
+                    }
+                } else {
+                    ret.add((String) value);
                 }
-            } else {
-                ret.add((String) value);
-            }
-            break;
+                break;
             case PropertyType.BINARY:
                 if (value instanceof Blob) {
                     if (type.isArray()) {
@@ -217,7 +223,7 @@ public class ZeroMQPropertyState implements PropertyState {
                         }
                     }
                 }
-            break;
+                break;
             case PropertyType.LONG:
                 if (type.isArray()) {
                     for (Long v : (Iterable<Long>) value) {
@@ -246,14 +252,14 @@ public class ZeroMQPropertyState implements PropertyState {
                 }
                 break;
             case PropertyType.DECIMAL:
-            if (type.isArray()) {
-                for (BigDecimal v : (Iterable<BigDecimal>) value) {
-                    ret.add(v.toString());
+                if (type.isArray()) {
+                    for (BigDecimal v : (Iterable<BigDecimal>) value) {
+                        ret.add(v.toString());
+                    }
+                } else {
+                    ret.add(((BigDecimal) value).toString());
                 }
-            } else {
-                ret.add(((BigDecimal) value).toString());
-            }
-            break;
+                break;
             default:
                 throw new IllegalArgumentException(value.getClass().toString());
         }
