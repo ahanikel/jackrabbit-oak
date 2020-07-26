@@ -18,8 +18,6 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkNotNull;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import org.apache.felix.scr.annotations.Service;
@@ -29,7 +27,10 @@ import org.apache.jackrabbit.oak.api.Type;
 import org.apache.jackrabbit.oak.api.jmx.CheckpointMBean;
 import org.apache.jackrabbit.oak.osgi.OsgiWhiteboard;
 import org.apache.jackrabbit.oak.plugins.memory.MemoryNodeBuilder;
+import org.apache.jackrabbit.oak.spi.blob.BlobStore;
+import org.apache.jackrabbit.oak.spi.blob.FileBlobStore;
 import org.apache.jackrabbit.oak.spi.commit.*;
+import org.apache.jackrabbit.oak.spi.state.ConflictAnnotatingRebaseDiff;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
@@ -50,11 +51,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
-import org.apache.jackrabbit.oak.plugins.memory.AbstractBlob;
-import org.apache.jackrabbit.oak.spi.blob.BlobStore;
-import org.apache.jackrabbit.oak.spi.blob.FileBlobStore;
-import org.apache.jackrabbit.oak.spi.state.ConflictAnnotatingRebaseDiff;
 
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
 import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQEmptyNodeState.EMPTY_NODE;
 
 /**
@@ -137,7 +136,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         journalWriter.connect("tcp://" + journalPrefix + ":9001");
 
         nodeStateCache = CacheBuilder.newBuilder()
-            .maximumSize(10000).build();
+            .concurrencyLevel(50)
+            .maximumSize(1000000).build();
 
         blobCache = CacheBuilder.newBuilder()
             .maximumSize(100).build();
@@ -340,14 +340,16 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         if (nodeStateCache.getIfPresent(uuid) != null) {
             return;
         }
-        String msg;
+        nodeStateCache.put(uuid, nodeState.getNodeState());
         int inst = clusterInstanceForUuid(uuid);
+        new Thread () {
+            public void run () {
         while (true) {
+            String msg;
             try {
                 synchronized (nodeStateWriter[inst]) {
                     nodeStateWriter[inst].send(uuid + "\n" + nodeState.getserialisedNodeState());
                     msg = nodeStateWriter[inst].recvStr(); // wait for confirmation
-                    nodeStateCache.put(uuid, nodeState.getNodeState());
                 }
                 log.debug(msg);
                 break;
@@ -360,6 +362,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
                 }
             }
         }
+            }
+        }.start ();
     }
 
     @Override
@@ -391,7 +395,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     public Blob createBlob(InputStream inputStream) throws IOException {
         if (true) {
             final String ref = blobStore.writeBlob(inputStream);
-            return getBlob(ref);
+            return new ZeroMQBlobStoreBlob(blobStore, ref);
         } else {
             final ZeroMQBlob blob = ZeroMQBlob.newInstance(inputStream);
             blobCache.put(blob.getReference(), blob);
@@ -405,6 +409,9 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     }
 
     Blob createBlob(Blob blob) throws IOException {
+        if (blob instanceof  ZeroMQBlobStoreBlob) {
+            return blob;
+        }
         String ref = blob.getReference();
         Blob ret = getBlob(ref);
         if (ref == null || ret == null || ret.getReference() == null) {

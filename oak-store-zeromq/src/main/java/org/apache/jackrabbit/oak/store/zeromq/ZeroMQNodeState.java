@@ -409,7 +409,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
 
         @Override
         public boolean propertyAdded(PropertyState after) {
-            properties.put(after.getName(), new ZeroMQPropertyState(this.ns, after));
+            properties.put(after.getName(), ZeroMQPropertyState.fromPropertyState(this.ns, after));
             dirty = true;
             return true;
         }
