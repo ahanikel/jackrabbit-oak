@@ -21,6 +21,7 @@ public class ZeroMQBuilder implements NodeBuilder {
     private final ZeroMQNodeStore ns;
     private ZeroMQBuilder parent;
     private ZeroMQNodeState baseState;
+    private ZeroMQNodeState lastState;
     private final Function<String, ZeroMQNodeState> reader;
     private final Consumer<ZeroMQNodeState.SerialisedZeroMQNodeState> writer;
 
@@ -40,6 +41,7 @@ public class ZeroMQBuilder implements NodeBuilder {
         this.ns = ns;
         this.parent = parent;
         this.baseState = baseState;
+        this.lastState = null;
         this.reader = reader;
         this.writer = writer;
     }
@@ -68,6 +70,12 @@ public class ZeroMQBuilder implements NodeBuilder {
         childrenRemoved.forEach(children::remove);
         childrenChanged.forEach((k, v) -> children.put(k, ((ZeroMQNodeState) v.getNodeState()).getUuid()));
         childrenAdded.forEach((k, v) -> children.put(k, ((ZeroMQNodeState) v.getNodeState()).getUuid()));
+
+        if (!hasNodeStateChanged()
+            && !childrenChanged.values().stream().anyMatch(ZeroMQBuilder::hasNodeStateChanged)
+            && !childrenAdded.values().stream().anyMatch(ZeroMQBuilder::hasNodeStateChanged)) {
+            return lastState;
+        }
 
         final Map<String, ZeroMQPropertyState> properties = new ConcurrentHashMap<>();
         baseState.getProperties().forEach(p -> properties.put(p.getName(), (ZeroMQPropertyState) p));
@@ -542,6 +550,7 @@ public class ZeroMQBuilder implements NodeBuilder {
         propertiesChanged.clear();
         propertiesRemoved.clear();
         baseState = (ZeroMQNodeState) newBase;
+        lastState = null;
         builders.forEach((n, b) -> {
             if (newBase.hasChildNode(n)) {
                 b.reset(newBase.getChildNode(n));
@@ -566,8 +575,6 @@ public class ZeroMQBuilder implements NodeBuilder {
                 } else {
                     if (childrenRemoved.contains(k)) {
                         childrenRemoved.remove(k);
-                    } else {
-                        v.rebase(ZeroMQEmptyNodeState.EMPTY_NODE(ns, reader, writer));
                     }
                 }
             });
@@ -619,6 +626,7 @@ public class ZeroMQBuilder implements NodeBuilder {
                 propertiesChanged.put(k, v);
             });
         }
+        lastState = null;
         return getNodeState();
     }
 
@@ -645,5 +653,10 @@ public class ZeroMQBuilder implements NodeBuilder {
 
     private void setDirty() {
         dirty = true;
+        lastState = null;
+    }
+
+    private boolean hasNodeStateChanged() {
+        return lastState == null;
     }
 }
