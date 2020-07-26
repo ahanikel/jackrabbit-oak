@@ -390,7 +390,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     public Blob createBlob(InputStream inputStream) throws IOException {
         if (true) {
             final String ref = blobStore.writeBlob(inputStream);
-            return getBlob(ref);
+            return new ZeroMQBlobStoreBlob(blobStore, ref);
         } else {
             final ZeroMQBlob blob = ZeroMQBlob.newInstance(inputStream);
             blobCache.put(blob.getReference(), blob);
@@ -404,6 +404,9 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     }
 
     Blob createBlob(Blob blob) throws IOException {
+        if (blob instanceof  ZeroMQBlobStoreBlob) {
+            return blob;
+        }
         String ref = blob.getReference();
         Blob ret = getBlob(ref);
         if (ref == null || ret == null || ret.getReference() == null) {

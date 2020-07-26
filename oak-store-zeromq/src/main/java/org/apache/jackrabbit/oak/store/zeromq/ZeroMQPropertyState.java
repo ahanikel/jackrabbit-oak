@@ -150,7 +150,9 @@ public class ZeroMQPropertyState implements PropertyState {
             if (type.equals(Type.BINARY)) {
                 Blob blob = (Blob) ps.getValue(type);
                 try {
-                    blob = ns.createBlob(blob); // ensure blob exists in the blobstore
+                    if (!(blob instanceof ZeroMQBlobStoreBlob)) {
+                        blob = ns.createBlob(blob); // ensure blob exists in the blobstore
+                    }
                 }
                 catch (IOException ex) {
                     throw new IllegalStateException(ex);
