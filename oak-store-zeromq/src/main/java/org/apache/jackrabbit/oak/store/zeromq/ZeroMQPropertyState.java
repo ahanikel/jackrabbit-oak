@@ -18,25 +18,28 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq;
 
-import java.io.IOException;
 import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.api.PropertyState;
 import org.apache.jackrabbit.oak.api.Type;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.io.UnsupportedEncodingException;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-
-import static org.apache.jackrabbit.oak.api.Type.*;
 import org.apache.jackrabbit.oak.plugins.memory.AbstractPropertyState;
 import org.apache.jackrabbit.oak.plugins.memory.BinaryPropertyState;
 import org.apache.jackrabbit.oak.plugins.value.Conversions;
 import org.apache.jackrabbit.oak.plugins.value.Conversions.Converter;
+import org.jetbrains.annotations.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.jcr.PropertyType;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.math.BigDecimal;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.GregorianCalendar;
+import java.util.List;
 
 public class ZeroMQPropertyState implements PropertyState {
 
@@ -61,25 +64,25 @@ public class ZeroMQPropertyState implements PropertyState {
             return value;
         }
 
-        if (type.equals(BINARY)) {
+        if (type.equals(Type.BINARY)) {
             return ns.getBlob(value);
         }
 
         Converter conv = Conversions.convert(value);
 
-        if (type.equals(BOOLEAN)) {
+        if (type.equals(Type.BOOLEAN)) {
             return conv.toBoolean();
         }
 
-        if (type.equals(DECIMAL)) {
+        if (type.equals(Type.DECIMAL)) {
             return conv.toDecimal();
         }
 
-        if (type.equals(DOUBLE)) {
+        if (type.equals(Type.DOUBLE)) {
             return conv.toDouble();
         }
 
-        if (type.equals(LONG)) {
+        if (type.equals(Type.LONG)) {
             return conv.toLong();
         }
 
@@ -93,24 +96,40 @@ public class ZeroMQPropertyState implements PropertyState {
         this.type = Type.fromString(type);
         this.stringValues = values;
         this.values = new ArrayList();
-        values.stream()
-                .forEach(v  -> this.values.add(convertTo(v, this.type.isArray()
-                                                                     ? this.type
-                                                                  .getBaseType()
-                                                                     : this.type)));
+        values.forEach(v  ->
+                this.values.add(convertTo(v, this.type.isArray()
+                        ? this.type.getBaseType()
+                        : this.type)));
     }
 
-    public ZeroMQPropertyState(ZeroMQNodeStore ns, PropertyState ps) {
+    <T> ZeroMQPropertyState(ZeroMQNodeStore ns, String name, Type<T> type, T value) {
+        this.ns = ns;
+        this.name = name;
+        this.type = type;
+        this.stringValues = new ArrayList();
+        this.values = new ArrayList();
+        if (type.isArray()) {
+            ((Iterable<?>) value).forEach(this.values::add);
+        } else {
+            this.values.add(value);
+        }
+        this.values.forEach(v -> {
+            final String sVal = valueToString(type.isArray() ? type.getBaseType() : type, v);
+            this.stringValues.add(sVal);
+        });
+    }
+
+    private ZeroMQPropertyState(ZeroMQNodeStore ns, PropertyState ps) {
         this.ns = ns;
         this.name = ps.getName();
         this.type = ps.getType();
-        this.stringValues = new ArrayList();
-        this.values = new ArrayList();
+        this.stringValues = new ArrayList<String>();
+        this.values = new ArrayList<Object>();
 
         if (ps.isArray()) {
             for (int i = 0; i < ps.count(); ++i) {
                 if (type.getBaseType()
-                        .equals(BINARY)) {
+                        .equals(Type.BINARY)) {
                     Blob blob = (Blob) ps.getValue(type.getBaseType(), i);
                     try {
                         blob = ns.createBlob(blob); // ensure blob exists in the blobstore
@@ -122,16 +141,18 @@ public class ZeroMQPropertyState implements PropertyState {
                     values.add(blob);
                 }
                 else {
-                    stringValues.add(ps.getValue(STRING, i));
+                    stringValues.add(ps.getValue(Type.STRING, i));
                     values.add(ps.getValue(type.getBaseType(), i));
                 }
             }
         }
         else {
-            if (type.equals(BINARY)) {
+            if (type.equals(Type.BINARY)) {
                 Blob blob = (Blob) ps.getValue(type);
                 try {
-                    blob = ns.createBlob(blob); // ensure blob exists in the blobstore
+                    if (!(blob instanceof ZeroMQBlobStoreBlob)) {
+                        blob = ns.createBlob(blob); // ensure blob exists in the blobstore
+                    }
                 }
                 catch (IOException ex) {
                     throw new IllegalStateException(ex);
@@ -140,14 +161,167 @@ public class ZeroMQPropertyState implements PropertyState {
                 values.add(blob);
             }
             else {
-                stringValues.add(ps.getValue(STRING));
+                stringValues.add(ps.getValue(Type.STRING));
                 values.add(ps.getValue(type));
             }
         }
     }
 
+    static ZeroMQPropertyState fromPropertyState(ZeroMQNodeStore ns, PropertyState p) {
+        if (p instanceof ZeroMQPropertyState) {
+            return (ZeroMQPropertyState) p;
+        }
+        return new ZeroMQPropertyState(ns, p);
+    }
+
+    static <T> List<String> fromValueToInternal(ZeroMQNodeStore ns, String name, Type<T> type, T value) {
+        final List<String> ret = new ArrayList<>();
+        switch (type.tag()) {
+            case PropertyType.STRING:
+            case PropertyType.NAME:
+            case PropertyType.PATH:
+            case PropertyType.REFERENCE:
+            case PropertyType.DATE:
+            case PropertyType.WEAKREFERENCE:
+            case PropertyType.URI:
+                if (type.isArray()) {
+                    for (String v : (Iterable<String>) value) {
+                        ret.add(v);
+                    }
+                } else {
+                    ret.add((String) value);
+                }
+                break;
+            case PropertyType.BINARY:
+                if (value instanceof Blob) {
+                    if (type.isArray()) {
+                        for (Blob v : (Iterable<Blob>) value) {
+                            try {
+                                ret.add(ns.createBlob(v).getReference());
+                            } catch (IOException e) {
+                                throw new IllegalStateException(e);
+                            }
+                        }
+                    } else {
+                        try {
+                            ret.add(ns.createBlob((Blob) value).getReference());
+                        } catch (IOException e) {
+                            throw new IllegalStateException(e);
+                        }
+                    }
+                } else if (value instanceof byte[]) {
+                    if (type.isArray()) {
+                        for (byte[] v : (Iterable<byte[]>) value) {
+                            try {
+                                ret.add(ns.createBlob(new ByteArrayInputStream(v)).getReference());
+                            } catch (IOException e) {
+                                throw new IllegalStateException(e);
+                            }
+                        }
+                    } else {
+                        try {
+                            ret.add(ns.createBlob(new ByteArrayInputStream((byte[]) value)).getReference());
+                        } catch (IOException e) {
+                            throw new IllegalStateException(e);
+                        }
+                    }
+                }
+                break;
+            case PropertyType.LONG:
+                if (type.isArray()) {
+                    for (Long v : (Iterable<Long>) value) {
+                        ret.add(v.toString());
+                    }
+                } else {
+                    ret.add(((Long) value).toString());
+                }
+                break;
+            case PropertyType.DOUBLE:
+                if (type.isArray()) {
+                    for (Double v : (Iterable<Double>) value) {
+                        ret.add(v.toString());
+                    }
+                } else {
+                    ret.add(((Double) value).toString());
+                }
+                break;
+            case PropertyType.BOOLEAN:
+                if (type.isArray()) {
+                    for (Boolean v : (Iterable<Boolean>) value) {
+                        ret.add(v.toString());
+                    }
+                } else {
+                    ret.add(((Boolean) value).toString());
+                }
+                break;
+            case PropertyType.DECIMAL:
+                if (type.isArray()) {
+                    for (BigDecimal v : (Iterable<BigDecimal>) value) {
+                        ret.add(v.toString());
+                    }
+                } else {
+                    ret.add(((BigDecimal) value).toString());
+                }
+                break;
+            default:
+                throw new IllegalArgumentException(value.getClass().toString());
+        }
+        return ret;
+    }
+
+    static ZeroMQPropertyState fromValue(ZeroMQNodeStore ns, String name, Type type, Object value) {
+        final List<String> props = fromValueToInternal(ns, name, type, value);
+        return new ZeroMQPropertyState(ns, name, type.toString(), props);
+    }
+
+    static ZeroMQPropertyState fromValue(ZeroMQNodeStore ns, String name, Object value) {
+        if (value instanceof String) {
+            final List<String> props = fromValueToInternal(ns, name, Type.STRING, (String) value);
+            return new ZeroMQPropertyState(ns, name, Type.STRING.toString(), props);
+        }
+        if (value instanceof Blob) {
+            final List<String> props = fromValueToInternal(ns, name, Type.BINARY, (Blob) value);
+            return new ZeroMQPropertyState(ns, name, Type.BINARY.toString(), props);
+        }
+        if (value instanceof byte[]) {
+            Blob blob;
+            try {
+                blob = ns.createBlob(new ByteArrayInputStream((byte[]) value));
+            } catch (IOException e) {
+                throw new IllegalStateException(e);
+            }
+            final List<String> props = fromValueToInternal(ns, name, Type.BINARY, blob);
+            return new ZeroMQPropertyState(ns, name, Type.BINARY.toString(), props);
+        }
+        if (value instanceof Long) {
+            final List<String> props = fromValueToInternal(ns, name, Type.LONG, (Long) value);
+            return new ZeroMQPropertyState(ns, name, Type.LONG.toString(), props);
+        }
+        if (value instanceof Integer) {
+            final List<String> props = fromValueToInternal(ns, name, Type.LONG, ((Integer) value).longValue());
+            return new ZeroMQPropertyState(ns, name, Type.LONG.toString(), props);
+        }
+        if (value instanceof Double) {
+            final List<String> props = fromValueToInternal(ns, name, Type.DOUBLE, (Double) value);
+            return new ZeroMQPropertyState(ns, name, Type.DOUBLE.toString(), props);
+        }
+        if (value instanceof Boolean) {
+            final List<String> props = fromValueToInternal(ns, name, Type.BOOLEAN, (Boolean) value);
+            return new ZeroMQPropertyState(ns, name, Type.BOOLEAN.toString(), props);
+        }
+        if (value instanceof BigDecimal) {
+            final List<String> props = fromValueToInternal(ns, name, Type.DECIMAL, (BigDecimal) value);
+            return new ZeroMQPropertyState(ns, name, Type.DECIMAL.toString(), props);
+        }
+        if (value instanceof GregorianCalendar) {
+            final List<String> props = fromValueToInternal(ns, name, Type.DATE, (((GregorianCalendar) value).toString()));
+            return new ZeroMQPropertyState(ns, name, Type.DATE.toString(), props);
+        }
+        else throw new IllegalArgumentException(value.getClass().toString());
+    }
+
     @Override
-    public String getName() {
+    public @NotNull String getName() {
         return name;
     }
 
@@ -162,26 +336,26 @@ public class ZeroMQPropertyState implements PropertyState {
     }
 
     private static boolean isStringBased(Type<?> type) {
-        return type.equals(STRING) || type.equals(DATE) || type.equals(NAME)
-                       || type.equals(PATH) || type.equals(REFERENCE) || type
+        return type.equals(Type.STRING) || type.equals(Type.DATE) || type.equals(Type.NAME)
+                       || type.equals(Type.PATH) || type.equals(Type.REFERENCE) || type
                 .equals(
-                        WEAKREFERENCE) || type.equals(URI);
+                        Type.WEAKREFERENCE) || type.equals(Type.URI);
     }
 
     private static boolean areStringBased(Type<?> type) {
-        return type.equals(STRINGS) || type.equals(DATES) || type.equals(NAMES)
-                       || type.equals(PATHS) || type.equals(REFERENCES) || type
+        return type.equals(Type.STRINGS) || type.equals(Type.DATES) || type.equals(Type.NAMES)
+                       || type.equals(Type.PATHS) || type.equals(Type.REFERENCES) || type
                 .equals(
-                        WEAKREFERENCES) || type.equals(URIS);
+                        Type.WEAKREFERENCES) || type.equals(Type.URIS);
     }
 
     @Override
-    public <T> T getValue(Type<T> type) {
+    public <T> @NotNull T getValue(Type<T> type) {
         if (type.isArray()) {
             if (this.type.equals(type)) {
                 return (T) Collections.unmodifiableList(values);
             }
-            else if (type.equals(STRINGS)) {
+            else if (type.equals(Type.STRINGS)) {
                 return (T) Collections.unmodifiableList(stringValues);
             }
             else {
@@ -196,7 +370,7 @@ public class ZeroMQPropertyState implements PropertyState {
             if (this.type.equals(type)) {
                 return (T) values.get(0);
             }
-            else if (type.equals(STRING)) {
+            else if (type.equals(Type.STRING)) {
                 return (T) stringValues.get(0);
             }
             else {
@@ -206,7 +380,7 @@ public class ZeroMQPropertyState implements PropertyState {
     }
 
     @Override
-    public <T> T getValue(Type<T> type, int index) {
+    public <T> @NotNull T getValue(Type<T> type, int index) {
         if (index < 0 || index >= this.count()) {
             throw new IndexOutOfBoundsException(String.format(
                     "index %d requested but we only have %d values", index,
@@ -220,7 +394,7 @@ public class ZeroMQPropertyState implements PropertyState {
         if (this.type.equals(type)) {
             return (T) values.get(index);
         }
-        else if (type.equals(STRING)) {
+        else if (type.equals(Type.STRING)) {
             return (T) stringValues.get(index);
         }
         else {
@@ -262,13 +436,13 @@ public class ZeroMQPropertyState implements PropertyState {
     public boolean equals(Object that) {
         if (that instanceof ZeroMQPropertyState) {
             ZeroMQPropertyState other = (ZeroMQPropertyState) that;
-            if (this.getType().equals(BINARY) && other.getType().equals(BINARY)) {
+            if (this.getType().equals(Type.BINARY) && other.getType().equals(Type.BINARY)) {
                 return this.stringValues.get(0).equals(other.stringValues.get(0));
             }
         }
         if (that instanceof BinaryPropertyState) {
             BinaryPropertyState other = (BinaryPropertyState) that;
-            if (this.getType().equals(BINARY) && other.getType().equals(BINARY)) {
+            if (this.getType().equals(Type.BINARY) && other.getType().equals(Type.BINARY)) {
                 return this.stringValues.get(0).equals(other.getValue().getReference());
             }
         }
@@ -291,7 +465,7 @@ public class ZeroMQPropertyState implements PropertyState {
         if (isArray()) {
             sb.append("= [");
             stringValues.forEach((String s)  -> {
-                if (type.equals(BINARIES)) {
+                if (type.equals(Type.BINARIES)) {
                     sb.append(s);
                 }
                 else {
@@ -304,7 +478,7 @@ public class ZeroMQPropertyState implements PropertyState {
         else {
             try {
                 sb.append("= ");
-                if (type.equals(BINARY)) {
+                if (type.equals(Type.BINARY)) {
                     sb.append(stringValues.get(0));
                 }
                 else {
@@ -337,18 +511,18 @@ public class ZeroMQPropertyState implements PropertyState {
         }
     }
 
-    private static <T> String valueToString(Type<T> from, T v) {
-        if (from.equals(STRING) || from.equals(DATE) || from.equals(NAME)
-                    || from.equals(PATH) || from.equals(REFERENCE) || from
+    private static String valueToString(Type<?> from, Object v) {
+        if (from.equals(Type.STRING) || from.equals(Type.DATE) || from.equals(Type.NAME)
+                    || from.equals(Type.PATH) || from.equals(Type.REFERENCE) || from
                 .equals(
-                        WEAKREFERENCE) || from.equals(URI)) {
+                        Type.WEAKREFERENCE) || from.equals(Type.URI)) {
             return (String) v;
         }
-        else if (from.equals(BINARY)) {
+        else if (from.equals(Type.BINARY)) {
             return ((Blob) v).getReference();
         }
-        else if (from.equals(LONG) || from.equals(DOUBLE) || from
-                .equals(BOOLEAN) || from.equals(DECIMAL)) {
+        else if (from.equals(Type.LONG) || from.equals(Type.DOUBLE) || from
+                .equals(Type.BOOLEAN) || from.equals(Type.DECIMAL)) {
             return v.toString();
         }
         else {
