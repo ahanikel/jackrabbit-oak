@@ -137,7 +137,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         journalWriter.connect("tcp://" + journalPrefix + ":9001");
 
         nodeStateCache = CacheBuilder.newBuilder()
-            .maximumSize(10000).build();
+            .concurrencyLevel(50)
+            .maximumSize(1000000).build();
 
         blobCache = CacheBuilder.newBuilder()
             .maximumSize(100).build();
@@ -340,26 +341,30 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         if (nodeStateCache.getIfPresent(uuid) != null) {
             return;
         }
-        String msg;
-        int inst = clusterInstanceForUuid(uuid);
-        while (true) {
-            try {
-                synchronized (nodeStateWriter[inst]) {
-                    nodeStateWriter[inst].send(uuid + "\n" + nodeState.getserialisedNodeState());
-                    msg = nodeStateWriter[inst].recvStr(); // wait for confirmation
-                    nodeStateCache.put(uuid, nodeState.getNodeState());
-                }
-                log.debug(msg);
-                break;
-            } catch (Throwable t) {
-                log.warn(t.toString());
-                try {
-                    Thread.sleep(100);
-                } catch (InterruptedException e) {
-                    log.error(e.toString());
+        nodeStateCache.put(uuid, nodeState.getNodeState());
+        new Thread () {
+            public void run () {
+                String msg;
+                int inst = clusterInstanceForUuid(uuid);
+                while (true) {
+                    try {
+                        synchronized (nodeStateWriter[inst]) {
+                            nodeStateWriter[inst].send(uuid + "\n" + nodeState.getserialisedNodeState());
+                            msg = nodeStateWriter[inst].recvStr(); // wait for confirmation
+                        }
+                        log.debug(msg);
+                        break;
+                    } catch (Throwable t) {
+                        log.warn(t.toString());
+                        try {
+                            Thread.sleep(100);
+                        } catch (InterruptedException e) {
+                            log.error(e.toString());
+                        }
+                    }
                 }
             }
-        }
+        }.start();
     }
 
     @Override
@@ -367,6 +372,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         final NodeState newBase = getRoot();
         return rebase(builder, newBase);
     }
+
     public NodeState rebase(@NotNull NodeBuilder builder, NodeState newBase) {
         checkArgument(builder instanceof ZeroMQNodeBuilder);
         NodeState head = checkNotNull(builder).getNodeState();

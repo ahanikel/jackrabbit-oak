@@ -26,9 +26,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.UnsupportedEncodingException;
+import java.sql.Date;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Collections;
 import java.util.List;
 
@@ -80,6 +82,9 @@ public class ZeroMQPropertyState implements PropertyState {
         }
 
         if (type.equals(LONG)) {
+            if (this.type.equals(DATE)) {
+                return Date.valueOf(value).getTime(); // TODO: check if timezone is handled correctly
+            }
             return conv.toLong();
         }
 
