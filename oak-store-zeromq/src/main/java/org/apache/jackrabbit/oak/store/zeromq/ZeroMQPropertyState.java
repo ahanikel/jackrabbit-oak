@@ -58,37 +58,34 @@ public class ZeroMQPropertyState implements PropertyState {
 
     private final List<Object> values;
 
-    private Object convertTo(String value, Type type) {
+    private <T> T convertTo(String value, Type<T> type) {
         if (isStringBased(type)) {
-            return value;
+            return (T) value;
         }
 
         if (type.equals(BINARY)) {
-            return ns.getBlob(value);
+            return (T) ns.getBlob(value);
         }
 
-        Converter conv = Conversions.convert(value);
-
-        if (type.equals(BOOLEAN)) {
-            return conv.toBoolean();
+        Type<?> base = getType();
+        if (base.isArray()) {
+            base = base.getBaseType();
         }
 
-        if (type.equals(DECIMAL)) {
-            return conv.toDecimal();
-        }
+        Converter converter = Conversions.convert(value, base);
 
-        if (type.equals(DOUBLE)) {
-            return conv.toDouble();
+        if (type == BOOLEAN) {
+            return (T) Boolean.valueOf(converter.toBoolean());
+        } else if (type == DECIMAL) {
+            return (T) converter.toDecimal();
+        } else if (type == DOUBLE) {
+            return (T) Double.valueOf(converter.toDouble());
+        } else if (type == LONG) {
+            return (T) Long.valueOf(converter.toLong());
+        } else {
+            throw new UnsupportedOperationException(
+                    "Unknown type: " + type);
         }
-
-        if (type.equals(LONG)) {
-            if (this.type.equals(DATE)) {
-                return Date.valueOf(value).getTime(); // TODO: check if timezone is handled correctly
-            }
-            return conv.toLong();
-        }
-
-        throw new IllegalArgumentException("Unknown type: " + type.toString());
     }
 
     ZeroMQPropertyState(ZeroMQNodeStore ns, String name, String type,
