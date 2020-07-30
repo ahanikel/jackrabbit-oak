@@ -60,9 +60,9 @@ public class ZeroMQPropertyState implements PropertyState {
 
     private final List<Object> values;
 
-    private Object convertTo(String value, Type type) {
+    private <T> T convertTo(String value, Type<T> type) {
         if (isStringBased(type)) {
-            return value;
+            return (T) value;
         }
 
         if (type.equals(Type.BINARY)) {
@@ -86,8 +86,6 @@ public class ZeroMQPropertyState implements PropertyState {
         if (type.equals(Type.LONG)) {
             return conv.toLong();
         }
-
-        throw new IllegalArgumentException("Unknown type: " + type.toString());
     }
 
     ZeroMQPropertyState(ZeroMQNodeStore ns, String name, String type,
