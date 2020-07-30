@@ -41,6 +41,8 @@ import java.util.Collections;
 import java.util.GregorianCalendar;
 import java.util.List;
 
+import static org.apache.jackrabbit.oak.api.Type.BOOLEAN;
+
 public class ZeroMQPropertyState implements PropertyState {
 
     private static final Logger log = LoggerFactory.getLogger(
@@ -59,34 +61,34 @@ public class ZeroMQPropertyState implements PropertyState {
 
     private final List<Object> values;
 
-    private Object convertTo(String value, Type type) {
+    private <T> T convertTo(String value, Type<T> type) {
         if (isStringBased(type)) {
-            return value;
+            return (T) value;
         }
 
         if (type.equals(Type.BINARY)) {
-            return ns.getBlob(value);
+            return (T) ns.getBlob(value);
         }
 
-        Converter conv = Conversions.convert(value);
-
-        if (type.equals(Type.BOOLEAN)) {
-            return conv.toBoolean();
+        Type<?> base = getType();
+        if (base.isArray()) {
+            base = base.getBaseType();
         }
 
-        if (type.equals(Type.DECIMAL)) {
-            return conv.toDecimal();
-        }
+        Converter converter = Conversions.convert(value, base);
 
-        if (type.equals(Type.DOUBLE)) {
-            return conv.toDouble();
+        if (type == Type.BOOLEAN) {
+            return (T) Boolean.valueOf(converter.toBoolean());
+        } else if (type == Type.DECIMAL) {
+            return (T) converter.toDecimal();
+        } else if (type == Type.DOUBLE) {
+            return (T) Double.valueOf(converter.toDouble());
+        } else if (type == Type.LONG) {
+            return (T) Long.valueOf(converter.toLong());
+        } else {
+            throw new UnsupportedOperationException(
+                    "Unknown type: " + type);
         }
-
-        if (type.equals(Type.LONG)) {
-            return conv.toLong();
-        }
-
-        throw new IllegalArgumentException("Unknown type: " + type.toString());
     }
 
     ZeroMQPropertyState(ZeroMQNodeStore ns, String name, String type,
@@ -306,8 +308,8 @@ public class ZeroMQPropertyState implements PropertyState {
             return new ZeroMQPropertyState(ns, name, Type.DOUBLE.toString(), props);
         }
         if (value instanceof Boolean) {
-            final List<String> props = fromValueToInternal(ns, name, Type.BOOLEAN, (Boolean) value);
-            return new ZeroMQPropertyState(ns, name, Type.BOOLEAN.toString(), props);
+            final List<String> props = fromValueToInternal(ns, name, BOOLEAN, (Boolean) value);
+            return new ZeroMQPropertyState(ns, name, BOOLEAN.toString(), props);
         }
         if (value instanceof BigDecimal) {
             final List<String> props = fromValueToInternal(ns, name, Type.DECIMAL, (BigDecimal) value);
@@ -522,7 +524,7 @@ public class ZeroMQPropertyState implements PropertyState {
             return ((Blob) v).getReference();
         }
         else if (from.equals(Type.LONG) || from.equals(Type.DOUBLE) || from
-                .equals(Type.BOOLEAN) || from.equals(Type.DECIMAL)) {
+                .equals(BOOLEAN) || from.equals(Type.DECIMAL)) {
             return v.toString();
         }
         else {

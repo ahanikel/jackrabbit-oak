@@ -341,29 +341,29 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
             return;
         }
         nodeStateCache.put(uuid, nodeState.getNodeState());
-        int inst = clusterInstanceForUuid(uuid);
         new Thread () {
             public void run () {
-        while (true) {
-            String msg;
-            try {
-                synchronized (nodeStateWriter[inst]) {
-                    nodeStateWriter[inst].send(uuid + "\n" + nodeState.getserialisedNodeState());
-                    msg = nodeStateWriter[inst].recvStr(); // wait for confirmation
-                }
-                log.debug(msg);
-                break;
-            } catch (Throwable t) {
-                log.warn(t.toString());
-                try {
-                    Thread.sleep(100);
-                } catch (InterruptedException e) {
-                    log.error(e.toString());
+                String msg;
+                int inst = clusterInstanceForUuid(uuid);
+                while (true) {
+                    try {
+                        synchronized (nodeStateWriter[inst]) {
+                            nodeStateWriter[inst].send(uuid + "\n" + nodeState.getserialisedNodeState());
+                            msg = nodeStateWriter[inst].recvStr(); // wait for confirmation
+                        }
+                        log.debug(msg);
+                        break;
+                    } catch (Throwable t) {
+                        log.warn(t.toString());
+                        try {
+                            Thread.sleep(100);
+                        } catch (InterruptedException e) {
+                            log.error(e.toString());
+                        }
+                    }
                 }
             }
-        }
-            }
-        }.start ();
+        }.start();
     }
 
     @Override
@@ -371,6 +371,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         final NodeState newBase = getRoot();
         return rebase(builder, newBase);
     }
+
     public NodeState rebase(@NotNull NodeBuilder builder, NodeState newBase) {
         checkArgument(builder instanceof ZeroMQNodeBuilder);
         NodeState head = checkNotNull(builder).getNodeState();
