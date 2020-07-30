@@ -18,8 +18,6 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkNotNull;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import org.apache.felix.scr.annotations.Service;
@@ -29,7 +27,10 @@ import org.apache.jackrabbit.oak.api.Type;
 import org.apache.jackrabbit.oak.api.jmx.CheckpointMBean;
 import org.apache.jackrabbit.oak.osgi.OsgiWhiteboard;
 import org.apache.jackrabbit.oak.plugins.memory.MemoryNodeBuilder;
+import org.apache.jackrabbit.oak.spi.blob.BlobStore;
+import org.apache.jackrabbit.oak.spi.blob.FileBlobStore;
 import org.apache.jackrabbit.oak.spi.commit.*;
+import org.apache.jackrabbit.oak.spi.state.ConflictAnnotatingRebaseDiff;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
@@ -50,11 +51,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
-import org.apache.jackrabbit.oak.plugins.memory.AbstractBlob;
-import org.apache.jackrabbit.oak.spi.blob.BlobStore;
-import org.apache.jackrabbit.oak.spi.blob.FileBlobStore;
-import org.apache.jackrabbit.oak.spi.state.ConflictAnnotatingRebaseDiff;
 
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
 import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQEmptyNodeState.EMPTY_NODE;
 
 /**
@@ -137,7 +136,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         journalWriter.connect("tcp://" + journalPrefix + ":9001");
 
         nodeStateCache = CacheBuilder.newBuilder()
-            .concurrencyLevel(10)
+            .concurrencyLevel(50)
             .maximumSize(1000000).build();
 
         blobCache = CacheBuilder.newBuilder()
@@ -351,25 +350,29 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
             return;
         }
         nodeStateCache.put(uuid, nodeState.getNodeState());
-        String msg;
-        int inst = clusterInstanceForUuid(uuid);
-        while (true) {
-            try {
-                synchronized (nodeStateWriter[inst]) {
-                    nodeStateWriter[inst].send(uuid + "\n" + nodeState.getserialisedNodeState());
-                    msg = nodeStateWriter[inst].recvStr(); // wait for confirmation
-                }
-                log.debug(msg);
-                break;
-            } catch (Throwable t) {
-                log.warn(t.toString());
-                try {
-                    Thread.sleep(100);
-                } catch (InterruptedException e) {
-                    log.error(e.toString());
+        new Thread () {
+            public void run () {
+                String msg;
+                int inst = clusterInstanceForUuid(uuid);
+                while (true) {
+                    try {
+                        synchronized (nodeStateWriter[inst]) {
+                            nodeStateWriter[inst].send(uuid + "\n" + nodeState.getserialisedNodeState());
+                            msg = nodeStateWriter[inst].recvStr(); // wait for confirmation
+                        }
+                        log.debug(msg);
+                        break;
+                    } catch (Throwable t) {
+                        log.warn(t.toString());
+                        try {
+                            Thread.sleep(100);
+                        } catch (InterruptedException e) {
+                            log.error(e.toString());
+                        }
+                    }
                 }
             }
-        }
+        }.start();
     }
 
     @Override
