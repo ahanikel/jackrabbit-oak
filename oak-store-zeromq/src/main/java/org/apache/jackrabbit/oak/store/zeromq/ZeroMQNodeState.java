@@ -364,6 +364,11 @@ public class ZeroMQNodeState extends AbstractNodeState {
         return uuid;
     }
 
+    @Override
+    public String toString() {
+        return serialised;
+    }
+
     static ZeroMQNodeStateDiffBuilder getNodeStateDiffBuilder(ZeroMQNodeStore ns, ZeroMQNodeState before, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) {
         return new ZeroMQNodeStateDiffBuilder(ns, before, reader, writer);
     }
