@@ -25,11 +25,13 @@ import org.slf4j.LoggerFactory;
 
 import java.io.UnsupportedEncodingException;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class ZeroMQNodeState extends AbstractNodeState {
@@ -50,16 +52,19 @@ public class ZeroMQNodeState extends AbstractNodeState {
     private final Function<String, ZeroMQNodeState> reader;
     private final Consumer<SerialisedZeroMQNodeState> writer;
     private final String serialised;
+    private final Map<String, ZeroMQNodeState> childRefs;
+    private List<ChildNodeEntry> childNodeEntries;
 
     // not private because ZeroMQEmptyNodeState needs it
     ZeroMQNodeState(ZeroMQNodeStore ns, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) {
         this.ns = ns;
-        this.children = new HashMap<>();
-        this.properties = new HashMap<>();
+        this.children = new HashMap<>(1000);
+        this.properties = new HashMap<>(100);
         this.reader = reader;
         this.writer = writer;
         serialised = serialise();
         this.uuid = ZeroMQEmptyNodeState.UUID_NULL.toString();
+        this.childRefs = new ConcurrentHashMap<>(1000);
     }
 
     private ZeroMQNodeState(ZeroMQNodeStore ns, Map<String, String> children, Map<String, ZeroMQPropertyState> properties, String serialised, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) {
@@ -78,6 +83,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
         } catch (UnsupportedEncodingException ex) {
             throw new IllegalStateException(ex);
         }
+        this.childRefs = new ConcurrentHashMap<>(1000);
     }
 
     static class ParseFailure extends Exception {
@@ -206,8 +212,8 @@ public class ZeroMQNodeState extends AbstractNodeState {
     static ZeroMQNodeState deSerialise(ZeroMQNodeStore ns, String s, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) throws ParseFailure {
         final List<String> children = new ArrayList<>();
         final List<String> properties = new ArrayList<>();
-        final Map<String, String> childrenMap = new HashMap<>();
-        final Map<String, ZeroMQPropertyState> propertiesMap = new HashMap<>();
+        final Map<String, String> childrenMap = new HashMap<>(1000);
+        final Map<String, ZeroMQPropertyState> propertiesMap = new HashMap<>(100);
         final Parser parser = new Parser(s);
         parser
             .parseString("begin ZeroMQNodeState\n")
@@ -330,29 +336,34 @@ public class ZeroMQNodeState extends AbstractNodeState {
 
     @Override
     public NodeState getChildNode(String name) throws IllegalArgumentException {
-        if (children.containsKey(name)) {
-            return reader.apply(children.get(name));
-        } else {
-            return ZeroMQEmptyNodeState.MISSING_NODE(ns, reader, writer);
-        }
+        return childRefs.computeIfAbsent(name, n -> {
+            NodeState ret;
+            if (children.containsKey(name)) {
+                ret = reader.apply(children.get(name));
+            } else {
+                ret = ns.missingNode;
+            }
+            return (ZeroMQNodeState) ret;
+        });
     }
 
     @Override
     public Iterable<? extends ChildNodeEntry> getChildNodeEntries() {
-        return () -> {
-            Stream s = children.entrySet().stream().map(child -> new ChildNodeEntry() {
-                @Override
-                public String getName() {
-                    return child.getKey();
-                }
+        if (childNodeEntries == null) {
+            childNodeEntries =
+                    children.entrySet().stream().map(child -> new ChildNodeEntry() {
+                        @Override
+                        public String getName() {
+                            return child.getKey();
+                        }
 
-                @Override
-                public NodeState getNodeState() {
-                    return ZeroMQNodeState.this.getChildNode(child.getKey());
-                }
-            });
-            return s.iterator();
-        };
+                        @Override
+                        public NodeState getNodeState() {
+                            return ZeroMQNodeState.this.getChildNode(child.getKey());
+                        }
+                    }).collect(Collectors.toList());
+        }
+        return (() -> childNodeEntries.iterator());
     }
 
     @Override
@@ -395,8 +406,8 @@ public class ZeroMQNodeState extends AbstractNodeState {
         }
 
         private void reset() {
-            this.children = new HashMap<>();
-            this.properties = new HashMap<>();
+            this.children = new HashMap<>(1000);
+            this.properties = new HashMap<>(100);
             this.children.putAll(before.children);
             this.properties.putAll(before.properties);
             this.dirty = false;
@@ -437,7 +448,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
             if (after instanceof ZeroMQNodeState) {
                 this.children.put(name, ((ZeroMQNodeState) after).getUuid());
             } else {
-                final ZeroMQNodeState before = (ZeroMQNodeState) ZeroMQEmptyNodeState.EMPTY_NODE(this.ns, reader, writer);
+                final ZeroMQNodeState before = ns.emptyNode;
                 final ZeroMQNodeStateDiffBuilder diff = getNodeStateDiffBuilder(this.ns, before, reader, writer);
                 after.compareAgainstBaseState(before, diff);
                 final ZeroMQNodeState child = diff.getNodeState();

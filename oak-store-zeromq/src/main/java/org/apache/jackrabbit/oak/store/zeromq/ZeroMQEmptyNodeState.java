@@ -186,6 +186,7 @@ public final class ZeroMQEmptyNodeState extends ZeroMQNodeState {
 
     //------------------------------------------------------------< Object >--
 
+    @Override
     public String toString() {
         if (exists) {
             return "{ }";

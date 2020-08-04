@@ -54,7 +54,7 @@ import java.util.concurrent.ExecutionException;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
-import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQEmptyNodeState.EMPTY_NODE;
+import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeState.getNodeStateDiffBuilder;
 
 /**
  * A store which dumps everything into a queue.
@@ -101,6 +101,9 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
 
     @NotNull
     final BlobStore blobStore;
+
+    final ZeroMQNodeState emptyNode = (ZeroMQNodeState) ZeroMQEmptyNodeState.EMPTY_NODE(this, this::readNodeState, this::write);
+    final ZeroMQNodeState missingNode = (ZeroMQNodeState) ZeroMQEmptyNodeState.MISSING_NODE(this, this::readNodeState, this::write);
 
     public ZeroMQNodeStore() {
 
@@ -174,12 +177,17 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
      * implemented) removes them. This is needed for testing.
      */
     public void reset() {
-        final NodeBuilder builder = EMPTY_NODE(this, this::readNodeState, this::write).builder();
+        final NodeBuilder builder = emptyNode.builder();
         builder.setChildNode("root");
         builder.setChildNode("checkpoints");
         builder.setChildNode("blobs");
-        NodeState newRoot = builder.getNodeState();
-        setRoot(((ZeroMQNodeState) newRoot).getUuid());
+        NodeState newSuperRoot = builder.getNodeState();
+        // this may seem strange but is needed because newSuperRoot is a MemoryNodeState
+        // and we need a ZeroMQNodeState
+        final ZeroMQNodeState.ZeroMQNodeStateDiffBuilder diff = getNodeStateDiffBuilder(this, emptyNode, this::readNodeState, this::write);
+        newSuperRoot.compareAgainstBaseState(emptyNode, diff);
+        final ZeroMQNodeState zmqNewSuperRoot = diff.getNodeState();
+        setRoot(zmqNewSuperRoot.getUuid());
     }
 
     private String readRoot() {
@@ -244,11 +252,15 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     }
 
     private NodeState mergeRoot(String root, NodeState ns) {
-        final NodeBuilder rootBuilder = getSuperRoot().builder();
-        rootBuilder.setChildNode(root, ns);
-        final NodeState newRoot = rootBuilder.getNodeState();
-        setRoot(((ZeroMQNodeState) newRoot).getUuid());
-        return newRoot;
+        final NodeState superRoot = getSuperRoot();
+        final NodeBuilder superRootBuilder = superRoot.builder();
+        superRootBuilder.setChildNode(root, ns);
+        final NodeState newSuperRoot = superRootBuilder.getNodeState();
+        final ZeroMQNodeState.ZeroMQNodeStateDiffBuilder diff = getNodeStateDiffBuilder(this, (ZeroMQNodeState) superRoot, this::readNodeState, this::write);
+        newSuperRoot.compareAgainstBaseState(superRoot, diff);
+        final ZeroMQNodeState zmqNewSuperRoot = diff.getNodeState();
+        setRoot(zmqNewSuperRoot.getUuid());
+        return newSuperRoot;
     }
 
     @Override
@@ -342,6 +354,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         }
         nodeStateCache.put(uuid, nodeState.getNodeState());
         int inst = clusterInstanceForUuid(uuid);
+        // TODO: use Executor
         new Thread () {
             public void run () {
         while (true) {
