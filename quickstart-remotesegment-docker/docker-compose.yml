@@ -3,23 +3,31 @@ services:
   backend0:
     image: myhub/ahanikel/oak-store-zeromq-service-store
     ports:
-      - "8000-8001"
+            - "8000-8001:8000-8001"
   backend1:
     image: myhub/ahanikel/oak-store-zeromq-service-store
     ports:
-      - "8000-8001"
+            - "8002-8003:8000-8001"
+  blobend0:
+    image: myhub/ahanikel/oak-store-zeromq-service-blob
+    ports:
+            - "10000-10001:10000-10001"
+  blobend1:
+    image: myhub/ahanikel/oak-store-zeromq-service-blob
+    ports:
+            - "10002-10003:10000-10001"
   journal:
     image: myhub/ahanikel/oak-store-zeromq-service-journal
     ports:
-      - "9000-9001"
-  quickstart:
-    image: myhub/ahanikel/quickstart-remotesegment-docker
-    ports:
-      - "4502:4502"
-      - "5005:5005"
-    environment:
-      - clusterInstances=2
-      - backendPrefix=backend
-      - journalPrefix=journal
-      - javaargs=-Xmx8g -Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=*:5005
-      - jarargs=-nofork -nobrowser
+            - "9000-9001:9000-9001"
+#  quickstart:
+#    image: myhub/ahanikel/quickstart-remotesegment-docker
+#    ports:
+#      - "4502:4502"
+#      - "5005:5005"
+#    environment:
+#      - clusterInstances=2
+#      - backendPrefix=backend
+#      - journalPrefix=journal
+#      - javaargs=-Xmx8g -Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=*:5005
+#      - jarargs=-nofork -nobrowser
