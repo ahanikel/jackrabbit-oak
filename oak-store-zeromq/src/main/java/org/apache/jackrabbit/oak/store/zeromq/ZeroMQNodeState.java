@@ -336,15 +336,11 @@ public class ZeroMQNodeState extends AbstractNodeState {
 
     @Override
     public NodeState getChildNode(String name) throws IllegalArgumentException {
-        return childRefs.computeIfAbsent(name, n -> {
-            NodeState ret;
-            if (children.containsKey(name)) {
-                ret = reader.apply(children.get(name));
-            } else {
-                ret = ns.missingNode;
-            }
-            return (ZeroMQNodeState) ret;
-        });
+        if (children.containsKey(name)) {
+            return reader.apply(children.get(name));
+        } else {
+            return ns.missingNode;
+        }
     }
 
     @Override

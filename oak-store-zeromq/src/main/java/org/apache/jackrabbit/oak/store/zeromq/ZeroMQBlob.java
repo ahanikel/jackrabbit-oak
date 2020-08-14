@@ -6,56 +6,114 @@ import org.apache.jackrabbit.oak.api.Type;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
 public class ZeroMQBlob implements Blob {
 
-    private final byte[] bytes;
+    private final File file;
     private final String digest;
+    private static final File blobCacheDir = new File("/tmp/blobs");
 
-    private ZeroMQBlob(byte[] bytes) {
-        this.bytes = bytes;
-        this.digest = getDigest();
+    private static final Logger log = LoggerFactory.getLogger(ZeroMQBlob.class);
+    private static MessageDigest md;
+
+    static {
+        try {
+            md = MessageDigest.getInstance("SHA-512");
+            blobCacheDir.mkdir();
+        } catch (NoSuchAlgorithmException e) {
+            md = null;
+        }
     }
 
-    static ZeroMQBlob newInstance(byte[] bytes) {
-        return new ZeroMQBlob(bytes);
+    private ZeroMQBlob(File file, String digest) {
+        this.file = file;
+        this.digest = digest;
     }
+
+    // Looks like we can't do that because there seem to be several ZeroMQBlob
+    // instances per reference
+    /*
+    @Override
+    protected void finalize() {
+        synchronized (this.getClass()) {
+            file.delete();
+        }
+    }
+    */
 
     static ZeroMQBlob newInstance(InputStream is) {
-        return newInstance(bytesFromInputStream(is));
+        final byte[] readBuffer = new byte[1024*1024];
+        try {
+            final MessageDigest md = MessageDigest.getInstance("SHA-512");
+            final File out = File.createTempFile("zmqBlob", ".dat");
+            final BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(out));
+            // The InflaterInputStream seems to take some time until it's ready
+            if (is.available() == 0) {
+                Thread.sleep(500);
+            }
+            for (int nRead = is.read(readBuffer); nRead > 0; nRead = is.read(readBuffer)) {
+                bos.write(readBuffer, 0, nRead);
+                md.update(readBuffer, 0, nRead);
+            }
+            bos.close();
+            is.close();
+            final String reference = bytesToString(new ByteArrayInputStream(md.digest()));
+            File destFile = new File("/tmp/blobs/", reference);
+            synchronized (ZeroMQBlob.class) {
+                if (destFile.exists()) {
+                    out.delete();
+                } else {
+                    out.renameTo(destFile);
+                }
+            }
+            return new ZeroMQBlob(destFile, reference);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
     }
 
+    static ZeroMQBlob newInstance(String reference) {
+        final File file = new File(blobCacheDir, reference);
+        synchronized (ZeroMQBlob.class) {
+            if (file.exists()) {
+                return new ZeroMQBlob(file, reference);
+            }
+        }
+        return null;
+    }
+
+    /*
     static ZeroMQBlob newInstance(ZeroMQNodeStore ns, String reference) {
         try {
             final NodeState blobRoot = ns.getBlobRoot();
             final NodeState blobNode = blobRoot.getChildNode(reference);
             final PropertyState blobProp = blobNode.getProperty("blob");
             final String sBlob = blobProp.getValue(Type.STRING);
-            return newInstance(bytesFromString(sBlob));
-        } catch (Throwable t) {
-            throw t;
+            return new ZeroMQBlob(bytesFromString(sBlob), reference);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
         }
     }
-
-    static ZeroMQBlob newInstance(String serialised) {
-        return newInstance(bytesFromString(serialised));
-    }
+    */
 
     @Override
     public @NotNull InputStream getNewStream() {
-        return new ByteArrayInputStream(bytes);
+        try {
+            return new FileInputStream(file);
+        } catch (FileNotFoundException e) {
+            throw new IllegalStateException("Unable to create blob stream");
+        }
     }
 
     @Override
     public long length() {
-        return bytes.length;
+        return file.length();
     }
 
     @Override
@@ -69,7 +127,15 @@ public class ZeroMQBlob implements Blob {
     }
 
     public String serialise() {
-        return bytesToString(this.bytes);
+        try {
+            return bytesToString(new FileInputStream(this.file));
+        } catch (FileNotFoundException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    public InputStream getStringStream() {
+        return bytesToStringStream(getNewStream());
     }
 
     private static void appendInputStream(StringBuilder sb, InputStream is) {
@@ -85,29 +151,61 @@ public class ZeroMQBlob implements Blob {
         }
     }
 
-    private static String bytesToString(byte[] bytes) {
+    private static String bytesToString(InputStream is) {
         final StringBuilder sb = new StringBuilder();
-        final InputStream is = new ByteArrayInputStream(bytes);
         appendInputStream(sb, is);
         return sb.toString();
     }
 
-    static byte[] bytesFromInputStream(InputStream is) {
-        final ByteArrayOutputStream bos = new ByteArrayOutputStream();
-        try {
-            for (int b = is.read(); b >= 0; b = is.read()) {
-                bos.write(b);
+    private static InputStream bytesToStringStream(InputStream is) {
+        return new InputStream() {
+            final char[] hex = "0123456789ABCDEF".toCharArray();
+            volatile boolean isHiByte = true;
+            volatile int b;
+            @Override
+            public int read() throws IOException {
+                if (isHiByte) {
+                    if ((b = is.read()) < 0) {
+                        return -1;
+                    }
+                    isHiByte = false;
+                    return hex[b >> 4];
+                } else {
+                    isHiByte = true;
+                    return hex[b & 0x0f];
+                }
             }
-        } catch (IOException e) {
-            throw new IllegalStateException(e);
-        }
-        return bos.toByteArray();
+            @Override
+            public int available() throws IOException {
+                return is.available() * 2;
+            }
+        };
     }
 
-    static byte[] bytesFromString(String s) {
+    static File bytesFromInputStream(InputStream is) {
+        final byte[] readBuffer = new byte[1024*1024*100]; // 100 MB
+        try {
+            final File out = File.createTempFile("zmqBlob", "dat");
+            final BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(out));
+            // The InflaterInputStream seems to take some time until it's ready
+            if (is.available() == 0) {
+                Thread.sleep(500);
+            }
+            for (int nRead = is.read(readBuffer); nRead > 0; nRead = is.read(readBuffer)) {
+                bos.write(readBuffer, 0, nRead);
+            }
+            bos.close();
+            is.close();
+            return out;
+        } catch (IOException | InterruptedException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    static File bytesFromString(String s) {
         final InputStream is = new InputStream() {
             char[] chars = s.toCharArray();
-            int cur = 0;
+            volatile int cur = 0;
 
             private int hexCharToInt(char c) {
                 return Character.isDigit(c) ? c - '0' : c - 'A' + 10;
@@ -127,17 +225,47 @@ public class ZeroMQBlob implements Blob {
                 final int ret = c << 4 | d;
                 return ret;
             }
+
+            @Override
+            public int available() {
+                return (chars.length - cur) / 2;
+            }
         };
         return bytesFromInputStream(is);
     }
 
-    private String getDigest() {
-        final MessageDigest md;
-        try {
-            md = MessageDigest.getInstance("SHA-512");
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
-        return bytesToString(md.digest(bytes));
+    static InputStream bytesFromStringStream(InputStream is) {
+        return new InputStream() {
+            volatile int cur = 0;
+
+            private int hexCharToInt(char c) {
+                return Character.isDigit(c) ? c - '0' : c - 'A' + 10;
+            }
+
+            private int next() throws IOException {
+                int n = is.read();
+                if (n < 0) {
+                    throw new EOFException();
+                }
+                return hexCharToInt((char) n);
+            }
+
+            @Override
+            public int read() throws IOException {
+                try {
+                    final int c = next();
+                    final int d = next();
+                    final int ret = c << 4 | d;
+                    return ret;
+                } catch (EOFException e) {
+                    return -1;
+                }
+            }
+
+            @Override
+            public int available() throws IOException {
+                return is.available();
+            }
+        };
     }
 }

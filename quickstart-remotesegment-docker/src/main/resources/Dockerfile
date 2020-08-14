@@ -7,6 +7,7 @@ ENV javaargs="-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*
 ENV jarargs=""
 ENV backendPrefix="backend"
 ENV journalPrefix="journal"
+ENV blobendPrefix="blobend"
 ENV clusterInstances="1"
 EXPOSE 4502
 EXPOSE 5005
@@ -16,4 +17,4 @@ COPY ${slingarchive} ./
 COPY ${zeromqarchive} crx-quickstart/install/15/
 COPY ${configfile} crx-quickstart/install/
 COPY ${license} ./
-ENTRYPOINT echo admin | java ${javaargs} -DclusterInstances=${clusterInstances} -DbackendPrefix=${backendPrefix} -DjournalPrefix=${journalPrefix} -jar ${slingarchive} ${jarargs}
+ENTRYPOINT echo admin | java ${javaargs} -DclusterInstances=${clusterInstances} -DbackendPrefix=${backendPrefix} -DjournalPrefix=${journalPrefix} -DblobendPrefix=${blobendPrefix} -jar ${slingarchive} ${jarargs}

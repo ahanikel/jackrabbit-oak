@@ -299,6 +299,8 @@ public class ZeroMQNodeStateTest {
         assertTrue(nsRead.getChildNode("[empty:node]").exists());
     }
 
+    // TODO: needs to be rewritten
+    /*
     @Test
     public void stringToBlob() throws IOException {
         final Blob blob = ZeroMQBlob.newInstance("48656C6C6F20776F726C64");
@@ -309,6 +311,7 @@ public class ZeroMQNodeStateTest {
         }
         assertEquals(-1, is.read());
     }
+    */
 
     @Test
     public void emptyArray() throws ZeroMQNodeState.ParseFailure {
