@@ -1,0 +1,16 @@
+#!/bin/bash -e
+
+(
+    cd ~/Documents/git/jackrabbit-oak/oak-store-zeromq
+    mvn -DskipTests -Dbaseline.skip clean install
+)
+
+./makeit
+./killit
+
+sleep 2
+
+for i in 1 2
+do
+    ./runservice $i 2 &
+done
