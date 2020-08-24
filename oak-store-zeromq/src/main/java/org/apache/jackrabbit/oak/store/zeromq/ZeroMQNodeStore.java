@@ -21,13 +21,17 @@ package org.apache.jackrabbit.oak.store.zeromq;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import org.apache.felix.scr.annotations.Service;
+import org.apache.jackrabbit.commons.SimpleValueFactory;
 import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.api.CommitFailedException;
+import org.apache.jackrabbit.oak.api.Descriptors;
 import org.apache.jackrabbit.oak.api.Type;
 import org.apache.jackrabbit.oak.api.jmx.CheckpointMBean;
 import org.apache.jackrabbit.oak.osgi.OsgiWhiteboard;
 import org.apache.jackrabbit.oak.plugins.memory.MemoryNodeBuilder;
+import org.apache.jackrabbit.oak.spi.cluster.ClusterRepositoryInfo;
 import org.apache.jackrabbit.oak.spi.commit.*;
+import org.apache.jackrabbit.oak.spi.descriptors.GenericDescriptors;
 import org.apache.jackrabbit.oak.spi.state.ConflictAnnotatingRebaseDiff;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
@@ -55,6 +59,7 @@ import java.util.concurrent.Executors;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
+import static org.apache.jackrabbit.oak.spi.cluster.ClusterRepositoryInfo.getOrCreateId;
 import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeState.getNodeStateDiffBuilder;
 
 /**
@@ -188,6 +193,18 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
                 , "ZeroMQNodeStore checkpoint management"
                 , new HashMap<>()
                 );
+            // ensure a clusterId is initialized
+            // and expose it as 'oak.clusterid' repository descriptor
+            GenericDescriptors clusterIdDesc = new GenericDescriptors();
+            clusterIdDesc.put(
+                    ClusterRepositoryInfo.OAK_CLUSTERID_REPOSITORY_DESCRIPTOR_KEY,
+                    new SimpleValueFactory().createValue(getOrCreateId(this)),
+                    true,
+                    false
+            );
+            whiteboard.register(Descriptors.class, clusterIdDesc, new HashMap<>());
+            // Register "discovery lite" descriptors
+            whiteboard.register(Descriptors.class, new ZeroMQDiscoveryLiteDescriptors(this), new HashMap<>());
     }
 
     public void init() {
