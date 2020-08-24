@@ -1,0 +1,10 @@
+#!/bin/bash -e
+
+./killit
+
+sleep 2
+
+for i in 1 2
+do
+    ./runservice $i 2 &
+done
