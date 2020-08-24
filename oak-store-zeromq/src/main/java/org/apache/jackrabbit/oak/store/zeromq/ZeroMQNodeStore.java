@@ -36,7 +36,9 @@ import org.apache.jackrabbit.oak.spi.state.ConflictAnnotatingRebaseDiff;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
+import org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardExecutor;
 import org.jetbrains.annotations.NotNull;
+import org.osgi.framework.Constants;
 import org.osgi.service.component.ComponentContext;
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
@@ -193,18 +195,25 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
                 , "ZeroMQNodeStore checkpoint management"
                 , new HashMap<>()
                 );
-            // ensure a clusterId is initialized
-            // and expose it as 'oak.clusterid' repository descriptor
-            GenericDescriptors clusterIdDesc = new GenericDescriptors();
-            clusterIdDesc.put(
-                    ClusterRepositoryInfo.OAK_CLUSTERID_REPOSITORY_DESCRIPTOR_KEY,
-                    new SimpleValueFactory().createValue(getOrCreateId(this)),
-                    true,
-                    false
-            );
-            whiteboard.register(Descriptors.class, clusterIdDesc, new HashMap<>());
-            // Register "discovery lite" descriptors
-            whiteboard.register(Descriptors.class, new ZeroMQDiscoveryLiteDescriptors(this), new HashMap<>());
+        // ensure a clusterId is initialized
+        // and expose it as 'oak.clusterid' repository descriptor
+        GenericDescriptors clusterIdDesc = new GenericDescriptors();
+        clusterIdDesc.put(
+                ClusterRepositoryInfo.OAK_CLUSTERID_REPOSITORY_DESCRIPTOR_KEY,
+                new SimpleValueFactory().createValue(getOrCreateId(this)),
+                true,
+                false
+        );
+        whiteboard.register(Descriptors.class, clusterIdDesc, new HashMap<>());
+        // Register "discovery lite" descriptors
+        whiteboard.register(Descriptors.class, new ZeroMQDiscoveryLiteDescriptors(this), new HashMap<>());
+        WhiteboardExecutor executor = new WhiteboardExecutor();
+        executor.start(whiteboard);
+        //registerCloseable(executor);
+        // Map<String, Object> props = new HashMap<>();
+        // props.put(Constants.SERVICE_PID, ZeroMQNodeStore.class.getName());
+        // props.put("oak.nodestore.description", new String[]{"nodeStoreType=zeromq"});
+        // whiteboard.register(NodeStore.class, this, props);
     }
 
     public void init() {
@@ -567,8 +576,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
             return blob;
         }
         String ref = blob.getReference();
-        Blob ret = getBlob(ref);
-        if (ref == null || ret == null || ret.getReference() == null) {
+        Blob ret = ref == null ? null : getBlob(ref);
+        if (ret == null || ret.getReference() == null) {
             ret = createBlob(blob.getNewStream());
         }
         return ret;
@@ -577,6 +586,9 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     @Override
     public Blob getBlob(String reference) {
         try {
+            if (reference == null) {
+                throw new NullPointerException("reference is null");
+            }
                 return blobCache.get(reference, () -> {
                     ZeroMQBlob ret = ZeroMQBlob.newInstance(reference);
                     if (ret == null) {
