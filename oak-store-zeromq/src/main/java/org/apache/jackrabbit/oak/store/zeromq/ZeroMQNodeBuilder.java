@@ -18,9 +18,13 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq;
 
+import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.plugins.memory.MemoryNodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.jetbrains.annotations.NotNull;
+
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -74,6 +78,11 @@ public class ZeroMQNodeBuilder extends MemoryNodeBuilder {
     @Override
     protected MemoryNodeBuilder createChildBuilder(String name) {
         return new ZeroMQNodeBuilder(this.ns, this, name);
+    }
+
+    @Override
+    public Blob createBlob(InputStream stream) throws IOException {
+        return ns.createBlob(stream);
     }
 
     @Override
