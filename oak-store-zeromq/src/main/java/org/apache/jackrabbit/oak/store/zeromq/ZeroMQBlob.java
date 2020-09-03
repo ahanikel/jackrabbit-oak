@@ -47,6 +47,33 @@ public class ZeroMQBlob implements Blob {
     }
     */
 
+    static void appendInputStream(File f, InputStream is) {
+        try {
+            final BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(f, true));
+            for (int nRead = is.read(); nRead >= 0; nRead = is.read()) {
+                bos.write(nRead);
+            }
+            bos.flush();
+            bos.close();
+            is.close();
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    static void copyInto(byte[] src, byte[] dst) {
+        copyInto(src, dst, 0);
+    }
+
+    static void copyInto(byte[] src, byte[] dst, int ofs) {
+        if (src.length + ofs > dst.length) {
+            throw new IllegalArgumentException("src + ofs is bigger than dst");
+        }
+        for (int i = 0; i < src.length; ++i) {
+            dst[i + ofs] = src[i];
+        }
+    }
+
     static ZeroMQBlob newInstance(InputStream is) {
         final byte[] readBuffer = new byte[1024*1024];
         try {
@@ -57,10 +84,15 @@ public class ZeroMQBlob implements Blob {
             if (is.available() == 0) {
                 Thread.sleep(500);
             }
-            for (int nRead = is.read(readBuffer); nRead > 0; nRead = is.read(readBuffer)) {
+            // The InputStream spec says that read reads at least one byte (if not eof),
+            // reads 0 bytes only if buffer.length == 0,
+            // and blocks if it's not available, but I'm not sure if the InflaterInputStream
+            // does that.
+            for (int nRead = is.read(readBuffer); nRead >= 0; nRead = is.read(readBuffer)) {
                 bos.write(readBuffer, 0, nRead);
                 md.update(readBuffer, 0, nRead);
             }
+            bos.flush();
             bos.close();
             is.close();
             final String reference = bytesToString(new ByteArrayInputStream(md.digest()));
@@ -70,6 +102,22 @@ public class ZeroMQBlob implements Blob {
                     out.delete();
                 } else {
                     out.renameTo(destFile);
+                }
+            }
+            return new ZeroMQBlob(destFile, reference);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    static ZeroMQBlob newInstance(String reference, File f) {
+        try {
+            File destFile = new File("/tmp/blobs/", reference);
+            synchronized (ZeroMQBlob.class) {
+                if (destFile.exists()) {
+                    f.delete();
+                } else {
+                    f.renameTo(destFile);
                 }
             }
             return new ZeroMQBlob(destFile, reference);
@@ -194,6 +242,7 @@ public class ZeroMQBlob implements Blob {
             for (int nRead = is.read(readBuffer); nRead > 0; nRead = is.read(readBuffer)) {
                 bos.write(readBuffer, 0, nRead);
             }
+            bos.flush();
             bos.close();
             is.close();
             return out;
@@ -267,5 +316,16 @@ public class ZeroMQBlob implements Blob {
                 return is.available();
             }
         };
+    }
+
+    public static void streamCopy(InputStream is, OutputStream os) {
+        try {
+            for (int b = is.read(); b >= 0; b = is.read()) {
+                os.write(b);
+            }
+            os.flush();
+        } catch (Throwable e) {
+            throw new IllegalStateException(e);
+        }
     }
 }
