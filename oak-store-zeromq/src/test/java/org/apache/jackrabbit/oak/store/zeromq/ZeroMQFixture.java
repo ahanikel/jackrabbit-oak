@@ -28,6 +28,8 @@ public class ZeroMQFixture extends NodeStoreFixture {
 
     final static ZeroMQBackendStore store = new ZeroMQBackendStore();
 
+    final static ZeroMQBackendBlob blobStore = new ZeroMQBackendBlob();
+
     final static ZeroMQNodeStore ns = new ZeroMQNodeStore();
 
     static volatile boolean isInitialized = false;
@@ -37,6 +39,7 @@ public class ZeroMQFixture extends NodeStoreFixture {
         synchronized(ns) {
             if (!isInitialized) {
                 store.open();
+                blobStore.open();
                 ns.init();
                 ns.reset();
                 isInitialized = true;
