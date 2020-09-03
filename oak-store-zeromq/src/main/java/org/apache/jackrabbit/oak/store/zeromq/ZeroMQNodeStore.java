@@ -38,7 +38,6 @@ import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
 import org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardExecutor;
 import org.jetbrains.annotations.NotNull;
-import org.osgi.framework.Constants;
 import org.osgi.service.component.ComponentContext;
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
@@ -48,10 +47,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.zeromq.ZMQ;
 
+import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -119,9 +118,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     final ZeroMQNodeState missingNode = (ZeroMQNodeState) ZeroMQEmptyNodeState.MISSING_NODE(this, this::readNodeState, this::write);
 
     final Object mergeRootMonitor = new Object();
-    final Object mergeMonitor = new Object();
     final Object mergeBlobMonitor = new Object();
-    final Object mergeCheckpointMonitor = new Object();
 
     final ExecutorService nodeWriterThread = Executors.newFixedThreadPool(5);
     final ExecutorService blobWriterThread = Executors.newFixedThreadPool(5); // each thread consumes 100 MB
@@ -268,7 +265,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         return getSuperRoot().getChildNode("root");
     }
 
-    private synchronized NodeState getSuperRoot() {
+    private NodeState getSuperRoot() {
         final String uuid = readRoot();
         if ("undefined".equals(uuid)) {
             throw new IllegalStateException("root is undefined, forgot to call init()?");
@@ -323,20 +320,20 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         if (!(builder instanceof ZeroMQNodeBuilder)) {
             throw new IllegalArgumentException();
         }
-        synchronized (mergeMonitor) {
-            final NodeState newBase = getRoot();
-            rebase(builder, newBase);
-            final NodeState after = builder.getNodeState();
-            final NodeState afterHook = commitHook.processCommit(newBase, after, info);
-            mergeRoot("root", afterHook);
-            ((ZeroMQNodeBuilder) builder).reset(afterHook);
-            if (changeDispatcher != null) {
-                changeDispatcher.contentChanged(afterHook, info);
-            }
-            return afterHook;
+        final NodeState newBase = getRoot();
+        rebase(builder, newBase);
+        final NodeState after = builder.getNodeState();
+        final NodeState afterHook = commitHook.processCommit(newBase, after, info);
+        mergeRoot("root", afterHook);
+        ((ZeroMQNodeBuilder) builder).reset(afterHook);
+        if (changeDispatcher != null) {
+            changeDispatcher.contentChanged(afterHook, info);
         }
+        return afterHook;
     }
 
+    // only used for the alternative implementation
+    // in createBlobAlt
     private NodeState mergeBlob(NodeBuilder builder) {
         if (true) {
             throw new IllegalStateException();
@@ -353,14 +350,12 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     }
 
     private NodeState mergeCheckpoint(NodeBuilder builder) {
-        synchronized (mergeCheckpointMonitor) {
-            final NodeState newBase = getCheckpointRoot();
-            rebase(builder, newBase);
-            final NodeState after = builder.getNodeState();
-            mergeRoot("checkpoints", after);
-            ((ZeroMQNodeBuilder) builder).reset(after);
-            return after;
-        }
+        final NodeState newBase = getCheckpointRoot();
+        rebase(builder, newBase);
+        final NodeState after = builder.getNodeState();
+        mergeRoot("checkpoints", after);
+        ((ZeroMQNodeBuilder) builder).reset(after);
+        return after;
     }
 
     private ZeroMQNodeState readNodeState(String uuid) {
@@ -439,7 +434,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
 
     private void writeBlob(ZeroMQBlob blob) {
         blobWriterThread.execute(() -> {
-            final InputStream is = blob.getStringStream();
+            final InputStream is = blob.getNewStream();
             final String reference = blob.getReference();
             String msg;
             int inst = clusterInstanceForBlobId(reference);
@@ -447,18 +442,49 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
             while (true) {
                 try {
                     synchronized (blobWriter[inst]) {
-                        blobWriter[inst].sendMore(reference + "\n");
-                        for (int nRead = is.read(buffer); nRead > 0; nRead = is.read(buffer)) {
-                            if (nRead < buffer.length) {
-                                blobWriter[inst].sendMore(Arrays.copyOfRange(buffer, 0, nRead));
-                            } else {
-                                blobWriter[inst].sendMore(buffer);
+                        int count, nRead;
+                        final int MAX = 100 * 1024 * 1024;
+                        final int HDRSIZE = 135; // "START " + 128 bytes sha512sum + newline
+                        ByteArrayOutputStream bos = new ByteArrayOutputStream(HDRSIZE + MAX); // 100 MB
+                        for (int i = 0; i < HDRSIZE; ++i) {
+                            bos.write(0);
+                        }
+                        boolean start = true;
+                        for (count = 0, nRead = 0; nRead >= 0; ) {
+                            for (nRead = is.read(buffer), count += nRead;
+                                 nRead >= 0 && count < MAX;
+                                 nRead = is.read(buffer), count += nRead) {
+                                if (nRead == 0) {
+                                    Thread.sleep(10);
+                                } else {
+                                    bos.write(buffer, 0, nRead);
+                                }
+                            }
+                            if (count > 0) { // TODO: count -= nRead
+                                bos.flush();
+                                byte[] bytes = bos.toByteArray();
+                                if (start) {
+                                    ZeroMQBlob.copyInto("START ".getBytes(), bytes);
+                                } else {
+                                    ZeroMQBlob.copyInto("CONT ".getBytes(), bytes);
+                                }
+                                ZeroMQBlob.copyInto(reference.getBytes(), bytes, start ? 6 : 5);
+                                bytes[start ? HDRSIZE - 1 : HDRSIZE - 2] = '\n';
+                                start = false;
+                                blobWriter[inst].send(bytes);
+                                blobWriter[inst].recvStr(); // wait for confirmation
+                            }
+                            if (nRead < 0 && !start) {
+                                bos = new ByteArrayOutputStream();
+                                bos.write("END ".getBytes());
+                                bos.write(reference.getBytes());
+                                bos.write('\n');
+                                bos.flush();
+                                blobWriter[inst].send(bos.toByteArray());
+                                blobWriter[inst].recvStr(); // wait for confirmation
                             }
                         }
-                        blobWriter[inst].send("");
-                        msg = blobWriter[inst].recvStr(); // wait for confirmation
                     }
-                    log.debug(msg);
                     break;
                 } catch (Throwable t) {
                     log.warn(t.toString());
@@ -542,33 +568,34 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
 
     @Override
     public Blob createBlob(InputStream inputStream) throws IOException {
-        if (true) {
-            final ZeroMQBlob blob = ZeroMQBlob.newInstance(inputStream);
-            if (blobCache.getIfPresent(blob.getReference()) == null) {
-                blobCache.put(blob.getReference(), blob);
-            }
-            writeBlob(blob);
-            return blob;
-        } else {
-            final ZeroMQBlob blob = ZeroMQBlob.newInstance(inputStream);
-            if (blobCache.getIfPresent(blob.getReference()) == null) {
-                blobCache.put(blob.getReference(), blob);
-            }
-            blobWriterThread.execute(new Thread("BlobStore Writer Thread") {
-                public void run() {
-                    try {
-                        final NodeBuilder builder = getBlobRoot().builder();
-                        final String sBlob = blob.serialise();
-                        final NodeBuilder nBlob = builder.child(blob.getReference());
-                        nBlob.setProperty("blob", sBlob, Type.STRING);
-                        mergeBlob(builder);
-                    } catch (Throwable t) {
-                        log.error("Error occurred while saving blob", t);
-                    }
-                }
-            });
-            return blob;
+        final ZeroMQBlob blob = ZeroMQBlob.newInstance(inputStream);
+        if (blobCache.getIfPresent(blob.getReference()) == null) {
+            blobCache.put(blob.getReference(), blob);
         }
+        writeBlob(blob);
+        return blob;
+    }
+
+    // Alternative implementation: store blobs in repo under /blobs
+    public Blob createBlobAlt(InputStream inputStream) throws IOException {
+        final ZeroMQBlob blob = ZeroMQBlob.newInstance(inputStream);
+        if (blobCache.getIfPresent(blob.getReference()) == null) {
+            blobCache.put(blob.getReference(), blob);
+        }
+        blobWriterThread.execute(new Thread("BlobStore Writer Thread") {
+            public void run() {
+                try {
+                    final NodeBuilder builder = getBlobRoot().builder();
+                    final String sBlob = blob.serialise();
+                    final NodeBuilder nBlob = builder.child(blob.getReference());
+                    nBlob.setProperty("blob", sBlob, Type.STRING);
+                    mergeBlob(builder);
+                } catch (Throwable t) {
+                    log.error("Error occurred while saving blob", t);
+                }
+            }
+        });
+        return blob;
     }
 
     Blob createBlob(Blob blob) throws IOException {
