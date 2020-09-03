@@ -307,9 +307,14 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
             final NodeBuilder superRootBuilder = superRoot.builder();
             superRootBuilder.setChildNode(root, ns);
             final NodeState newSuperRoot = superRootBuilder.getNodeState();
-            final ZeroMQNodeState.ZeroMQNodeStateDiffBuilder diff = getNodeStateDiffBuilder(this, (ZeroMQNodeState) superRoot, this::readNodeState, this::write);
-            newSuperRoot.compareAgainstBaseState(superRoot, diff);
-            final ZeroMQNodeState zmqNewSuperRoot = diff.getNodeState();
+            final ZeroMQNodeState zmqNewSuperRoot;
+            if (newSuperRoot instanceof ZeroMQNodeState) {
+                zmqNewSuperRoot = (ZeroMQNodeState) newSuperRoot;
+            } else {
+                final ZeroMQNodeState.ZeroMQNodeStateDiffBuilder diff = getNodeStateDiffBuilder(this, (ZeroMQNodeState) superRoot, this::readNodeState, this::write);
+                newSuperRoot.compareAgainstBaseState(superRoot, diff);
+                zmqNewSuperRoot = diff.getNodeState();
+            }
             setRoot(zmqNewSuperRoot.getUuid());
             return newSuperRoot;
         }
