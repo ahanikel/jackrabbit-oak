@@ -1,9 +1,6 @@
 package org.apache.jackrabbit.oak.store.zeromq;
 
 import org.apache.jackrabbit.oak.api.Blob;
-import org.apache.jackrabbit.oak.api.PropertyState;
-import org.apache.jackrabbit.oak.api.Type;
-import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -12,11 +9,12 @@ import org.slf4j.LoggerFactory;
 import java.io.*;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.function.Supplier;
 
 public class ZeroMQBlob implements Blob {
 
-    private final File file;
-    private final String digest;
+    private final Supplier<File> fileSupplier;
+    private final String reference;
     private static final File blobCacheDir = new File("/tmp/blobs");
 
     private static final Logger log = LoggerFactory.getLogger(ZeroMQBlob.class);
@@ -24,16 +22,16 @@ public class ZeroMQBlob implements Blob {
 
     static {
         try {
-            md = MessageDigest.getInstance("SHA-512");
+            md = MessageDigest.getInstance("MD5");
             blobCacheDir.mkdir();
         } catch (NoSuchAlgorithmException e) {
             md = null;
         }
     }
 
-    private ZeroMQBlob(File file, String digest) {
-        this.file = file;
-        this.digest = digest;
+    private ZeroMQBlob(String reference, Supplier<File> fileSupplier) {
+        this.fileSupplier = fileSupplier;
+        this.reference = reference;
     }
 
     // Looks like we can't do that because there seem to be several ZeroMQBlob
@@ -74,26 +72,88 @@ public class ZeroMQBlob implements Blob {
         }
     }
 
+    static class InputStreamFileSupplier implements Supplier<File> {
+        private final File file;
+        private final InputStream is;
+
+        InputStreamFileSupplier(File file, InputStream is) {
+            this.file = file;
+            this.is = is;
+        }
+
+        @Override
+        public File get() {
+            if (!file.exists()) {
+                Object monitor = new Object();
+                if (is instanceof ZeroMQBlobInputStream) {
+                    monitor = ((ZeroMQBlobInputStream) is).getMonitor();
+                }
+                synchronized (monitor) {
+                    final byte[] readBuffer = new byte[1024 * 1024];
+                    try {
+                        final MessageDigest md = MessageDigest.getInstance("MD5");
+                        final File out = File.createTempFile("zmqBlob", ".dat");
+                        final FileOutputStream fos = new FileOutputStream(out);
+                        final BufferedOutputStream bos = new BufferedOutputStream(fos);
+                        // The InflaterInputStream seems to take some time until it's ready
+                        if (is.available() == 0) {
+                            Thread.sleep(500);
+                        }
+                        // The InputStream spec says that read reads at least one byte (if not eof),
+                        // reads 0 bytes only if buffer.length == 0,
+                        // and blocks if it's not available, but we're sending a 0-byte chunk to
+                        // terminate the "sendMore" sequence.
+                        for (int nRead = is.read(readBuffer); nRead >= 0; nRead = is.read(readBuffer)) {
+                            bos.write(readBuffer, 0, nRead);
+                            md.update(readBuffer, 0, nRead);
+                        }
+                        bos.flush();
+                        bos.close();
+                        fos.flush();
+                        fos.close();
+                        is.close();
+                        final String reference = bytesToString(new ByteArrayInputStream(md.digest()));
+                        File destFile = new File("/tmp/blobs/", reference);
+                        synchronized (ZeroMQBlob.class) {
+                            if (destFile.exists()) {
+                                out.delete();
+                            } else {
+                                out.renameTo(destFile);
+                            }
+                        }
+                    } catch (Exception e) {
+                        log.error(e.toString());
+                        throw new IllegalStateException(e);
+                    }
+                }
+            }
+            return file;
+        }
+    }
+
     static ZeroMQBlob newInstance(InputStream is) {
         final byte[] readBuffer = new byte[1024*1024];
         try {
-            final MessageDigest md = MessageDigest.getInstance("SHA-512");
+            final MessageDigest md = MessageDigest.getInstance("MD5");
             final File out = File.createTempFile("zmqBlob", ".dat");
-            final BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(out));
+            final FileOutputStream fos = new FileOutputStream(out);
+            final BufferedOutputStream bos = new BufferedOutputStream(fos);
             // The InflaterInputStream seems to take some time until it's ready
             if (is.available() == 0) {
                 Thread.sleep(500);
             }
             // The InputStream spec says that read reads at least one byte (if not eof),
             // reads 0 bytes only if buffer.length == 0,
-            // and blocks if it's not available, but I'm not sure if the InflaterInputStream
-            // does that.
+            // and blocks if it's not available, but we're sending a 0-byte chunk to
+            // terminate the "sendMore" sequence.
             for (int nRead = is.read(readBuffer); nRead >= 0; nRead = is.read(readBuffer)) {
                 bos.write(readBuffer, 0, nRead);
                 md.update(readBuffer, 0, nRead);
             }
             bos.flush();
             bos.close();
+            fos.flush();
+            fos.close();
             is.close();
             final String reference = bytesToString(new ByteArrayInputStream(md.digest()));
             File destFile = new File("/tmp/blobs/", reference);
@@ -104,8 +164,9 @@ public class ZeroMQBlob implements Blob {
                     out.renameTo(destFile);
                 }
             }
-            return new ZeroMQBlob(destFile, reference);
+            return new ZeroMQBlob(reference, () -> destFile);
         } catch (Exception e) {
+            log.error(e.toString());
             throw new IllegalStateException(e);
         }
     }
@@ -120,63 +181,45 @@ public class ZeroMQBlob implements Blob {
                     f.renameTo(destFile);
                 }
             }
-            return new ZeroMQBlob(destFile, reference);
+            return new ZeroMQBlob(reference, () -> destFile);
         } catch (Exception e) {
+            log.error(e.toString());
             throw new IllegalStateException(e);
         }
     }
 
-    static ZeroMQBlob newInstance(String reference) {
-        final File file = new File(blobCacheDir, reference);
-        synchronized (ZeroMQBlob.class) {
-            if (file.exists()) {
-                return new ZeroMQBlob(file, reference);
-            }
-        }
-        return null;
+    static ZeroMQBlob newInstance(String reference, InputStream is) {
+        return new ZeroMQBlob(reference, new InputStreamFileSupplier(new File(blobCacheDir, reference), is));
     }
-
-    /*
-    static ZeroMQBlob newInstance(ZeroMQNodeStore ns, String reference) {
-        try {
-            final NodeState blobRoot = ns.getBlobRoot();
-            final NodeState blobNode = blobRoot.getChildNode(reference);
-            final PropertyState blobProp = blobNode.getProperty("blob");
-            final String sBlob = blobProp.getValue(Type.STRING);
-            return new ZeroMQBlob(bytesFromString(sBlob), reference);
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
-        }
-    }
-    */
 
     @Override
     public @NotNull InputStream getNewStream() {
         try {
-            return new FileInputStream(file);
+            return new FileInputStream(fileSupplier.get());
         } catch (FileNotFoundException e) {
+            log.error(e.toString());
             throw new IllegalStateException("Unable to create blob stream");
         }
     }
 
     @Override
     public long length() {
-        return file.length();
+        return fileSupplier.get().length();
     }
 
     @Override
     public @Nullable String getReference() {
-        return this.digest;
+        return this.reference;
     }
 
     @Override
     public @Nullable String getContentIdentity() {
-        return this.digest;
+        return this.reference;
     }
 
     public String serialise() {
         try {
-            return bytesToString(new FileInputStream(this.file));
+            return bytesToString(new FileInputStream(this.fileSupplier.get()));
         } catch (FileNotFoundException e) {
             throw new IllegalStateException(e);
         }
