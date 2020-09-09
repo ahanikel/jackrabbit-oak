@@ -18,7 +18,6 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq;
 
-import org.apache.jackrabbit.oak.commons.IOUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.osgi.service.component.ComponentContext;
@@ -29,7 +28,7 @@ import org.slf4j.LoggerFactory;
 import org.zeromq.ZMQ;
 
 import java.io.*;
-import java.util.*;
+import java.util.Arrays;
 
 @Component(immediate = true, configurationPolicy = ConfigurationPolicy.REQUIRE)
 public class ZeroMQBackendBlob implements Closeable {
@@ -43,64 +42,38 @@ public class ZeroMQBackendBlob implements Closeable {
     final ZMQ.Poller pollerItems;
 
     /**
-     * read segments to be persisted from this socket
+     * read blobs to be persisted from this socket
      */
     @NotNull
     final ZMQ.Socket writerService;
 
     /**
-     * the segment reader service serves segments by id
+     * the blob reader service serves blobs by id
      */
     @NotNull
     final ZMQ.Socket readerService;
 
     /**
-     * our local segment store which keeps the segments
-     * we are responsible for
-     */
-    @NotNull
-    final Map<String, ZeroMQBlob> store;
-
-    /**
      * the thread which listens on the sockets and processes messages
      */
     @Nullable
-    private final Thread socketHandler;
+    private Thread socketHandler;
 
     private final int clusterInstance;
 
-    private static enum State {
-        START, CONT, END;
-    }
-    private volatile State state = State.START;
+    private static final File blobCache = new File("/tmp/backendblobs");
 
-    private final Map<String, File> inFlightBlobs = new HashMap<>(50);
+    static {
+        blobCache.mkdir();
+    }
 
     public ZeroMQBackendBlob() {
         clusterInstance = Integer.getInteger("clusterInstance", 0);
         context = ZMQ.context(1);
         readerService = context.socket(ZMQ.REP);
         writerService = context.socket(ZMQ.REP);
-        store = new HashMap<>(1000000);
         pollerItems = context.poller(2);
-        socketHandler = new Thread("ZeroMQBackendBlob Socket Handler") {
-            @Override
-            public void run() {
-                while (!isInterrupted()) {
-                    try {
-                        pollerItems.poll();
-                        if (pollerItems.pollin(0)) {
-                            handleReaderService(readerService.recvStr());
-                        }
-                        if (pollerItems.pollin(1)) {
-                            handleWriterService();
-                        }
-                    } catch (Throwable t) {
-                        log.error(t.toString());
-                    }
-                }
-            }
-        };
+
     }
 
     public void activate(ComponentContext ctx) {
@@ -113,41 +86,40 @@ public class ZeroMQBackendBlob implements Closeable {
 
     void handleReaderService(String msg) {
         synchronized (readerService) {
-            final ZeroMQBlob blob = store.getOrDefault(msg, null);
-            if (blob != null) {
-                sendBlob(blob);
-            } else {
-                readerService.send("Node not found");
-                log.error("Requested node {} not found.", msg);
+            try {
+                final File blob = new File(blobCache, msg);
+                if (blob.exists()) {
+                    sendBlob(msg, blob);
+                } else {
+                    log.error("Requested node {} not found.", msg);
+                }
+            } catch (Throwable t) {
+                log.error("An error occurred when trying to send blob {}: {}", msg, t.toString());
+            } finally {
+                readerService.send(new byte[0]);
             }
         }
     }
 
-    void sendBlob(ZeroMQBlob blob) {
-        final InputStream is = blob.getNewStream();
-        final String reference = blob.getReference();
-        String msg;
-        final byte[] buffer = new byte[1024 * 1024 * 100]; // 100 MB
-        while (true) {
-            try {
-                synchronized (readerService) {
-                    for (int nRead = is.read(buffer); nRead > 0; nRead = is.read(buffer)) {
-                        if (nRead < buffer.length) {
-                            readerService.sendMore(Arrays.copyOfRange(buffer, 0, nRead));
-                        } else {
-                            readerService.sendMore(buffer);
-                        }
+    void sendBlob(String reference, File blob) throws FileNotFoundException {
+        final InputStream is = new FileInputStream(blob);
+        final byte[] buffer = new byte[1024 * 1024]; // 100 MB
+        try {
+            synchronized (readerService) {
+                for (int nRead = is.read(buffer); nRead > 0; nRead = is.read(buffer)) {
+                    if (nRead < buffer.length) {
+                        readerService.sendMore(Arrays.copyOfRange(buffer, 0, nRead));
+                    } else {
+                        readerService.sendMore(buffer);
                     }
-                    readerService.send("");
                 }
-                break;
-            } catch (Throwable t) {
-                log.warn(t.toString());
-                try {
-                    Thread.sleep(100);
-                } catch (InterruptedException e) {
-                    log.error(e.toString());
-                }
+            }
+        } catch (Throwable t) {
+            log.error(t.toString());
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                log.error(e.toString());
             }
         }
     }
@@ -188,60 +160,23 @@ public class ZeroMQBackendBlob implements Closeable {
 
     void handleWriterService() {
         synchronized (writerService) {
-            final byte[] bytes = writerService.recv();
-            final StringBuffer sbHeader = new StringBuffer();
             try {
-                int i;
-                for (i = 0; i < bytes.length && bytes[i] != '\n'; ++i) {
-                    sbHeader.append((char) bytes[i]);
+                final String reference = writerService.recvStr();
+                final File out = File.createTempFile("zmqBackendBlob", ".dat");
+                OutputStream fos = new FileOutputStream(out);
+                while (writerService.hasReceiveMore()) {
+                    fos.write(writerService.recv());
                 }
-                if (bytes[i] != '\n') {
-                    throw new IllegalStateException("Unable to read header");
+                fos.flush();
+                fos.close();
+                writerService.send(reference);
+                final File destFile = new File(blobCache, reference);
+                if (destFile.exists()) {
+                    out.delete();
+                } else {
+                    out.renameTo(destFile);
                 }
-                final int sep = sbHeader.indexOf(" ");
-                final String headerState = sbHeader.substring(0, sep);
-                final String reference = sbHeader.substring(sep + 1);
-                switch (headerState) {
-                    case "START": {
-                        if (inFlightBlobs.containsKey(reference)) {
-                            throw new IllegalStateException("Wrong state, expected: CONT, actual: START");
-                        }
-                        final File out = File.createTempFile("zmqBackendBlob", ".dat");
-                        inFlightBlobs.put(reference, out);
-                        OutputStream fos = new FileOutputStream(out);
-                        fos.write(bytes, ++i, bytes.length - i);
-                        fos.flush();
-                        fos.close();
-                        writerService.send(sbHeader.toString());
-                        break;
-                    }
-                    case "CONT": {
-                        File out = inFlightBlobs.get(reference);
-                        if (out == null) {
-                            throw new IllegalStateException("No blob found to CONT");
-                        }
-                        OutputStream fos = new FileOutputStream(out, true);
-                        fos.write(bytes, ++i, bytes.length - i);
-                        fos.flush();
-                        fos.close();
-                        writerService.send(sbHeader.toString());
-                        break;
-                    }
-                    case "END": {
-                        final File out = inFlightBlobs.remove(reference);
-                        if (out == null) {
-                            throw new IllegalStateException("No blob found to END");
-                        }
-                        final ZeroMQBlob blob = ZeroMQBlob.newInstance(reference, out);
-                        store.putIfAbsent(reference, blob);
-                        writerService.send(sbHeader.toString());
-                        log.debug("Received our blob {}", reference);
-                        break;
-                    }
-                    default: {
-                        throw new IllegalStateException("Unexpected state: " + headerState);
-                    }
-                }
+                log.debug("Received our blob {}", reference);
             } catch (Exception e) {
                 log.error(e.toString());
             }
@@ -249,8 +184,8 @@ public class ZeroMQBackendBlob implements Closeable {
     }
 
     public void open() {
-        readerService.bind("tcp://*:" + (10000 + 2 * clusterInstance));
-        writerService.bind("tcp://*:" + (10001 + 2 * clusterInstance));
+        readerService.bind("tcp://*:" + (11000 + 2 * clusterInstance));
+        writerService.bind("tcp://*:" + (11001 + 2 * clusterInstance));
         pollerItems.register(readerService, ZMQ.Poller.POLLIN);
         pollerItems.register(writerService, ZMQ.Poller.POLLIN);
         startBackgroundThreads();
@@ -259,21 +194,41 @@ public class ZeroMQBackendBlob implements Closeable {
     @Override
     public void close() {
         stopBackgroundThreads();
-        pollerItems.close();
-        writerService.close();
-        readerService.close();
-        context.close();
+        pollerItems.unregister(writerService);
+        pollerItems.unregister(readerService);
+        readerService.unbind("tcp://*:" + (11000 + 2 * clusterInstance));
+        writerService.unbind("tcp://*:" + (11001 + 2 * clusterInstance));
     }
 
     private void startBackgroundThreads() {
         if (socketHandler != null) {
-            socketHandler.start();
+            return;
         }
+        socketHandler = new Thread("ZeroMQBackendBlob Socket Handler") {
+            @Override
+            public void run() {
+                while (!isInterrupted()) {
+                    try {
+                        pollerItems.poll();
+                        if (pollerItems.pollin(0)) {
+                            handleReaderService(readerService.recvStr());
+                        }
+                        if (pollerItems.pollin(1)) {
+                            handleWriterService();
+                        }
+                    } catch (Throwable t) {
+                        log.error(t.toString());
+                    }
+                }
+            }
+        };
+        socketHandler.start();
     }
 
     private void stopBackgroundThreads() {
         if (socketHandler != null) {
             socketHandler.interrupt();
+            socketHandler = null;
         }
     }
 }

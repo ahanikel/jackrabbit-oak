@@ -29,7 +29,11 @@ import org.apache.jackrabbit.oak.api.Type;
 import org.apache.jackrabbit.oak.api.jmx.CheckpointMBean;
 import org.apache.jackrabbit.oak.osgi.OsgiWhiteboard;
 import org.apache.jackrabbit.oak.plugins.memory.MemoryNodeBuilder;
+import org.apache.jackrabbit.oak.spi.blob.BlobOptions;
+import org.apache.jackrabbit.oak.spi.blob.GarbageCollectableBlobStore;
 import org.apache.jackrabbit.oak.spi.cluster.ClusterRepositoryInfo;
+import org.apache.jackrabbit.oak.spi.commit.Observable;
+import org.apache.jackrabbit.oak.spi.commit.Observer;
 import org.apache.jackrabbit.oak.spi.commit.*;
 import org.apache.jackrabbit.oak.spi.descriptors.GenericDescriptors;
 import org.apache.jackrabbit.oak.spi.state.ConflictAnnotatingRebaseDiff;
@@ -38,6 +42,7 @@ import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
 import org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardExecutor;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.osgi.service.component.ComponentContext;
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
@@ -47,13 +52,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.zeromq.ZMQ;
 
-import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -143,10 +146,10 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
                 nodeStateWriter[i].connect("tcp://localhost:" + (8001 + 2*i));
 
                 blobReader[i] = context.socket(ZMQ.REQ);
-                blobReader[i].connect("tcp://localhost:" + (10000 + 2*i));
+                blobReader[i].connect("tcp://localhost:" + (11000 + 2*i));
 
                 blobWriter[i] = context.socket(ZMQ.REQ);
-                blobWriter[i].connect("tcp://localhost:" + (10001 + 2*i));
+                blobWriter[i].connect("tcp://localhost:" + (11001 + 2*i));
             }
         } else {
             for (int i = 0; i < clusterInstances; ++i) {
@@ -321,7 +324,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     }
 
     @Override
-    public NodeState merge(NodeBuilder builder, CommitHook commitHook, CommitInfo info) throws CommitFailedException {
+    public synchronized NodeState merge(NodeBuilder builder, CommitHook commitHook, CommitInfo info) throws CommitFailedException {
         if (!(builder instanceof ZeroMQNodeBuilder)) {
             throw new IllegalArgumentException();
         }
@@ -354,7 +357,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         }
     }
 
-    private NodeState mergeCheckpoint(NodeBuilder builder) {
+    private synchronized NodeState mergeCheckpoint(NodeBuilder builder) {
         final NodeState newBase = getCheckpointRoot();
         rebase(builder, newBase);
         final NodeState after = builder.getNodeState();
@@ -438,10 +441,9 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     }
 
     private void writeBlob(ZeroMQBlob blob) {
-        blobWriterThread.execute(() -> {
+        //blobWriterThread.execute(() -> {
             final InputStream is = blob.getNewStream();
             final String reference = blob.getReference();
-            String msg;
             int inst = clusterInstanceForBlobId(reference);
             final byte[] buffer = new byte[1024 * 1024 * 100]; // 100 MB
             while (true) {
@@ -449,104 +451,53 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
                     synchronized (blobWriter[inst]) {
                         int count, nRead;
                         final int MAX = 100 * 1024 * 1024;
-                        final int HDRSIZE = 135; // "START " + 128 bytes sha512sum + newline
-                        ByteArrayOutputStream bos = new ByteArrayOutputStream(HDRSIZE + MAX); // 100 MB
-                        for (int i = 0; i < HDRSIZE; ++i) {
-                            bos.write(0);
-                        }
-                        boolean start = true;
-                        for (count = 0, nRead = 0; nRead >= 0; ) {
-                            for (nRead = is.read(buffer), count += nRead;
-                                 nRead >= 0 && count < MAX;
-                                 nRead = is.read(buffer), count += nRead) {
-                                if (nRead == 0) {
-                                    Thread.sleep(10);
+                        blobWriter[inst].sendMore(reference);
+                        for (nRead = is.read(buffer);
+                             nRead >= 0;
+                             nRead = is.read(buffer)) {
+                            if (nRead == 0) {
+                                Thread.sleep(10);
+                            } else {
+                                if (nRead < buffer.length) {
+                                    blobWriter[inst].sendMore(Arrays.copyOfRange(buffer, 0, nRead));
                                 } else {
-                                    bos.write(buffer, 0, nRead);
+                                    blobWriter[inst].sendMore(buffer);
                                 }
-                            }
-                            if (count > 0) { // TODO: count -= nRead
-                                bos.flush();
-                                byte[] bytes = bos.toByteArray();
-                                if (start) {
-                                    ZeroMQBlob.copyInto("START ".getBytes(), bytes);
-                                } else {
-                                    ZeroMQBlob.copyInto("CONT ".getBytes(), bytes);
-                                }
-                                ZeroMQBlob.copyInto(reference.getBytes(), bytes, start ? 6 : 5);
-                                bytes[start ? HDRSIZE - 1 : HDRSIZE - 2] = '\n';
-                                start = false;
-                                blobWriter[inst].send(bytes);
-                                blobWriter[inst].recvStr(); // wait for confirmation
-                            }
-                            if (nRead < 0 && !start) {
-                                bos = new ByteArrayOutputStream();
-                                bos.write("END ".getBytes());
-                                bos.write(reference.getBytes());
-                                bos.write('\n');
-                                bos.flush();
-                                blobWriter[inst].send(bos.toByteArray());
-                                blobWriter[inst].recvStr(); // wait for confirmation
                             }
                         }
                     }
                     break;
                 } catch (Throwable t) {
-                    log.warn(t.toString());
-                        try {
-                            Thread.sleep(100);
-                        } catch (InterruptedException e) {
-                            log.error(e.toString());
-                        }
-                    }
-            }
-        });
-    }
-
-    private ZeroMQBlob readBlob(String reference) {
-        String msg;
-        final int inst = clusterInstanceForBlobId(reference);
-        synchronized (blobReader[inst]) {
-            while (true) {
-                try {
-                    blobReader[inst].send(reference);
-                    final InputStream is = new InputStream() {
-                        final byte[] buffer = new byte[1024 * 1024 * 100]; // 100 MB
-                        volatile int cur = 0;
-                        volatile int max = blobReader[inst].recv(buffer, 0, buffer.length, 0);
-
-                        @Override
-                        public int read() {
-                            if (cur == max) {
-                                nextBunch();
-                            }
-                            if (max < 1) {
-                                return -1;
-                            }
-                            return buffer[cur++];
-                        }
-
-                        private void nextBunch() {
-                            synchronized (blobReader[inst]) {
-                                max = blobReader[inst].recv(buffer, 0, buffer.length, 0);
-                                cur = 0;
-                            }
-                        }
-                    };
-                    return ZeroMQBlob.newInstance(is);
-                } catch (Throwable t) {
-                    log.warn("Failed to load blob, retrying: {}", t.getMessage());
+                    log.error(t.toString());
                     try {
                         Thread.sleep(100);
                     } catch (InterruptedException e) {
+                        log.error(e.toString());
+                    }
+                } finally {
+                    try {
+                        blobWriter[inst].send(new byte[0]);
+                    } catch (Throwable t) {
+                        log.error(t.toString());
+                    }
+                    try {
+                        blobWriter[inst].recvStr(); // wait for confirmation
+                    } catch (Throwable t) {
+                        log.error(t.toString());
                     }
                 }
             }
-        }
+        //});
+    }
+
+    private InputStream readBlob(String reference) {
+        String msg;
+        final int inst = clusterInstanceForBlobId(reference);
+        return new ZeroMQBlobInputStream(blobReader[inst], reference);
     }
 
     @Override
-    public NodeState rebase (@NotNull NodeBuilder builder) {
+    public NodeState rebase(@NotNull NodeBuilder builder) {
         final NodeState newBase = getRoot();
         return rebase(builder, newBase);
     }
@@ -572,7 +523,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     }
 
     @Override
-    public Blob createBlob(InputStream inputStream) throws IOException {
+    public synchronized Blob createBlob(InputStream inputStream) throws IOException {
         final ZeroMQBlob blob = ZeroMQBlob.newInstance(inputStream);
         if (blobCache.getIfPresent(blob.getReference()) == null) {
             blobCache.put(blob.getReference(), blob);
@@ -604,7 +555,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     }
 
     Blob createBlob(Blob blob) throws IOException {
-        if (blob instanceof ZeroMQBlob || blob instanceof  ZeroMQBlobStoreBlob) {
+        if (blob instanceof ZeroMQBlob || blob instanceof ZeroMQBlobStoreBlob) {
             return blob;
         }
         String ref = blob.getReference();
@@ -621,13 +572,10 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
             if (reference == null) {
                 throw new NullPointerException("reference is null");
             }
-                return blobCache.get(reference, () -> {
-                    ZeroMQBlob ret = ZeroMQBlob.newInstance(reference);
-                    if (ret == null) {
-                        ret = readBlob(reference);
-                    }
-                    return ret;
-                });
+            return blobCache.get(reference, () -> {
+                ZeroMQBlob ret = ZeroMQBlob.newInstance(reference, readBlob(reference));
+                return ret;
+            });
         } catch (ExecutionException e) {
             log.warn("Could not load blob: " + e.toString());
             return null;
@@ -635,7 +583,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     }
 
     @Override
-    public String checkpoint(long lifetimeMicros, Map<String, String> properties) {
+    public synchronized String checkpoint(long lifetimeMicros, Map<String, String> properties) {
         final ZeroMQNodeState currentRoot = (ZeroMQNodeState) getRoot();
         final String nodeName = currentRoot.getUuid().toString() + properties.toString();
         final NodeBuilder builder = getCheckpointRoot().builder();
@@ -699,6 +647,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
      * This implementation limits the number of @ref{clusterInstances} to 2^32-1.
      * If the space cannot be divided equally, the remaining uuids are assigned
      * to the @ref{clusterInstances} - 1 part.
+     *
      * @param sUuid
      * @return
      */
@@ -731,5 +680,126 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         if (inst > clusterInstances) {
             throw new IllegalStateException("inst > clusterInstances");
         }
-        return inst == clusterInstances ? clusterInstances - 1 : (int) inst;    }
+        return inst == clusterInstances ? clusterInstances - 1 : (int) inst;
+    }
+
+    public GarbageCollectableBlobStore getGarbageCollectableBlobStore() {
+        return new GarbageCollectableBlobStore() {
+            @Override
+            public void setBlockSize(int x) {
+
+            }
+
+            @Override
+            public String writeBlob(String tempFileName) throws IOException {
+                return createBlob(new FileInputStream(tempFileName)).getReference();
+            }
+
+            @Override
+            public int sweep() throws IOException {
+                return 0;
+            }
+
+            @Override
+            public void startMark() throws IOException {
+
+            }
+
+            @Override
+            public void clearInUse() {
+
+            }
+
+            @Override
+            public void clearCache() {
+
+            }
+
+            @Override
+            public long getBlockSizeMin() {
+                return 0;
+            }
+
+            @Override
+            public Iterator<String> getAllChunkIds(long maxLastModifiedTime) throws Exception {
+                return new Iterator<String>() {
+                    @Override
+                    public boolean hasNext() {
+                        return false;
+                    }
+
+                    @Override
+                    public String next() {
+                        return null;
+                    }
+                };
+            }
+
+            @Override
+            public boolean deleteChunks(List<String> chunkIds, long maxLastModifiedTime) {
+                return false;
+            }
+
+            @Override
+            public long countDeleteChunks(List<String> chunkIds, long maxLastModifiedTime) {
+                return 0;
+            }
+
+            @Override
+            public Iterator<String> resolveChunks(String blobId) {
+                return new Iterator<String>() {
+                    @Override
+                    public boolean hasNext() {
+                        return false;
+                    }
+
+                    @Override
+                    public String next() {
+                        return null;
+                    }
+                };
+            }
+
+            @Override
+            public String writeBlob(InputStream in) throws IOException {
+                return createBlob(in).getReference();
+            }
+
+            @Override
+            public String writeBlob(InputStream in, BlobOptions options) throws IOException {
+                return writeBlob(in);
+            }
+
+            @Override
+            public int readBlob(String blobId, long pos, byte[] buff, int off, int length) throws IOException {
+                final Blob blob = getBlob(blobId);
+                return blob.getNewStream().read(buff, off, length);
+            }
+
+            @Override
+            public long getBlobLength(String blobId) throws IOException {
+                return getBlob(blobId).length();
+            }
+
+            @Override
+            public InputStream getInputStream(String blobId) throws IOException {
+                return getBlob(blobId).getNewStream();
+            }
+
+            @Override
+            public @Nullable String getBlobId(@NotNull String reference) {
+                return reference;
+            }
+
+            @Override
+            public @Nullable String getReference(@NotNull String blobId) {
+                return blobId;
+            }
+
+            @Override
+            public void close() throws Exception {
+
+            }
+        };
+    }
 }

@@ -11,17 +11,21 @@ services:
   blobend0:
     image: myhub/ahanikel/oak-store-zeromq-service-blob
     ports:
-            - "10000-10001:10000-10001"
+            - "11000-11001:11000-11001"
             - "5006:5005"
     environment:
             - javaargs=-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*:5005
+#    volumes:
+#            - "/home/axel/blobend0:/tmp/backendblobs"
   blobend1:
     image: myhub/ahanikel/oak-store-zeromq-service-blob
     ports:
-            - "10002-10003:10000-10001"
+            - "11002-11003:11000-11001"
             - "5007:5005"
     environment:
             - javaargs=-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*:5005
+#    volumes:
+#            - "/home/axel/blobend1:/tmp/backendblobs"
   journal:
     image: myhub/ahanikel/oak-store-zeromq-service-journal
     ports:
