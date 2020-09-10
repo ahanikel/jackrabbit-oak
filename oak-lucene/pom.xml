@@ -209,6 +209,11 @@
       <artifactId>oak-search</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <dependency>
+      <groupId>org.apache.jackrabbit</groupId>
+      <artifactId>oak-store-zeromq</artifactId>
+      <version>${project.version}</version>
+    </dependency>
 
     <!-- Lucene dependencies -->
     <dependency>

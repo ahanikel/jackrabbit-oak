@@ -37,7 +37,7 @@ public class DefaultIndexWriterFactory implements LuceneIndexWriterFactory {
     private final LuceneIndexWriterConfig writerConfig;
 
     public DefaultIndexWriterFactory(MountInfoProvider mountInfoProvider,
-                                     DirectoryFactory directoryFactory, LuceneIndexWriterConfig writerConfig) {
+                                    DirectoryFactory directoryFactory, LuceneIndexWriterConfig writerConfig) {
         this.mountInfoProvider = checkNotNull(mountInfoProvider);
         this.directoryFactory = checkNotNull(directoryFactory);
         this.writerConfig = checkNotNull(writerConfig);
