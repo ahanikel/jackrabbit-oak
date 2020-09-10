@@ -9,6 +9,9 @@ import org.slf4j.LoggerFactory;
 import java.io.*;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.Supplier;
 
 public class ZeroMQBlob implements Blob {
@@ -75,14 +78,26 @@ public class ZeroMQBlob implements Blob {
     static class InputStreamFileSupplier implements Supplier<File> {
         private final File file;
         private final InputStream is;
+        private static final ExecutorService readerThreads = Executors.newFixedThreadPool(5);
+        private final CountDownLatch countDownLatch;
 
         InputStreamFileSupplier(File file, InputStream is) {
             this.file = file;
             this.is = is;
+            readerThreads.execute(this::getInternal);
+            countDownLatch = new CountDownLatch(1);
         }
 
         @Override
         public File get() {
+            try {
+                countDownLatch.await();
+            } catch (InterruptedException e) {
+            }
+            return file;
+        }
+
+        public void getInternal() {
             if (!file.exists()) {
                 Object monitor = new Object();
                 if (is instanceof ZeroMQBlobInputStream) {
@@ -127,7 +142,7 @@ public class ZeroMQBlob implements Blob {
                     }
                 }
             }
-            return file;
+            countDownLatch.countDown();
         }
     }
 
