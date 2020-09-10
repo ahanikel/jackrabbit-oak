@@ -324,7 +324,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     }
 
     @Override
-    public synchronized NodeState merge(NodeBuilder builder, CommitHook commitHook, CommitInfo info) throws CommitFailedException {
+    public NodeState merge(NodeBuilder builder, CommitHook commitHook, CommitInfo info) throws CommitFailedException {
         if (!(builder instanceof ZeroMQNodeBuilder)) {
             throw new IllegalArgumentException();
         }
@@ -357,7 +357,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         }
     }
 
-    private synchronized NodeState mergeCheckpoint(NodeBuilder builder) {
+    private NodeState mergeCheckpoint(NodeBuilder builder) {
         final NodeState newBase = getCheckpointRoot();
         rebase(builder, newBase);
         final NodeState after = builder.getNodeState();
@@ -441,14 +441,14 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     }
 
     private void writeBlob(ZeroMQBlob blob) {
-        //blobWriterThread.execute(() -> {
+        blobWriterThread.execute(() -> {
             final InputStream is = blob.getNewStream();
             final String reference = blob.getReference();
             int inst = clusterInstanceForBlobId(reference);
             final byte[] buffer = new byte[1024 * 1024 * 100]; // 100 MB
-            while (true) {
-                try {
-                    synchronized (blobWriter[inst]) {
+            synchronized (blobWriter[inst]) {
+                while (true) {
+                    try {
                         int count, nRead;
                         final int MAX = 100 * 1024 * 1024;
                         blobWriter[inst].sendMore(reference);
@@ -465,29 +465,29 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
                                 }
                             }
                         }
-                    }
-                    break;
-                } catch (Throwable t) {
-                    log.error(t.toString());
-                    try {
-                        Thread.sleep(100);
-                    } catch (InterruptedException e) {
-                        log.error(e.toString());
-                    }
-                } finally {
-                    try {
-                        blobWriter[inst].send(new byte[0]);
+                        break;
                     } catch (Throwable t) {
                         log.error(t.toString());
-                    }
-                    try {
-                        blobWriter[inst].recvStr(); // wait for confirmation
-                    } catch (Throwable t) {
-                        log.error(t.toString());
+                        try {
+                            Thread.sleep(100);
+                        } catch (InterruptedException e) {
+                            log.error(e.toString());
+                        }
+                    } finally {
+                        try {
+                            blobWriter[inst].send(new byte[0]);
+                        } catch (Throwable t) {
+                            log.error(t.toString());
+                        }
+                        try {
+                            blobWriter[inst].recvStr(); // wait for confirmation
+                        } catch (Throwable t) {
+                            log.error(t.toString());
+                        }
                     }
                 }
             }
-        //});
+        });
     }
 
     private InputStream readBlob(String reference) {
@@ -523,7 +523,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     }
 
     @Override
-    public synchronized Blob createBlob(InputStream inputStream) throws IOException {
+    public Blob createBlob(InputStream inputStream) throws IOException {
         final ZeroMQBlob blob = ZeroMQBlob.newInstance(inputStream);
         if (blobCache.getIfPresent(blob.getReference()) == null) {
             blobCache.put(blob.getReference(), blob);
@@ -583,7 +583,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     }
 
     @Override
-    public synchronized String checkpoint(long lifetimeMicros, Map<String, String> properties) {
+    public String checkpoint(long lifetimeMicros, Map<String, String> properties) {
         final ZeroMQNodeState currentRoot = (ZeroMQNodeState) getRoot();
         final String nodeName = currentRoot.getUuid().toString() + properties.toString();
         final NodeBuilder builder = getCheckpointRoot().builder();
