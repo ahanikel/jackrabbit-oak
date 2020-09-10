@@ -8,6 +8,18 @@ services:
     image: myhub/ahanikel/oak-store-zeromq-service-store
     ports:
             - "8002-8003:8000-8001"
+#  backend2:
+#    image: myhub/ahanikel/oak-store-zeromq-service-store
+#    ports:
+#            - "8004-8005:8000-8001"
+#  backend3:
+#    image: myhub/ahanikel/oak-store-zeromq-service-store
+#    ports:
+#            - "8006-8007:8000-8001"
+#  backend4:
+#    image: myhub/ahanikel/oak-store-zeromq-service-store
+#    ports:
+#            - "8008-8009:8000-8001"
   blobend0:
     image: myhub/ahanikel/oak-store-zeromq-service-blob
     ports:
@@ -24,8 +36,27 @@ services:
             - "5007:5005"
     environment:
             - javaargs=-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*:5005
-#    volumes:
-#            - "/home/axel/blobend1:/tmp/backendblobs"
+#  blobend2:
+#    image: myhub/ahanikel/oak-store-zeromq-service-blob
+#    ports:
+#            - "11004-11005:11000-11001"
+#            - "5008:5005"
+#    environment:
+#            - javaargs=-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*:5005
+#  blobend3:
+#    image: myhub/ahanikel/oak-store-zeromq-service-blob
+#    ports:
+#            - "11006-11007:11000-11001"
+#            - "5009:5005"
+#    environment:
+#            - javaargs=-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*:5005
+#  blobend4:
+#    image: myhub/ahanikel/oak-store-zeromq-service-blob
+#    ports:
+#            - "11008-11009:11000-11001"
+#            - "5010:5005"
+#    environment:
+#            - javaargs=-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*:5005
   journal:
     image: myhub/ahanikel/oak-store-zeromq-service-journal
     ports:
