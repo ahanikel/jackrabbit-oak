@@ -90,22 +90,22 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     private final Integer clusterInstances;
 
     @NotNull
-    final ZMQ.Socket nodeStateReader[];
+    final ZeroMQSocketProvider nodeStateReader[];
 
     @NotNull
-    final ZMQ.Socket nodeStateWriter[];
+    final ZeroMQSocketProvider nodeStateWriter[];
 
     @NotNull
-    final ZMQ.Socket journalReader;
+    final ZeroMQSocketProvider journalReader;
 
     @NotNull
-    final ZMQ.Socket journalWriter;
+    final ZeroMQSocketProvider journalWriter;
 
     @NotNull
-    final ZMQ.Socket blobReader[];
+    final ZeroMQSocketProvider blobReader[];
 
     @NotNull
-    final ZMQ.Socket blobWriter[];
+    final ZeroMQSocketProvider blobWriter[];
 
     @NotNull
     final Cache<String, ZeroMQNodeState> nodeStateCache;
@@ -124,7 +124,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     final Object mergeBlobMonitor = new Object();
 
     final ExecutorService nodeWriterThread = Executors.newFixedThreadPool(5);
-    final ExecutorService blobWriterThread = Executors.newFixedThreadPool(5); // each thread consumes 100 MB
+    final ExecutorService blobWriterThread = Executors.newFixedThreadPool(50); // each thread consumes 1 MB
 
     public ZeroMQNodeStore() {
 
@@ -132,46 +132,29 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
 
         clusterInstances = Integer.getInteger(PARAM_CLUSTERINSTANCES, 1);
 
-        nodeStateReader = new ZMQ.Socket[clusterInstances];
-        nodeStateWriter = new ZMQ.Socket[clusterInstances];
-        blobReader = new ZMQ.Socket[clusterInstances];
-        blobWriter = new ZMQ.Socket[clusterInstances];
+        nodeStateReader = new ZeroMQSocketProvider[clusterInstances];
+        nodeStateWriter = new ZeroMQSocketProvider[clusterInstances];
+        blobReader = new ZeroMQSocketProvider[clusterInstances];
+        blobWriter = new ZeroMQSocketProvider[clusterInstances];
 
         if ("localhost".equals(backendPrefix)) {
             for (int i = 0; i < clusterInstances; ++i) {
-                nodeStateReader[i] = context.socket(ZMQ.REQ);
-                nodeStateReader[i].connect("tcp://localhost:" + (8000 + 2*i));
-
-                nodeStateWriter[i] = context.socket(ZMQ.REQ);
-                nodeStateWriter[i].connect("tcp://localhost:" + (8001 + 2*i));
-
-                blobReader[i] = context.socket(ZMQ.REQ);
-                blobReader[i].connect("tcp://localhost:" + (11000 + 2*i));
-
-                blobWriter[i] = context.socket(ZMQ.REQ);
-                blobWriter[i].connect("tcp://localhost:" + (11001 + 2*i));
+                nodeStateReader[i] = new ZeroMQSocketProvider("tcp://localhost:" + (8000 + 2*i), context, ZMQ.REQ);
+                nodeStateWriter[i] = new ZeroMQSocketProvider("tcp://localhost:" + (8001 + 2*i), context, ZMQ.REQ);
+                blobReader[i] = new ZeroMQSocketProvider("tcp://localhost:" + (11000 + 2*i), context, ZMQ.REQ);
+                blobWriter[i] = new ZeroMQSocketProvider("tcp://localhost:" + (11001 + 2*i), context, ZMQ.REQ);
             }
         } else {
             for (int i = 0; i < clusterInstances; ++i) {
-                nodeStateReader[i] = context.socket(ZMQ.REQ);
-                nodeStateReader[i].connect(String.format("tcp://%s%d:8000", backendPrefix, i));
-
-                nodeStateWriter[i] = context.socket(ZMQ.REQ);
-                nodeStateWriter[i].connect(String.format("tcp://%s%d:8001", backendPrefix, i));
-
-                blobReader[i] = context.socket(ZMQ.REQ);
-                blobReader[i].connect(String.format("tcp://%s%d:10000", blobendPrefix, i));
-
-                blobWriter[i] = context.socket(ZMQ.REQ);
-                blobWriter[i].connect(String.format("tcp://%s%d:10001", blobendPrefix, i));
+                nodeStateReader[i] = new ZeroMQSocketProvider(String.format("tcp://%s%d:8000", backendPrefix, i), context, ZMQ.REQ);
+                nodeStateWriter[i] = new ZeroMQSocketProvider(String.format("tcp://%s%d:8001", backendPrefix, i), context, ZMQ.REQ);
+                blobReader[i] = new ZeroMQSocketProvider(String.format("tcp://%s%d:11000", backendPrefix, i), context, ZMQ.REQ);
+                blobWriter[i] = new ZeroMQSocketProvider(String.format("tcp://%s%d:11001", backendPrefix, i), context, ZMQ.REQ);
             }
         }
 
-        journalReader = context.socket(ZMQ.REQ);
-        journalReader.connect("tcp://" + journalPrefix + ":9000");
-
-        journalWriter = context.socket(ZMQ.REQ);
-        journalWriter.connect("tcp://" + journalPrefix + ":9001");
+        journalReader = new ZeroMQSocketProvider("tcp://" + journalPrefix + ":9000", context, ZMQ.REQ);
+        journalWriter = new ZeroMQSocketProvider("tcp://" + journalPrefix + ":9001", context, ZMQ.REQ);
 
         nodeStateCache = CacheBuilder.newBuilder()
             .concurrencyLevel(10)
@@ -248,8 +231,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         while (true) {
             try {
                 synchronized (journalReader) {
-                    journalReader.send("ping");
-                    msg = journalReader.recvStr();
+                    journalReader.get().send("ping");
+                    msg = journalReader.get().recvStr();
                 }
                 break;
             } catch (Throwable t) {
@@ -289,8 +272,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         while (true) {
             try {
                 synchronized (journalWriter) {
-                    journalWriter.send(uuid);
-                    msg = journalWriter.recvStr();
+                    journalWriter.get().send(uuid);
+                    msg = journalWriter.get().recvStr();
                 }
                 break;
             } catch (Throwable t) {
@@ -393,10 +376,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         int inst = clusterInstanceForUuid(uuid);
         while (true) {
             try {
-                synchronized (nodeStateReader[inst]) {
-                    nodeStateReader[inst].send(uuid);
-                    msg = nodeStateReader[inst].recvStr();
-                }
+                nodeStateReader[inst].get().send(uuid);
+                msg = nodeStateReader[inst].get().recvStr();
                 log.debug("{} read.", uuid);
                 break;
             } catch (Throwable t) {
@@ -422,10 +403,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
             int inst = clusterInstanceForUuid(uuid);
             while (true) {
                 try {
-                    synchronized (nodeStateWriter[inst]) {
-                        nodeStateWriter[inst].send(uuid + "\n" + nodeState.getserialisedNodeState());
-                        msg = nodeStateWriter[inst].recvStr(); // wait for confirmation
-                    }
+                    nodeStateWriter[inst].get().send(uuid + "\n" + nodeState.getserialisedNodeState());
+                    msg = nodeStateWriter[inst].get().recvStr(); // wait for confirmation
                     log.debug(msg);
                     break;
                 } catch (Throwable t) {
@@ -445,45 +424,44 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
             final InputStream is = blob.getNewStream();
             final String reference = blob.getReference();
             int inst = clusterInstanceForBlobId(reference);
-            final byte[] buffer = new byte[1024 * 1024 * 100]; // 100 MB
-            synchronized (blobWriter[inst]) {
-                while (true) {
-                    try {
-                        int count, nRead;
-                        final int MAX = 100 * 1024 * 1024;
-                        blobWriter[inst].sendMore(reference);
-                        for (nRead = is.read(buffer);
-                             nRead >= 0;
-                             nRead = is.read(buffer)) {
-                            if (nRead == 0) {
-                                Thread.sleep(10);
+            final byte[] buffer = new byte[1024 * 1024]; // 1 MB
+            final ZMQ.Socket writer = blobWriter[inst].get();
+            while (true) {
+                try {
+                    int count, nRead;
+                    final int MAX = 100 * 1024 * 1024;
+                    writer.sendMore(reference);
+                    for (nRead = is.read(buffer);
+                         nRead >= 0;
+                         nRead = is.read(buffer)) {
+                        if (nRead == 0) {
+                            Thread.sleep(10);
+                        } else {
+                            if (nRead < buffer.length) {
+                                writer.sendMore(Arrays.copyOfRange(buffer, 0, nRead));
                             } else {
-                                if (nRead < buffer.length) {
-                                    blobWriter[inst].sendMore(Arrays.copyOfRange(buffer, 0, nRead));
-                                } else {
-                                    blobWriter[inst].sendMore(buffer);
-                                }
+                                writer.sendMore(buffer);
                             }
                         }
-                        break;
+                    }
+                    break;
+                } catch (Throwable t) {
+                    log.error(t.toString());
+                    try {
+                        Thread.sleep(100);
+                    } catch (InterruptedException e) {
+                        log.error(e.toString());
+                    }
+                } finally {
+                    try {
+                        writer.send(new byte[0]);
                     } catch (Throwable t) {
                         log.error(t.toString());
-                        try {
-                            Thread.sleep(100);
-                        } catch (InterruptedException e) {
-                            log.error(e.toString());
-                        }
-                    } finally {
-                        try {
-                            blobWriter[inst].send(new byte[0]);
-                        } catch (Throwable t) {
-                            log.error(t.toString());
-                        }
-                        try {
-                            blobWriter[inst].recvStr(); // wait for confirmation
-                        } catch (Throwable t) {
-                            log.error(t.toString());
-                        }
+                    }
+                    try {
+                        writer.recvStr(); // wait for confirmation
+                    } catch (Throwable t) {
+                        log.error(t.toString());
                     }
                 }
             }
