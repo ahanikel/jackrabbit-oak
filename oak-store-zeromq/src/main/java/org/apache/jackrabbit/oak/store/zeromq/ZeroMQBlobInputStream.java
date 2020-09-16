@@ -23,6 +23,7 @@ import org.slf4j.LoggerFactory;
 import org.zeromq.ZMQ;
 
 import java.io.InputStream;
+import java.util.function.Supplier;
 
 public class ZeroMQBlobInputStream extends InputStream {
     byte[] buffer;
@@ -30,38 +31,36 @@ public class ZeroMQBlobInputStream extends InputStream {
     private int max = 0;
     private boolean init = false;
     private boolean error = false;
-    private final ZMQ.Socket blobReader;
+    private final Supplier<ZMQ.Socket> blobReader;
+    private ZMQ.Socket reader;
     private final String reference;
 
     private static final Logger log = LoggerFactory.getLogger(ZeroMQNodeStore.class.getName());
 
-    ZeroMQBlobInputStream(ZMQ.Socket blobReader, String reference) {
+    ZeroMQBlobInputStream(Supplier<ZMQ.Socket> blobReader, String reference) {
         this.blobReader = blobReader;
         this.reference = reference;
     }
 
     private void init() {
         if (!init) {
+            reader = blobReader.get();
             try {
                 init = true;
                 buffer = new byte[1024 * 1024]; // 1 MB
-                while (blobReader.hasReceiveMore()) {
-                    blobReader.recv(buffer, 0, buffer.length, 0);
+                while (reader.hasReceiveMore()) {
+                    reader.recv(buffer, 0, buffer.length, 0);
                     log.warn("Blob reader is in wrong state, should not happen.");
                 }
-                blobReader.recv(buffer, 0, buffer.length, 0);
+                reader.recv(buffer, 0, buffer.length, 0);
                 log.warn("Cleanedup {}", reference);
-                blobReader.send(reference);
+                reader.send(reference);
                 log.warn("Sent {}", reference);
             } catch (Throwable t) {
                 log.error(t.getMessage());
                 error = true;
             }
         }
-    }
-
-    public Object getMonitor() {
-        return blobReader;
     }
 
     @Override
@@ -81,11 +80,11 @@ public class ZeroMQBlobInputStream extends InputStream {
     }
 
     private void nextBunch() {
-        if (blobReader.hasReceiveMore()) {
-            max = blobReader.recv(buffer, 0, buffer.length, 0);
+        if (reader.hasReceiveMore()) {
+            max = reader.recv(buffer, 0, buffer.length, 0);
             log.warn("Received more {}", reference);
         } else {
-            max = blobReader.recv(buffer, 0, buffer.length, 0);
+            max = reader.recv(buffer, 0, buffer.length, 0);
             log.warn("Received {}", reference);
         }
         cur = 0;

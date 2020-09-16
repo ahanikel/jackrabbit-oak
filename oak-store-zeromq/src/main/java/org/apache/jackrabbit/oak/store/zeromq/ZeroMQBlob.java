@@ -99,47 +99,41 @@ public class ZeroMQBlob implements Blob {
 
         public void getInternal() {
             if (!file.exists()) {
-                Object monitor = new Object();
-                if (is instanceof ZeroMQBlobInputStream) {
-                    monitor = ((ZeroMQBlobInputStream) is).getMonitor();
-                }
-                synchronized (monitor) {
-                    final byte[] readBuffer = new byte[1024 * 1024];
-                    try {
-                        final MessageDigest md = MessageDigest.getInstance("MD5");
-                        final File out = File.createTempFile("zmqBlob", ".dat");
-                        final FileOutputStream fos = new FileOutputStream(out);
-                        final BufferedOutputStream bos = new BufferedOutputStream(fos);
-                        // The InflaterInputStream seems to take some time until it's ready
-                        if (is.available() == 0) {
-                            Thread.sleep(500);
-                        }
-                        // The InputStream spec says that read reads at least one byte (if not eof),
-                        // reads 0 bytes only if buffer.length == 0,
-                        // and blocks if it's not available, but we're sending a 0-byte chunk to
-                        // terminate the "sendMore" sequence.
-                        for (int nRead = is.read(readBuffer); nRead >= 0; nRead = is.read(readBuffer)) {
-                            bos.write(readBuffer, 0, nRead);
-                            md.update(readBuffer, 0, nRead);
-                        }
-                        bos.flush();
-                        bos.close();
-                        fos.flush();
-                        fos.close();
-                        is.close();
-                        final String reference = bytesToString(new ByteArrayInputStream(md.digest()));
-                        File destFile = new File("/tmp/blobs/", reference);
-                        synchronized (ZeroMQBlob.class) {
-                            if (destFile.exists()) {
-                                out.delete();
-                            } else {
-                                out.renameTo(destFile);
-                            }
-                        }
-                    } catch (Exception e) {
-                        log.error(e.toString());
-                        throw new IllegalStateException(e);
+                final byte[] readBuffer = new byte[1024 * 1024];
+                try {
+                    final MessageDigest md = MessageDigest.getInstance("MD5");
+                    final File out = File.createTempFile("zmqBlob", ".dat");
+                    final FileOutputStream fos = new FileOutputStream(out);
+                    final BufferedOutputStream bos = new BufferedOutputStream(fos);
+                    // The InflaterInputStream seems to take some time until it's ready
+                    if (is.available() == 0) {
+                        Thread.sleep(500);
                     }
+                    // The InputStream spec says that read reads at least one byte (if not eof),
+                    // reads 0 bytes only if buffer.length == 0,
+                    // and blocks if it's not available, but we're sending a 0-byte chunk to
+                    // terminate the "sendMore" sequence.
+                    for (int nRead = is.read(readBuffer); nRead >= 0; nRead = is.read(readBuffer)) {
+                        bos.write(readBuffer, 0, nRead);
+                        md.update(readBuffer, 0, nRead);
+                    }
+                    bos.flush();
+                    bos.close();
+                    fos.flush();
+                    fos.close();
+                    is.close();
+                    final String reference = bytesToString(new ByteArrayInputStream(md.digest()));
+                    File destFile = new File("/tmp/blobs/", reference);
+                    synchronized (ZeroMQBlob.class) {
+                        if (destFile.exists()) {
+                            out.delete();
+                        } else {
+                            out.renameTo(destFile);
+                        }
+                    }
+                } catch (Exception e) {
+                    log.error(e.toString());
+                    throw new IllegalStateException(e);
                 }
             }
             countDownLatch.countDown();
