@@ -138,7 +138,7 @@ public class ZeroMQBackendBlob implements Closeable {
                             if (cur >= buffer.length) {
                                 return -1;
                             }
-                            return buffer[cur++];
+                            return 0x000000ff & buffer[cur++];
                         }
 
                         @Override
