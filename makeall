@@ -1,1 +1,6 @@
-(cd oak-store-zeromq && ./compile) && (cd oak-store-zeromq-service-store && ./makeit) && (cd oak-store-zeromq-service-blob && ./makeit) && (cd oak-store-zeromq-service-journal&& ./makeit) && (cd quickstart-remotesegment-docker && mvn clean package)
+cat <<EOF | while read dir cmd; do (cd $dir && $cmd); done
+oak-store-zeromq        ./compile
+oak-store-zeromq-service-store  ./makeit
+oak-store-zeromq-service-blob   ./makeit
+oak-store-zeromq-service-journal        ./makeit
+EOF
