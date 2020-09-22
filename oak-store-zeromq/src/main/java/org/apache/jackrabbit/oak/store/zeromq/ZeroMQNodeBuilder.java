@@ -67,12 +67,7 @@ public class ZeroMQNodeBuilder extends MemoryNodeBuilder {
     @NotNull
     @Override
     public NodeState getNodeState() {
-        final NodeState before = getBaseState();
-        final NodeState after = super.getNodeState();
-        if (after.equals(before)) {
-            return before;
-        }
-        return after;
+        return super.getNodeState();
     }
 
     @Override
