@@ -18,12 +18,15 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq;
 
+import com.google.common.primitives.Longs;
 import org.apache.jackrabbit.oak.api.PropertyState;
 import org.apache.jackrabbit.oak.spi.state.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.UnsupportedEncodingException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
@@ -44,6 +47,16 @@ public class ZeroMQNodeState extends AbstractNodeState {
     private static final Pattern spaceSeparatedPattern = Pattern.compile("([^ ]+ ).*", Pattern.DOTALL);
     private static final Pattern propertyTypePattern = Pattern.compile("([^>]+> = ).*", Pattern.DOTALL);
     private static final Pattern allTheRestPattern = Pattern.compile("(.*)", Pattern.DOTALL);
+
+    private static MessageDigest md;
+
+    static {
+        try {
+            md = MessageDigest.getInstance("MD5");
+        } catch (NoSuchAlgorithmException e) {
+            md = null;
+        }
+    }
 
     protected final ZeroMQNodeStore ns;
     private final String uuid;
@@ -298,7 +311,10 @@ public class ZeroMQNodeState extends AbstractNodeState {
         if (children.isEmpty() && properties.isEmpty()) {
             return ZeroMQEmptyNodeState.UUID_NULL.toString();
         }
-        return UUID.nameUUIDFromBytes(serialised.getBytes("UTF-8")).toString();
+        final byte[] digest = md.digest(serialised.getBytes("UTF-8"));
+        final long msb = Longs.fromByteArray(Arrays.copyOfRange(digest, 0, 8));
+        final long lsb = Longs.fromByteArray(Arrays.copyOfRange(digest, 8, 16));
+        return new UUID(msb, lsb).toString();
     }
 
     @Override
