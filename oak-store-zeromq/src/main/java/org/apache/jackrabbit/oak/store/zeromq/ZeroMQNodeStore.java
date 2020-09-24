@@ -128,7 +128,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
 
     public ZeroMQNodeStore() {
 
-        context = ZMQ.context(1);
+        context = ZMQ.context(20);
 
         clusterInstances = Integer.getInteger(PARAM_CLUSTERINSTANCES, 1);
 
