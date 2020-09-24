@@ -351,6 +351,9 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
 
     private ZeroMQNodeState readNodeState(String uuid) {
         try {
+            if (log.isTraceEnabled()) {
+                log.trace("{} n? {}", Thread.currentThread().getId(), uuid);
+            }
             return nodeStateCache.get(uuid, () -> {
                 final String sNode = read(uuid);
                 try {
