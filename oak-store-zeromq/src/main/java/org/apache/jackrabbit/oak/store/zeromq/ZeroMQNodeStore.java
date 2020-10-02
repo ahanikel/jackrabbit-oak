@@ -25,6 +25,7 @@ import org.apache.jackrabbit.commons.SimpleValueFactory;
 import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.api.CommitFailedException;
 import org.apache.jackrabbit.oak.api.Descriptors;
+import org.apache.jackrabbit.oak.api.PropertyState;
 import org.apache.jackrabbit.oak.api.Type;
 import org.apache.jackrabbit.oak.api.jmx.CheckpointMBean;
 import org.apache.jackrabbit.oak.osgi.OsgiWhiteboard;
@@ -56,13 +57,22 @@ import java.io.Closeable;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.collect.Maps.newHashMap;
+import static org.apache.jackrabbit.oak.api.Type.LONG;
+import static org.apache.jackrabbit.oak.api.Type.STRING;
 import static org.apache.jackrabbit.oak.spi.cluster.ClusterRepositoryInfo.getOrCreateId;
 import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeState.getNodeStateDiffBuilder;
 
@@ -564,31 +574,59 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     }
 
     @Override
-    public String checkpoint(long lifetimeMicros, Map<String, String> properties) {
-        final ZeroMQNodeState currentRoot = (ZeroMQNodeState) getRoot();
-        final String nodeName = currentRoot.getUuid().toString() + properties.toString();
-        final NodeBuilder builder = getCheckpointRoot().builder();
-        final NodeBuilder cpBuilder = builder.child(nodeName);
-        cpBuilder.setChildNode("root", currentRoot);
-        cpBuilder.setProperty("lifetimeMicros", lifetimeMicros);
-        properties.forEach(cpBuilder.child("props")::setProperty);
-        mergeCheckpoint(builder);
-        return nodeName;
+    public String checkpoint(long lifetime, Map<String, String> properties) {
+        long now = System.currentTimeMillis(); // is lifetime millis or micros?
+
+        NodeBuilder checkpoints = getCheckpointRoot().builder();
+
+        for (String n : checkpoints.getChildNodeNames()) {
+            NodeBuilder cp = checkpoints.getChildNode(n);
+            PropertyState ts = cp.getProperty("timestamp");
+            if (ts == null || ts.getType() != LONG || now > ts.getValue(LONG)) {
+                cp.remove();
+            }
+        }
+
+        final SegmentNodeState currentRoot = (SegmentNodeState) getRoot();
+        final String name = currentRoot.getStableId() + properties.toString(); // TODO: ok? - the SNS uses random uuid
+
+        NodeBuilder cp = checkpoints.child(name);
+        if (Long.MAX_VALUE - now > lifetime) {
+            cp.setProperty("timestamp", now + lifetime);
+        } else {
+            cp.setProperty("timestamp", Long.MAX_VALUE);
+        }
+        cp.setProperty("created", now);
+
+        NodeBuilder props = cp.setChildNode("properties");
+        for (Map.Entry<String, String> p : properties.entrySet()) {
+            props.setProperty(p.getKey(), p.getValue());
+        }
+        cp.setChildNode("root", currentRoot);
+
+        mergeCheckpoint(checkpoints);
+        return name;
     }
 
     @Override
-    public String checkpoint(long lifetime) {
-        return checkpoint(lifetime, new HashMap<>());
+    public synchronized String checkpoint(long lifetime) {
+        return checkpoint(lifetime, Collections.<String, String>emptyMap());
     }
 
+    @NotNull
     @Override
-    public Map<String, String> checkpointInfo(String checkpoint) {
-        // TODO: parse the checkpoint name, no need to read the repo
-        final NodeState cpRoot = getCheckpointRoot();
-        final NodeState cpNode = cpRoot.getChildNode(checkpoint).getChildNode("props");
-        Map<String, String> ret = new HashMap<>();
-        cpNode.getProperties().forEach(ps -> ret.put(ps.getName(), ps.getValue(Type.STRING)));
-        return ret;
+    public Map<String, String> checkpointInfo(@NotNull String checkpoint) {
+        Map<String, String> properties = newHashMap();
+        checkNotNull(checkpoint);
+        NodeState cp = getCheckpointRoot()
+                .getChildNode(checkpoint)
+                .getChildNode("properties");
+
+        for (PropertyState prop : cp.getProperties()) {
+            properties.put(prop.getName(), prop.getValue(STRING));
+        }
+
+        return properties;
     }
 
     @Override
@@ -598,18 +636,20 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     }
 
     @Override
-    public NodeState retrieve(String checkpoint) {
+    @Nullable
+    public NodeState retrieve(@NotNull String checkpoint) {
+        checkNotNull(checkpoint);
         final NodeState cpRoot = getCheckpointRoot();
-        final NodeState cp = cpRoot.getChildNode(checkpoint);
+        final NodeState cp = cpRoot.getChildNode(checkpoint).getChildNode("root");
         if (cp.exists()) {
-            return cp.getChildNode("root");
-        } else {
-            return null;
+            return cp;
         }
+        return null;
     }
 
     @Override
-    public boolean release(String checkpoint) {
+    public boolean release(@NotNull String checkpoint) {
+        checkNotNull(checkpoint);
         final NodeBuilder cpRoot = getCheckpointRoot().builder();
         boolean ret = cpRoot.getChildNode(checkpoint).remove();
         if (ret) {
