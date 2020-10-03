@@ -44,6 +44,7 @@ import org.apache.jackrabbit.oak.spi.state.NodeStore;
 import org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardExecutor;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.osgi.framework.Constants;
 import org.osgi.service.component.ComponentContext;
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
@@ -136,6 +137,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     final ExecutorService nodeWriterThread = Executors.newFixedThreadPool(5);
     final ExecutorService blobWriterThread = Executors.newFixedThreadPool(50); // each thread consumes 1 MB
 
+    private volatile String journalRoot;
+
     public ZeroMQNodeStore() {
 
         context = ZMQ.context(20);
@@ -203,14 +206,15 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         WhiteboardExecutor executor = new WhiteboardExecutor();
         executor.start(whiteboard);
         //registerCloseable(executor);
-        // Map<String, Object> props = new HashMap<>();
-        // props.put(Constants.SERVICE_PID, ZeroMQNodeStore.class.getName());
-        // props.put("oak.nodestore.description", new String[]{"nodeStoreType=zeromq"});
-        // whiteboard.register(NodeStore.class, this, props);
+        Map<String, Object> props = new HashMap<>();
+        props.put(Constants.SERVICE_PID, ZeroMQNodeStore.class.getName());
+        props.put("oak.nodestore.description", new String[]{"nodeStoreType=segment"});
+        whiteboard.register(NodeStore.class, this, props);
     }
 
     public void init() {
-        final String uuid = readRoot();
+        final String uuid = readRootRemote();
+        journalRoot = uuid;
         if ("undefined".equals(uuid)) {
             reset();
         }
@@ -237,6 +241,10 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     }
 
     private String readRoot() {
+        return journalRoot;
+    }
+
+    private String readRootRemote() {
         String msg;
         while (true) {
             try {
@@ -278,6 +286,11 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     }
 
     private void setRoot(String uuid) {
+        journalRoot = uuid;
+        nodeWriterThread.execute(() -> setRootRemote(uuid));
+    }
+
+    private void setRootRemote(String uuid) {
         String msg;
         while (true) {
             try {
@@ -587,8 +600,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
             }
         }
 
-        final SegmentNodeState currentRoot = (SegmentNodeState) getRoot();
-        final String name = currentRoot.getStableId() + properties.toString(); // TODO: ok? - the SNS uses random uuid
+        final ZeroMQNodeState currentRoot = (ZeroMQNodeState) getRoot();
+        final String name = currentRoot.getUuid() + properties.toString(); // TODO: ok? - the SNS uses random uuid
 
         NodeBuilder cp = checkpoints.child(name);
         if (Long.MAX_VALUE - now > lifetime) {
