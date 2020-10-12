@@ -587,7 +587,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     }
 
     @Override
-    public String checkpoint(long lifetime, Map<String, String> properties) {
+    public synchronized @NotNull String checkpoint(long lifetime, Map<String, String> properties) {
         long now = System.currentTimeMillis(); // is lifetime millis or micros?
 
         NodeBuilder checkpoints = getCheckpointRoot().builder();
@@ -601,7 +601,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         }
 
         final ZeroMQNodeState currentRoot = (ZeroMQNodeState) getRoot();
-        final String name = currentRoot.getUuid() + properties.toString(); // TODO: ok? - the SNS uses random uuid
+        final String name = UUID.randomUUID().toString();
 
         NodeBuilder cp = checkpoints.child(name);
         if (Long.MAX_VALUE - now > lifetime) {
