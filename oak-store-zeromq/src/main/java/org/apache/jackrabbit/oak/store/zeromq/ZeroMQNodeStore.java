@@ -31,6 +31,7 @@ import org.apache.jackrabbit.oak.api.jmx.CheckpointMBean;
 import org.apache.jackrabbit.oak.osgi.OsgiWhiteboard;
 import org.apache.jackrabbit.oak.plugins.memory.MemoryNodeBuilder;
 import org.apache.jackrabbit.oak.spi.blob.BlobOptions;
+import org.apache.jackrabbit.oak.spi.blob.BlobStore;
 import org.apache.jackrabbit.oak.spi.blob.GarbageCollectableBlobStore;
 import org.apache.jackrabbit.oak.spi.cluster.ClusterRepositoryInfo;
 import org.apache.jackrabbit.oak.spi.commit.Observable;
@@ -49,6 +50,10 @@ import org.osgi.service.component.ComponentContext;
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.ConfigurationPolicy;
+import org.osgi.service.component.annotations.Reference;
+import org.osgi.service.component.annotations.ReferenceCardinality;
+import org.osgi.service.component.annotations.ReferencePolicy;
+import org.osgi.service.component.annotations.ReferencePolicyOption;
 import org.osgi.service.component.annotations.ServiceScope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -74,6 +79,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.collect.Maps.newHashMap;
 import static org.apache.jackrabbit.oak.api.Type.LONG;
 import static org.apache.jackrabbit.oak.api.Type.STRING;
+import static org.apache.jackrabbit.oak.spi.blob.osgi.SplitBlobStoreService.ONLY_STANDALONE_TARGET;
 import static org.apache.jackrabbit.oak.spi.cluster.ClusterRepositoryInfo.getOrCreateId;
 import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeState.getNodeStateDiffBuilder;
 
@@ -88,10 +94,12 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     public static final String PARAM_BACKEND_PREFIX = "backendPrefix";
     public static final String PARAM_JOURNAL_PREFIX = "journalPrefix";
     public static final String PARAM_BLOBEND_PREFIX = "blobendPrefix";
+    public static final String PARAM_WRITEBACKJOURNAL = "writeBackJournal";
+    public static final String PARAM_CUSTOMBLOBSTORE = "customBlobStore";
 
-    public static String backendPrefix = System.getProperty(PARAM_BACKEND_PREFIX, "localhost");
-    public static String journalPrefix = System.getProperty(PARAM_JOURNAL_PREFIX, "localhost");
-    public static String blobendPrefix = System.getProperty(PARAM_BLOBEND_PREFIX, "localhost");
+    public static String backendPrefix = System.getenv(PARAM_BACKEND_PREFIX);
+    public static String journalPrefix = System.getenv(PARAM_JOURNAL_PREFIX);
+    public static String blobendPrefix = System.getenv(PARAM_BLOBEND_PREFIX);
 
     private static final Logger log = LoggerFactory.getLogger(ZeroMQNodeStore.class.getName());
 
@@ -99,6 +107,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     final ZMQ.Context context;
 
     private final Integer clusterInstances;
+    private final boolean writeBackJournal;
+    private final Boolean customBlobStore;
 
     @NotNull
     final ZeroMQSocketProvider nodeStateReader[];
@@ -139,11 +149,21 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
 
     private volatile String journalRoot;
 
+    @Reference(
+            cardinality = ReferenceCardinality.OPTIONAL,
+            policy = ReferencePolicy.STATIC,
+            policyOption = ReferencePolicyOption.GREEDY,
+            target = ONLY_STANDALONE_TARGET
+    )
+    private volatile BlobStore blobStore;
+
     public ZeroMQNodeStore() {
 
         context = ZMQ.context(20);
 
-        clusterInstances = Integer.getInteger(PARAM_CLUSTERINSTANCES, 1);
+        clusterInstances = Integer.valueOf(System.getenv(PARAM_CLUSTERINSTANCES));
+        writeBackJournal = Boolean.valueOf(System.getenv(PARAM_WRITEBACKJOURNAL));
+        customBlobStore = Boolean.valueOf(System.getenv(PARAM_CUSTOMBLOBSTORE));
 
         nodeStateReader = new ZeroMQSocketProvider[clusterInstances];
         nodeStateWriter = new ZeroMQSocketProvider[clusterInstances];
@@ -174,8 +194,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
             .maximumSize(1000000).build();
 
         blobCache = CacheBuilder.newBuilder()
-            .concurrencyLevel(10)
-            .maximumSize(100000).build();
+                .concurrencyLevel(10)
+                .maximumSize(100000).build();
     }
 
     @Activate
@@ -287,7 +307,9 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
 
     private void setRoot(String uuid) {
         journalRoot = uuid;
-        nodeWriterThread.execute(() -> setRootRemote(uuid));
+        if (writeBackJournal) {
+            nodeWriterThread.execute(() -> setRootRemote(uuid));
+        }
     }
 
     private void setRootRemote(String uuid) {
@@ -495,9 +517,18 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     }
 
     private InputStream readBlob(String reference) {
-        String msg;
-        final int inst = clusterInstanceForBlobId(reference);
-        return new ZeroMQBlobInputStream(blobReader[inst], reference);
+        InputStream ret = null;
+        if (customBlobStore) {
+            try {
+                ret = blobStore.getInputStream(reference);
+            } catch (IOException e) {
+            }
+        }
+        if (ret == null) {
+            final int inst = clusterInstanceForBlobId(reference);
+            ret = new ZeroMQBlobInputStream(blobReader[inst], reference);
+        }
+        return ret;
     }
 
     @Override
