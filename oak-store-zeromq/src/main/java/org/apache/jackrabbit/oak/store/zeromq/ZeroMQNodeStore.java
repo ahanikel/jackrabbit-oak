@@ -96,6 +96,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     public static final String PARAM_BLOBEND_PREFIX = "blobendPrefix";
     public static final String PARAM_WRITEBACKJOURNAL = "writeBackJournal";
     public static final String PARAM_CUSTOMBLOBSTORE = "customBlobStore";
+    public static final String PARAM_INITJOURNAL = "initJournal";
 
     public static String backendPrefix = System.getenv(PARAM_BACKEND_PREFIX);
     public static String journalPrefix = System.getenv(PARAM_JOURNAL_PREFIX);
@@ -156,6 +157,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
             target = ONLY_STANDALONE_TARGET
     )
     private volatile BlobStore blobStore;
+    private String initJournal;
 
     public ZeroMQNodeStore() {
 
@@ -164,6 +166,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         clusterInstances = Integer.valueOf(System.getenv(PARAM_CLUSTERINSTANCES));
         writeBackJournal = Boolean.valueOf(System.getenv(PARAM_WRITEBACKJOURNAL));
         customBlobStore = Boolean.valueOf(System.getenv(PARAM_CUSTOMBLOBSTORE));
+        initJournal = System.getenv(PARAM_INITJOURNAL);
 
         nodeStateReader = new ZeroMQSocketProvider[clusterInstances];
         nodeStateWriter = new ZeroMQSocketProvider[clusterInstances];
@@ -181,8 +184,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
             for (int i = 0; i < clusterInstances; ++i) {
                 nodeStateReader[i] = new ZeroMQSocketProvider(String.format("tcp://%s%d:8000", backendPrefix, i), context, ZMQ.REQ);
                 nodeStateWriter[i] = new ZeroMQSocketProvider(String.format("tcp://%s%d:8001", backendPrefix, i), context, ZMQ.REQ);
-                blobReader[i] = new ZeroMQSocketProvider(String.format("tcp://%s%d:11000", backendPrefix, i), context, ZMQ.REQ);
-                blobWriter[i] = new ZeroMQSocketProvider(String.format("tcp://%s%d:11001", backendPrefix, i), context, ZMQ.REQ);
+                blobReader[i] = new ZeroMQSocketProvider(String.format("tcp://%s%d:11000", blobendPrefix, i), context, ZMQ.REQ);
+                blobWriter[i] = new ZeroMQSocketProvider(String.format("tcp://%s%d:11001", blobendPrefix, i), context, ZMQ.REQ);
             }
         }
 
@@ -234,6 +237,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
 
     public void init() {
         final String uuid = readRootRemote();
+        log.info("Journal root initialised with {}", uuid);
         journalRoot = uuid;
         if ("undefined".equals(uuid)) {
             reset();
@@ -265,12 +269,17 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     }
 
     private String readRootRemote() {
+        if (initJournal != null) {
+            return initJournal;
+        }
         String msg;
         while (true) {
             try {
                 synchronized (journalReader) {
-                    journalReader.get().send("ping");
-                    msg = journalReader.get().recvStr();
+                    //journalReader.get().send("ping");
+                    //msg = journalReader.get().recvStr();
+                    nodeStateReader[0].get().send("journal");
+                    msg = nodeStateReader[0].get().recvStr();
                 }
                 break;
             } catch (Throwable t) {
@@ -317,8 +326,10 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         while (true) {
             try {
                 synchronized (journalWriter) {
-                    journalWriter.get().send(uuid);
-                    msg = journalWriter.get().recvStr();
+                    //journalWriter.get().send(uuid);
+                    //msg = journalWriter.get().recvStr();
+                    nodeStateWriter[0].get().send("journal\n" + uuid);
+                    msg = nodeStateWriter[0].get().recvStr();
                 }
                 break;
             } catch (Throwable t) {
@@ -400,6 +411,9 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
                 log.trace("{} n? {}", Thread.currentThread().getId(), uuid);
             }
             return nodeStateCache.get(uuid, () -> {
+                if (emptyNode.getUuid().equals(uuid)) {
+                    return emptyNode;
+                }
                 final String sNode = read(uuid);
                 try {
                     final ZeroMQNodeState ret = ZeroMQNodeState.deSerialise(this, sNode, this::readNodeState, this::write);
