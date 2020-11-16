@@ -1,6 +1,6 @@
 cat <<EOF | while read dir cmd; do (cd $dir && $cmd); done
 oak-store-zeromq        ./compile
 oak-store-zeromq-service-store  ./makeit
-oak-store-zeromq-service-blob   ./makeit
-oak-store-zeromq-service-journal        ./makeit
 EOF
+#oak-store-zeromq-service-blob   ./makeit
+#oak-store-zeromq-service-journal        ./makeit

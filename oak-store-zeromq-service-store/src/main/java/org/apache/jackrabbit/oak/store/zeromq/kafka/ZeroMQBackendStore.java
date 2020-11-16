@@ -166,7 +166,9 @@ public class ZeroMQBackendStore {
             final String ser =  msg.substring(firstLineSep + 1);
             producer.send(new ProducerRecord<String, String>(kafkaTopic, uuid, ser));
             writerService.send(uuid + " confirmed.");
-            System.err.println("Received our node " + uuid);
+            if ("journal".equals(uuid)) {
+                System.err.println("journal written as " + ser);
+            }
         } catch (Exception e) {
             System.err.println(e.toString());
         }
@@ -205,6 +207,17 @@ public class ZeroMQBackendStore {
     private void stopBackgroundThreads() {
         if (socketHandler != null) {
             socketHandler.interrupt();
+        }
+    }
+
+    public static void main(String[] args) {
+        final ZeroMQBackendStore zeroMQBackendStore = new ZeroMQBackendStore();
+        while (true) {
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                break;
+            }
         }
     }
 }
