@@ -72,7 +72,7 @@
     <module>oak-authorization-principalbased</module>
     <module>oak-exercise</module>
     <module>oak-examples</module>
-    <!--module>oak-it</module-->
+    <module>oak-it</module>
     <module>oak-segment-tar</module>
     <module>oak-segment-remote</module>
     <module>oak-segment-aws</module>
@@ -84,6 +84,7 @@
     <module>oak-benchmarks-elastic</module>
       <module>oak-run-elastic</module>
     <module>oak-store-zeromq</module>
+    <module>oak-store-zeromq-service-store</module>
   </modules>
 
   <scm>
