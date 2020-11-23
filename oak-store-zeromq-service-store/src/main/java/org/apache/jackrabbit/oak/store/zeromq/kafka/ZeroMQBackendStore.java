@@ -123,6 +123,8 @@ public class ZeroMQBackendStore {
         kafkaProducerProperties.put("key.serializer", StringSerializer.class);
         kafkaProducerProperties.put("value.serializer", StringSerializer.class);
         producer = new KafkaProducer<String, String>(kafkaProducerProperties);
+        // ensure the topic has been created, otherwise the store will just shut down
+        producer.send(new ProducerRecord<>(kafkaTopic, "hello", "world"));
 
         final Properties kafkaStreamProperties = new Properties();
         kafkaStreamProperties.put(StreamsConfig.APPLICATION_ID_CONFIG, "oak-store-kafka");
@@ -166,8 +168,8 @@ public class ZeroMQBackendStore {
             final String ser =  msg.substring(firstLineSep + 1);
             producer.send(new ProducerRecord<String, String>(kafkaTopic, uuid, ser));
             writerService.send(uuid + " confirmed.");
-            if ("journal".equals(uuid)) {
-                System.err.println("journal written as " + ser);
+            if (msg.length() > 1000000) {
+                System.err.println("Large message: " + uuid + ": " + msg.length());
             }
         } catch (Exception e) {
             System.err.println(e.toString());
