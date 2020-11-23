@@ -420,7 +420,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
                     return ret;
                 } catch (ZeroMQNodeState.ParseFailure parseFailure) {
                     if ("Node not found".equals(sNode)) {
-                        log.error("Node not found");
+                        log.error("Node not found: " + uuid);
                         throw new IllegalStateException("Node not found");
                     } else {
                         log.error(parseFailure.getMessage());
@@ -467,10 +467,10 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
                 try {
                     nodeStateWriter[inst].get().send(uuid + "\n" + nodeState.getserialisedNodeState());
                     msg = nodeStateWriter[inst].get().recvStr(); // wait for confirmation
-                    log.debug(msg);
+                    log.info(msg);
                     break;
                 } catch (Throwable t) {
-                    log.warn(t.toString());
+                    log.error(t.toString() + " retrying to write " + uuid);
                     try {
                         Thread.sleep(100);
                     } catch (InterruptedException e) {
