@@ -40,6 +40,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.GregorianCalendar;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.apache.jackrabbit.oak.api.Type.BOOLEAN;
 
@@ -60,6 +62,8 @@ public class ZeroMQPropertyState implements PropertyState {
     private final List<String> stringValues;
 
     private final List<Object> values;
+
+    private String serialised;
 
     private <T> T convertTo(String value, Type<T> type) {
         if (isStringBased(type)) {
@@ -102,6 +106,7 @@ public class ZeroMQPropertyState implements PropertyState {
                 this.values.add(convertTo(v, this.type.isArray()
                         ? this.type.getBaseType()
                         : this.type)));
+        serialise();
     }
 
     <T> ZeroMQPropertyState(ZeroMQNodeStore ns, String name, Type<T> type, T value) {
@@ -119,6 +124,7 @@ public class ZeroMQPropertyState implements PropertyState {
             final String sVal = valueToString(type.isArray() ? type.getBaseType() : type, v);
             this.stringValues.add(sVal);
         });
+        serialise();
     }
 
     private ZeroMQPropertyState(ZeroMQNodeStore ns, PropertyState ps) {
@@ -167,6 +173,17 @@ public class ZeroMQPropertyState implements PropertyState {
                 values.add(ps.getValue(type));
             }
         }
+        serialise();
+    }
+
+    private void serialise() {
+        final StringBuilder sb = new StringBuilder();
+        serialise(sb);
+        serialised = sb.toString();
+    }
+
+    public String getSerialised() {
+        return serialised;
     }
 
     static ZeroMQPropertyState fromPropertyState(ZeroMQNodeStore ns, PropertyState p) {
@@ -529,6 +546,147 @@ public class ZeroMQPropertyState implements PropertyState {
         }
         else {
             throw new IllegalArgumentException(from.toString());
+        }
+    }
+
+    public static ZeroMQPropertyState deSerialise(ZeroMQNodeStore ns, String s) throws ParseFailure {
+        final Parser parser = new Parser(s);
+        FinalVar<String> pName = new FinalVar<>();
+        FinalVar<String> pType = new FinalVar<>();
+        List<String> pValues   = new ArrayList<>();
+        Parser p = new Parser(s);
+        p
+            .parseRegexp(Parser.spaceSeparatedPattern, 1).assignToWithDecode(pName)
+            .parseString("<")
+            .parseRegexp(Parser.propertyTypePattern, 4).assignTo(pType)
+            .parseRegexp(Parser.allTheRestPattern, 0).appendToValues(pValues);
+        return new ZeroMQPropertyState(ns, pName.val(), pType.val(), pValues);
+    }
+
+    static class ParseFailure extends Exception {
+        private ParseFailure(String s) {
+            super(s);
+        }
+    }
+
+    @FunctionalInterface
+    private interface SupplierWithException<T, E extends Exception> {
+        T get() throws E;
+    }
+
+    private static final class FinalVar<Type> {
+        private Type val;
+        private boolean assigned = false;
+
+        public FinalVar() {};
+        public void assign(Type val) {
+            if (assigned) {
+                throw new IllegalStateException("Variable has already been assigned");
+            } else {
+                this.val = val;
+                assigned = true;
+            }
+        }
+        public Type val() {
+            if (assigned) {
+                return val;
+            } else {
+                throw new IllegalStateException("Variable has not been assigned yet");
+            }
+        }
+    }
+
+    private static class Parser {
+        private static final Pattern tabSeparatedPattern = Pattern.compile("([^\\t]+\\t).*", Pattern.DOTALL);
+        private static final Pattern spaceSeparatedPattern = Pattern.compile("([^ ]+ ).*", Pattern.DOTALL);
+        private static final Pattern propertyTypePattern = Pattern.compile("([^>]+> = ).*", Pattern.DOTALL);
+        private static final Pattern allTheRestPattern = Pattern.compile("(.*)", Pattern.DOTALL);
+
+        private String s;
+        private String last;
+
+        private Parser(String s) {
+            this.s = s;
+            this.last = "";
+        }
+
+        private Parser parseString(String t) throws ParseFailure {
+            if (!s.startsWith(t)) {
+                throw new ParseFailure("Failed to parse " + t);
+            }
+            s = s.substring(t.length());
+            last = t;
+            return this;
+        }
+
+        private Parser parseLine() throws ParseFailure {
+            int nNewLine = s.indexOf('\n');
+            last = s.substring(0, nNewLine);
+            s = s.substring(nNewLine + 1);
+            return this;
+        }
+
+        private Parser parseRegexp(Pattern p, int nTrimEnd) throws ParseFailure {
+            final Matcher m = p.matcher(s);
+            if (m.matches()) {
+                last = m.group(1);
+                s = s.substring(last.length());
+                last = last.substring(0, last.length() - nTrimEnd);
+                return this;
+            }
+            throw new ParseFailure("Failed to parse " + p.pattern());
+        }
+
+        private Parser assignTo(FinalVar<String> var) {
+            var.assign(last);
+            return this;
+        }
+        private Parser assignToWithDecode(FinalVar<String> var) {
+            try {
+                var.assign(SafeEncode.safeDecode(last));
+            } catch (UnsupportedEncodingException e) {
+                throw new IllegalArgumentException(e);
+            }
+            return this;
+        }
+
+        private Parser appendTo(List<String> list) {
+            list.add(last);
+            return this;
+        }
+
+        private Parser appendToValues(List<String> list) {
+            try {
+                // TODO: BUG: this means that a STRINGS value like [""] is not possible
+                if (last.startsWith("[]")) {
+                    return this;
+                }
+                if (last.startsWith("[")) {
+                    // array
+                    String[] vals = last.substring(1, last.length() - 1).split("[\\[\\],]");
+                    for (String val : vals) {
+                        list.add(SafeEncode.safeDecode(val));
+                    }
+                } else {
+                    list.add(SafeEncode.safeDecode(last));
+                }
+            } catch (UnsupportedEncodingException e) {
+                throw new IllegalArgumentException(e);
+            }
+            return this;
+        }
+
+        private Parser parseRegexpUntil(SupplierWithException<Parser, ParseFailure> f, Pattern p, int nTrimEnd) throws ParseFailure {
+            Parser parser = this;
+            Matcher m = p.matcher(parser.s);
+            while (!m.matches()) {
+                parser = f.get();
+                m = p.matcher(parser.s);
+            }
+            last = m.group(1);
+            s = s.substring(last.length());
+            last = last.substring(0, last.length() - nTrimEnd);
+            return this;
         }
     }
 }

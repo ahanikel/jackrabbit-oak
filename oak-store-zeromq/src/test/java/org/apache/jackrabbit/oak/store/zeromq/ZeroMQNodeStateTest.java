@@ -181,8 +181,8 @@ public class ZeroMQNodeStateTest {
             throw new IllegalStateException(parseFailure);
         }
     }
-    private void storageWriter(ZeroMQNodeState.SerialisedZeroMQNodeState ns) {
-        storage.put(ns.getUuid(), ns.getserialisedNodeState());
+    private void storageWriter(ZeroMQNodeState ns) {
+        storage.put(ns.getUuid(), ns.getSerialised());
     }
 
     @Test
@@ -233,15 +233,15 @@ public class ZeroMQNodeStateTest {
         storage.clear();
         final ZeroMQNodeState ns = staticReader(UUIDS[0].toString());
         StringBuilder sb = new StringBuilder();
-        ns.serialise(sb::append);
+        sb.append(ns.getSerialised());
         assertEquals(getSerialised(UUIDS[0].toString()), sb.toString());
 
         sb = new StringBuilder();
-        ((ZeroMQNodeState) ns.getChildNode("cOne")).serialise(sb::append);
+        sb.append(((ZeroMQNodeState) ns.getChildNode("cOne")).getSerialised());
         assertEquals(getSerialised(UUIDS[1].toString()), sb.toString());
 
         sb = new StringBuilder();
-        ((ZeroMQNodeState) ns.getChildNode("cTwo")).serialise(sb::append);
+        sb.append(((ZeroMQNodeState) ns.getChildNode("cTwo")).getSerialised());
         assertEquals(getSerialised(UUIDS[2].toString()), sb.toString());
     }
 
@@ -348,9 +348,7 @@ public class ZeroMQNodeStateTest {
             assertTrue("PropertyState.size() should throw IllegalStateException if isArray()", false);
         } catch (IllegalStateException e) {
         }
-        final List<ZeroMQNodeState.SerialisedZeroMQNodeState> ser = new ArrayList<>();
-        ((ZeroMQNodeState) ns2).serialise(ser::add);
-        final String s = ser.get(0).getserialisedNodeState();
+        final String s = ((ZeroMQNodeState) ns2).getSerialised();
         assertTrue(s.contains("[]"));
         final NodeState ns3 = ZeroMQNodeState.deSerialise(dummyStore(), s, this::staticReader, this::storageWriter);
         assertTrue(ns3.getProperty("bla").count() == 0);
