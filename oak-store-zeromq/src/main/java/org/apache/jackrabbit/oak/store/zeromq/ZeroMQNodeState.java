@@ -63,29 +63,30 @@ public class ZeroMQNodeState extends AbstractNodeState {
     private final Map<String, String> children;
     private final Map<String, ZeroMQPropertyState> properties;
     private final Function<String, ZeroMQNodeState> reader;
-    private final Consumer<SerialisedZeroMQNodeState> writer;
+    private final Consumer<ZeroMQNodeState> writer;
     private final String serialised;
     private final Map<String, ZeroMQNodeState> childRefs;
     private List<ChildNodeEntry> childNodeEntries;
 
     // not private because ZeroMQEmptyNodeState needs it
-    ZeroMQNodeState(ZeroMQNodeStore ns, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) {
+    ZeroMQNodeState(ZeroMQNodeStore ns, Function<String, ZeroMQNodeState> reader, Consumer<ZeroMQNodeState> writer) {
         this.ns = ns;
         this.children = new HashMap<>(1000);
         this.properties = new HashMap<>(100);
         this.reader = reader;
         this.writer = writer;
-        serialised = serialise();
         this.uuid = ZeroMQEmptyNodeState.UUID_NULL.toString();
         this.childRefs = new ConcurrentHashMap<>(1000);
+        serialised = serialise();
     }
 
-    private ZeroMQNodeState(ZeroMQNodeStore ns, Map<String, String> children, Map<String, ZeroMQPropertyState> properties, String serialised, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) {
+    private ZeroMQNodeState(ZeroMQNodeStore ns, Map<String, String> children, Map<String, ZeroMQPropertyState> properties, String serialised, Function<String, ZeroMQNodeState> reader, Consumer<ZeroMQNodeState> writer) {
         this.ns = ns;
         this.children = children;
         this.properties = properties;
         this.reader = reader;
         this.writer = writer;
+        this.childRefs = new ConcurrentHashMap<>(1000);
         if (serialised == null) {
             this.serialised = serialise();
         } else {
@@ -96,7 +97,6 @@ public class ZeroMQNodeState extends AbstractNodeState {
         } catch (UnsupportedEncodingException ex) {
             throw new IllegalStateException(ex);
         }
-        this.childRefs = new ConcurrentHashMap<>(1000);
     }
 
     static class ParseFailure extends Exception {
@@ -222,7 +222,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
         }
     }
 
-    static ZeroMQNodeState deSerialise(ZeroMQNodeStore ns, String s, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) throws ParseFailure {
+    static ZeroMQNodeState deSerialise(ZeroMQNodeStore ns, String s, Function<String, ZeroMQNodeState> reader, Consumer<ZeroMQNodeState> writer) throws ParseFailure {
         final List<String> children = new ArrayList<>();
         final List<String> properties = new ArrayList<>();
         final Map<String, String> childrenMap = new HashMap<>(1000);
@@ -272,8 +272,8 @@ public class ZeroMQNodeState extends AbstractNodeState {
         return ret;
     }
 
-    public void serialise(Consumer<SerialisedZeroMQNodeState> writer) {
-        writer.accept(new SerialisedZeroMQNodeState(uuid, serialised, this));
+    public String getSerialised() {
+        return serialised;
     }
 
     private String serialise() {
@@ -392,14 +392,14 @@ public class ZeroMQNodeState extends AbstractNodeState {
         return serialised;
     }
 
-    static ZeroMQNodeStateDiffBuilder getNodeStateDiffBuilder(ZeroMQNodeStore ns, ZeroMQNodeState before, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) {
+    static ZeroMQNodeStateDiffBuilder getNodeStateDiffBuilder(ZeroMQNodeStore ns, ZeroMQNodeState before, Function<String, ZeroMQNodeState> reader, Consumer<ZeroMQNodeState> writer) {
         return new ZeroMQNodeStateDiffBuilder(ns, before, reader, writer);
     }
 
     static final class ZeroMQNodeStateDiffBuilder implements NodeStateDiff {
 
         private final Function<String, ZeroMQNodeState> reader;
-        private final Consumer<SerialisedZeroMQNodeState> writer;
+        private final Consumer<ZeroMQNodeState> writer;
 
         private Map<String, String> children;
         private Map<String, ZeroMQPropertyState> properties;
@@ -409,7 +409,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
 
         private boolean dirty;
 
-        private ZeroMQNodeStateDiffBuilder(ZeroMQNodeStore ns, ZeroMQNodeState before, Function<String, ZeroMQNodeState> reader, Consumer<SerialisedZeroMQNodeState> writer) {
+        private ZeroMQNodeStateDiffBuilder(ZeroMQNodeStore ns, ZeroMQNodeState before, Function<String, ZeroMQNodeState> reader, Consumer<ZeroMQNodeState> writer) {
             this.ns = ns;
             this.reader = reader;
             this.writer = writer;
@@ -428,7 +428,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
         public ZeroMQNodeState getNodeState() {
             if (dirty) {
                 final ZeroMQNodeState ret = new ZeroMQNodeState(this.ns, this.children, this.properties, null, reader, writer);
-                ret.serialise(writer);
+                writer.accept(ret);
                 return ret;
             } else {
                 return before;
@@ -493,35 +493,6 @@ public class ZeroMQNodeState extends AbstractNodeState {
             this.children.remove(name);
             dirty = true;
             return true;
-        }
-    }
-
-    public static class SerialisedZeroMQNodeState {
-
-        private final String uuid;
-        private final String sNodeState;
-        private final ZeroMQNodeState ns;
-
-        public SerialisedZeroMQNodeState(String uuid, String sNodeState, ZeroMQNodeState ns) {
-            this.uuid = uuid;
-            this.sNodeState = sNodeState;
-            this.ns = ns;
-        }
-
-        public String getUuid() {
-            return uuid;
-        }
-
-        public String getserialisedNodeState() {
-            return sNodeState;
-        }
-
-        public ZeroMQNodeState getNodeState() {
-            return ns;
-        }
-
-        public String toString() {
-            return getserialisedNodeState();
         }
     }
 }

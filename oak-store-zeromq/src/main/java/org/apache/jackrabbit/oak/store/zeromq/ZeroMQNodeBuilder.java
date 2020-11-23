@@ -38,13 +38,13 @@ public class ZeroMQNodeBuilder extends MemoryNodeBuilder {
     @NotNull
     private final Function<String, ZeroMQNodeState> reader;
 
-    private final Consumer<ZeroMQNodeState.SerialisedZeroMQNodeState> writer;
+    private final Consumer<ZeroMQNodeState> writer;
 
     ZeroMQNodeBuilder(
             @NotNull ZeroMQNodeStore ns,
             @NotNull ZeroMQNodeState base,
             Function<String, ZeroMQNodeState> reader,
-            Consumer<ZeroMQNodeState.SerialisedZeroMQNodeState> writer) {
+            Consumer<ZeroMQNodeState> writer) {
         super(base);
         this.ns = ns;
         this.reader = reader;
