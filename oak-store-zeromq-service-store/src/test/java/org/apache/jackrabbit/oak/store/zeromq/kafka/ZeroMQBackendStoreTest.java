@@ -62,4 +62,17 @@ public class ZeroMQBackendStoreTest {
         readerService.send("hello");
         assertEquals("world", readerService.recvStr());
     }
+
+    @Test
+    public void testReadHeadNodeState() {
+        readerService.send("journal");
+        String res = readerService.recvStr();
+        System.out.println(res);
+        readerService.send(res);
+        String head = readerService.recvStr();
+        System.out.println(head);
+        readerService.send("c37e4ab1-e223-1720-6d6a-8aeb703ea429");
+        String nnf = readerService.recvStr();
+        System.out.println(nnf);
+    }
 }
