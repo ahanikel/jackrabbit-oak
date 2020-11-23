@@ -1,6 +1,6 @@
 cd $(dirname $0)
 export KAFKA_TOPIC=nodestates
-export KAFKA_SERVERS=localhost:32770
+export KAFKA_SERVERS=localhost:9092
 ps auxww | grep oak-store-zeromq-service-store | grep -v run | awk '{print $2}' | xargs kill -9
 sleep 5
 java -jar $(ls -1 target/*.jar | grep jar-with)
