@@ -434,12 +434,16 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     }
 
     private String read(String uuid) {
-        String msg;
-        int inst = clusterInstanceForUuid(uuid);
+        StringBuilder msg;
+        final int inst = clusterInstanceForUuid(uuid);
+        final ZMQ.Socket socket = nodeStateReader[inst].get();
         while (true) {
+            msg = new StringBuilder();
             try {
-                nodeStateReader[inst].get().send(uuid);
-                msg = nodeStateReader[inst].get().recvStr();
+                socket.send(uuid);
+                do {
+                    msg.append(socket.recvStr());
+                } while(socket.hasReceiveMore());
                 log.debug("{} read.", uuid);
                 break;
             } catch (Throwable t) {
@@ -451,7 +455,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
                 }
             }
         }
-        return msg;
+        return msg.toString();
     }
 
     private void write(ZeroMQNodeState nodeState) {
