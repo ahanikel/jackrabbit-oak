@@ -45,6 +45,7 @@ public class ZeroMQBackendStore {
 
     static final String ZEROMQ_READER_PORT = "ZEROMQ_READER_PORT";
     static final String ZEROMQ_WRITER_PORT = "ZEROMQ_WRITER_PORT";
+    private static final int CHUNKSIZE = 256 * 1024;
 
     final ZMQ.Context context;
 
@@ -154,7 +155,16 @@ public class ZeroMQBackendStore {
     void handleReaderService(String msg) {
         final String sNode = (String) kafkaStore.get(msg);
         if (sNode != null) {
-            readerService.send(sNode);
+            if (sNode.startsWith("begin") || msg.equals("journal")) {
+                readerService.send(sNode);
+            } else {
+                final int chunks = Integer.parseInt(sNode);
+                int i;
+                for (i = 0; i < chunks - 1; ++i) {
+                    readerService.sendMore((String) kafkaStore.get(msg + ":" + i));
+                }
+                readerService.send((String) kafkaStore.get(msg + ":" + i));
+            }
         } else {
             readerService.send("Node not found");
             System.err.println("Requested node not found: " + msg);
@@ -166,7 +176,17 @@ public class ZeroMQBackendStore {
             final int firstLineSep = msg.indexOf('\n');
             final String uuid = msg.substring(0, firstLineSep);
             final String ser =  msg.substring(firstLineSep + 1);
-            producer.send(new ProducerRecord<String, String>(kafkaTopic, uuid, ser));
+            final int chunks = ser.length() / CHUNKSIZE + 1;
+            if (chunks > 1) {
+                int i;
+                for (i = 0; i < chunks - 1; ++i) {
+                        producer.send(new ProducerRecord<>(kafkaTopic, uuid + ":" + i, ser.substring(i * CHUNKSIZE, (i + 1) * CHUNKSIZE)));
+                }
+                producer.send(new ProducerRecord<>(kafkaTopic, uuid + ":" + i, ser.substring(i * CHUNKSIZE)));
+                producer.send(new ProducerRecord<>(kafkaTopic, uuid, "" + chunks));
+            } else {
+                producer.send(new ProducerRecord<>(kafkaTopic, uuid, ser));
+            }
             writerService.send(uuid + " confirmed.");
             if (msg.length() > 1000000) {
                 System.err.println("Large message: " + uuid + ": " + msg.length());
