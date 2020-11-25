@@ -65,7 +65,6 @@ public class ZeroMQNodeState extends AbstractNodeState {
     private final Function<String, ZeroMQNodeState> reader;
     private final Consumer<ZeroMQNodeState> writer;
     private final String serialised;
-    private final Map<String, ZeroMQNodeState> childRefs;
     private List<ChildNodeEntry> childNodeEntries;
 
     // not private because ZeroMQEmptyNodeState needs it
@@ -76,7 +75,6 @@ public class ZeroMQNodeState extends AbstractNodeState {
         this.reader = reader;
         this.writer = writer;
         this.uuid = ZeroMQEmptyNodeState.UUID_NULL.toString();
-        this.childRefs = new ConcurrentHashMap<>(1000);
         serialised = serialise();
     }
 
@@ -86,7 +84,6 @@ public class ZeroMQNodeState extends AbstractNodeState {
         this.properties = properties;
         this.reader = reader;
         this.writer = writer;
-        this.childRefs = new ConcurrentHashMap<>(1000);
         if (serialised == null) {
             this.serialised = serialise();
         } else {
