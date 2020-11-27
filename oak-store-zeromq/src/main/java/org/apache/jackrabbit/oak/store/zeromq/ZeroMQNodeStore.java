@@ -88,7 +88,7 @@ import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeState.getNodeStat
  */
 @Component(scope = ServiceScope.SINGLETON, immediate = true, configurationPolicy = ConfigurationPolicy.REQUIRE)
 @Service
-public class ZeroMQNodeStore implements NodeStore, Observable {
+public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
 
     public static final String PARAM_CLUSTERINSTANCES = "clusterInstances";
     public static final String PARAM_BACKEND_PREFIX = "backendPrefix";
@@ -145,8 +145,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     final Object mergeRootMonitor = new Object();
     final Object mergeBlobMonitor = new Object();
 
-    final ExecutorService nodeWriterThread = Executors.newFixedThreadPool(5);
-    final ExecutorService blobWriterThread = Executors.newFixedThreadPool(50); // each thread consumes 1 MB
+    ExecutorService nodeWriterThread = Executors.newFixedThreadPool(5);
+    ExecutorService blobWriterThread = Executors.newFixedThreadPool(50); // each thread consumes 1 MB
 
     private volatile String journalRoot;
 
@@ -162,6 +162,9 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
     public ZeroMQNodeStore() {
 
         context = ZMQ.context(20);
+
+        nodeWriterThread = Executors.newFixedThreadPool(5);
+        blobWriterThread = Executors.newFixedThreadPool(50); // each thread consumes 1 MB
 
         clusterInstances = Integer.valueOf(System.getenv(PARAM_CLUSTERINSTANCES));
         writeBackJournal = Boolean.valueOf(System.getenv(PARAM_WRITEBACKJOURNAL));
@@ -199,6 +202,21 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         blobCache = CacheBuilder.newBuilder()
                 .concurrencyLevel(10)
                 .maximumSize(100000).build();
+    }
+
+
+    @Override
+    public void close() {
+        nodeWriterThread.shutdown();
+        blobWriterThread.shutdown();
+        for (int i = 0; i < clusterInstances; ++i) {
+            nodeStateReader[i].close();
+            nodeStateWriter[i].close();
+            blobReader[i].close();
+            blobWriter[i].close();
+            journalReader.close();
+            journalWriter.close();
+        }
     }
 
     @Activate
@@ -275,12 +293,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         String msg;
         while (true) {
             try {
-                synchronized (journalReader) {
-                    //journalReader.get().send("ping");
-                    //msg = journalReader.get().recvStr();
-                    nodeStateReader[0].get().send("journal");
-                    msg = nodeStateReader[0].get().recvStr();
-                }
+                nodeStateReader[0].get().send("journal");
+                msg = nodeStateReader[0].get().recvStr();
                 break;
             } catch (Throwable t) {
                 log.warn(t.toString());
@@ -325,12 +339,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
         String msg;
         while (true) {
             try {
-                synchronized (journalWriter) {
-                    //journalWriter.get().send(uuid);
-                    //msg = journalWriter.get().recvStr();
-                    nodeStateWriter[0].get().send("journal\n" + uuid);
-                    msg = nodeStateWriter[0].get().recvStr();
-                }
+                nodeStateWriter[0].get().send("journal\n" + uuid);
+                msg = nodeStateWriter[0].get().recvStr();
                 break;
             } catch (Throwable t) {
                 log.warn(t.toString());
@@ -885,4 +895,5 @@ public class ZeroMQNodeStore implements NodeStore, Observable {
             }
         };
     }
+
 }
