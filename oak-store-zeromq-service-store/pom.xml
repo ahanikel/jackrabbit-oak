@@ -101,32 +101,6 @@
                     </execution>
                 </executions>
             </plugin>
-            <plugin>
-                <groupId>com.spotify</groupId>
-                <artifactId>docker-maven-plugin</artifactId>
-                <version>1.0.0</version>
-                <executions>
-                    <execution>
-                        <id>build-image</id>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>build</goal>
-                        </goals>
-                        <configuration>
-                            <imageName>${dkr.image.name}</imageName>
-                            <dockerDirectory>${project.basedir}/target</dockerDirectory>
-                            <imageTags>
-                                <imageTag>${project.version}</imageTag>
-                            </imageTags>
-                            <forceTags>true</forceTags>
-                        </configuration>
-                    </execution>
-                </executions>
-                <configuration>
-                    <serverId>${dockerRegistry-Id}</serverId>
-                    <registryUrl>${dockerRegistry-URL}</registryUrl>
-                </configuration>
-            </plugin>
         </plugins>
     </build>
 

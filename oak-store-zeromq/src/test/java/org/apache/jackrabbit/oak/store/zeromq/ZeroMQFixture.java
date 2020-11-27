@@ -24,37 +24,12 @@ import static org.junit.Assert.assertEquals;
 
 public class ZeroMQFixture extends NodeStoreFixture {
 
-    final static ZeroMQJournal journal;
-    final static ZeroMQBackendStore store;
-    final static ZeroMQBackendBlob blobStore;
-    final static ZeroMQNodeStore ns;
-    static volatile boolean isInitialized = false;
-
-    static {
-        journal = ZeroMQJournal.newZeroMQJournal();
-        store = new ZeroMQBackendStore();
-        blobStore = new ZeroMQBackendBlob();
-        ns = new ZeroMQNodeStore();
-    }
-
     @Override
     public NodeStore createNodeStore() {
-        synchronized(ns) {
-            if (!isInitialized) {
-                store.open();
-                blobStore.open();
-                ns.init();
-                ns.reset();
-                isInitialized = true;
-            }
-        }
-        return ns;
+        throw new IllegalStateException("Not implemented");
     }
 
     @Override
     public void dispose(NodeStore nodeStore) {
-        super.dispose(nodeStore);
-        assertEquals(ns, nodeStore);
-        ns.reset();
     }
 }

@@ -1,8 +1,0 @@
-#!/bin/bash -e
-
-./makeit
-./killit
-
-sleep 2
-
-./runservice &

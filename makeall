@@ -1,4 +1,5 @@
 cat <<EOF | while read dir cmd; do (cd $dir && $cmd); done
+oak-commons mvn -DskipTests clean install
 oak-store-zeromq        ./compile
 oak-store-zeromq-service-store  ./makeit
 EOF
