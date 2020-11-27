@@ -2,11 +2,12 @@ package org.apache.jackrabbit.oak.store.zeromq;
 
 import org.zeromq.ZMQ;
 
+import java.io.Closeable;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
-public class ZeroMQSocketProvider implements Supplier<ZMQ.Socket> {
+public class ZeroMQSocketProvider implements Supplier<ZMQ.Socket>, Closeable {
 
     private final String url;
     private final ZMQ.Context context;
@@ -29,5 +30,12 @@ public class ZeroMQSocketProvider implements Supplier<ZMQ.Socket> {
             sockets.put(threadId, socket);
         }
         return socket;
+    }
+
+    @Override
+    public void close() {
+        for (ZMQ.Socket socket : sockets.values()) {
+            socket.close();
+        }
     }
 }

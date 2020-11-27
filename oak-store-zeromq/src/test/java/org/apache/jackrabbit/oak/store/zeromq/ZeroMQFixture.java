@@ -24,12 +24,24 @@ import static org.junit.Assert.assertEquals;
 
 public class ZeroMQFixture extends NodeStoreFixture {
 
+    private volatile ZeroMQNodeStore store = null;
+
+    public ZeroMQFixture() {
+        store = new ZeroMQNodeStore();
+        store.init();
+    }
+
     @Override
     public NodeStore createNodeStore() {
-        throw new IllegalStateException("Not implemented");
+        store.reset();
+        return store;
     }
 
     @Override
     public void dispose(NodeStore nodeStore) {
+        // it looks like dispose is never called so
+        // we always return the same node store
+        // ((ZeroMQNodeStore) store).close();
+        // store = null;
     }
 }
