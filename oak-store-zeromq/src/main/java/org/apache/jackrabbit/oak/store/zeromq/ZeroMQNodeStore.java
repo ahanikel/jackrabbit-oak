@@ -144,8 +144,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
     final Object mergeRootMonitor = new Object();
     final Object mergeBlobMonitor = new Object();
 
-    ExecutorService nodeWriterThread = Executors.newFixedThreadPool(5);
-    ExecutorService blobWriterThread = Executors.newFixedThreadPool(50); // each thread consumes 1 MB
+    ExecutorService nodeWriterThread;
+    ExecutorService blobWriterThread;
 
     private volatile String journalRoot;
 
