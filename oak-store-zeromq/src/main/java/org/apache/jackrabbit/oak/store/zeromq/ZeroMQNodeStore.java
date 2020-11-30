@@ -81,7 +81,6 @@ import static org.apache.jackrabbit.oak.api.Type.LONG;
 import static org.apache.jackrabbit.oak.api.Type.STRING;
 import static org.apache.jackrabbit.oak.spi.blob.osgi.SplitBlobStoreService.ONLY_STANDALONE_TARGET;
 import static org.apache.jackrabbit.oak.spi.cluster.ClusterRepositoryInfo.getOrCreateId;
-import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeState.getNodeStateDiffBuilder;
 
 /**
  * A store which dumps everything into a queue.
@@ -276,7 +275,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         NodeState newSuperRoot = builder.getNodeState();
         // this may seem strange but is needed because newSuperRoot is a MemoryNodeState
         // and we need a ZeroMQNodeState
-        final ZeroMQNodeState.ZeroMQNodeStateDiffBuilder diff = getNodeStateDiffBuilder(this, emptyNode, this::readNodeState, this::write);
+        final ZeroMQNodeStateDiffBuilder diff = new ZeroMQNodeStateDiffBuilder(this, emptyNode, this::readNodeState, this::write);
         newSuperRoot.compareAgainstBaseState(emptyNode, diff);
         final ZeroMQNodeState zmqNewSuperRoot = diff.getNodeState();
         setRoot(zmqNewSuperRoot.getUuid());
@@ -363,7 +362,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
             if (newSuperRoot instanceof ZeroMQNodeState) {
                 zmqNewSuperRoot = (ZeroMQNodeState) newSuperRoot;
             } else {
-                final ZeroMQNodeState.ZeroMQNodeStateDiffBuilder diff = getNodeStateDiffBuilder(this, (ZeroMQNodeState) superRoot, this::readNodeState, this::write);
+                final ZeroMQNodeStateDiffBuilder diff = new ZeroMQNodeStateDiffBuilder(this, (ZeroMQNodeState) superRoot, this::readNodeState, this::write);
                 newSuperRoot.compareAgainstBaseState(superRoot, diff);
                 zmqNewSuperRoot = diff.getNodeState();
             }
