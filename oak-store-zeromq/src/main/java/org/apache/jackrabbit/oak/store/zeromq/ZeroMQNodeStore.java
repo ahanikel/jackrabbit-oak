@@ -41,6 +41,7 @@ import org.apache.jackrabbit.oak.spi.descriptors.GenericDescriptors;
 import org.apache.jackrabbit.oak.spi.state.ConflictAnnotatingRebaseDiff;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
+import org.apache.jackrabbit.oak.spi.state.NodeStateDiff;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
 import org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardExecutor;
 import org.jetbrains.annotations.NotNull;
@@ -359,15 +360,12 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
             superRootBuilder.setChildNode(root, ns);
             final NodeState newSuperRoot = superRootBuilder.getNodeState();
             final ZeroMQNodeState zmqNewSuperRoot;
-            if (newSuperRoot instanceof ZeroMQNodeState) {
-                zmqNewSuperRoot = (ZeroMQNodeState) newSuperRoot;
-            } else {
-                final ZeroMQNodeStateDiffBuilder diff = new ZeroMQNodeStateDiffBuilder(this, (ZeroMQNodeState) superRoot, this::readNodeState, this::write);
-                newSuperRoot.compareAgainstBaseState(superRoot, diff);
-                zmqNewSuperRoot = diff.getNodeState();
-            }
+            final ZeroMQNodeStateDiffBuilder diff = new ZeroMQNodeStateDiffBuilder(this, (ZeroMQNodeState) superRoot, this::readNodeState, this::write);
+            newSuperRoot.compareAgainstBaseState(superRoot, diff);
+            zmqNewSuperRoot = diff.getNodeState();
+            zmqNewSuperRoot.compareAgainstBaseState(superRoot, LoggingHook.newLoggingHook(this::write, false));
             setRoot(zmqNewSuperRoot.getUuid());
-            return newSuperRoot;
+            return zmqNewSuperRoot;
         }
     }
 
@@ -467,34 +465,21 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         return msg.toString();
     }
 
+    private void write(String event) {
+        nodeStateWriter[0].get().send(event);
+        log.info(nodeStateWriter[0].get().recvStr());
+    }
+
     private void write(ZeroMQNodeState nodeState) {
-        final String uuid = nodeState.getUuid();
-        if (nodeStateCache.getIfPresent(uuid) != null) {
+        final String newUuid = nodeState.getUuid();
+        if (nodeStateCache.getIfPresent(newUuid) != null) {
             return;
         }
-        nodeStateCache.put(uuid, nodeState);
-        nodeWriterThread.execute(() -> {
-            String msg;
-            int inst = clusterInstanceForUuid(uuid);
-            while (true) {
-                try {
-                    nodeStateWriter[inst].get().send(uuid + "\n" + nodeState.getSerialised());
-                    msg = nodeStateWriter[inst].get().recvStr(); // wait for confirmation
-                    log.info(msg);
-                    break;
-                } catch (Throwable t) {
-                    log.error(t.toString() + " retrying to write " + uuid);
-                    try {
-                        Thread.sleep(100);
-                    } catch (InterruptedException e) {
-                        log.error(e.toString());
-                    }
-                }
-            }
-        });
+        nodeStateCache.put(newUuid, nodeState);
     }
 
     private void writeBlob(ZeroMQBlob blob) {
+        /*
         blobWriterThread.execute(() -> {
             final InputStream is = blob.getNewStream();
             final String reference = blob.getReference();
@@ -541,6 +526,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
                 }
             }
         });
+        */
     }
 
     private InputStream readBlob(String reference) {
@@ -894,5 +880,4 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
             }
         };
     }
-
 }
