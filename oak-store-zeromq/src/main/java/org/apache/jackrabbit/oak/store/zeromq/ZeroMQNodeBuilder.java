@@ -28,8 +28,6 @@ import java.io.InputStream;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeState.getNodeStateDiffBuilder;
-
 public class ZeroMQNodeBuilder extends MemoryNodeBuilder {
 
     @NotNull

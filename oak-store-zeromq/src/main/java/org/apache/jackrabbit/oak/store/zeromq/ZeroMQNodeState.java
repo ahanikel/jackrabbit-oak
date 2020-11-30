@@ -28,14 +28,12 @@ import java.io.UnsupportedEncodingException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 public class ZeroMQNodeState extends AbstractNodeState {
 
@@ -60,8 +58,8 @@ public class ZeroMQNodeState extends AbstractNodeState {
 
     protected final ZeroMQNodeStore ns;
     private final String uuid;
-    private final Map<String, String> children;
-    private final Map<String, ZeroMQPropertyState> properties;
+    final Map<String, String> children;
+    final Map<String, ZeroMQPropertyState> properties;
     private final Function<String, ZeroMQNodeState> reader;
     private final Consumer<ZeroMQNodeState> writer;
     private final String serialised;
@@ -78,7 +76,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
         serialised = serialise();
     }
 
-    private ZeroMQNodeState(ZeroMQNodeStore ns, Map<String, String> children, Map<String, ZeroMQPropertyState> properties, String serialised, Function<String, ZeroMQNodeState> reader, Consumer<ZeroMQNodeState> writer) {
+    ZeroMQNodeState(ZeroMQNodeStore ns, Map<String, String> children, Map<String, ZeroMQPropertyState> properties, String serialised, Function<String, ZeroMQNodeState> reader, Consumer<ZeroMQNodeState> writer) {
         this.ns = ns;
         this.children = children;
         this.properties = properties;
@@ -387,109 +385,5 @@ public class ZeroMQNodeState extends AbstractNodeState {
     @Override
     public String toString() {
         return serialised;
-    }
-
-    static ZeroMQNodeStateDiffBuilder getNodeStateDiffBuilder(ZeroMQNodeStore ns, ZeroMQNodeState before, Function<String, ZeroMQNodeState> reader, Consumer<ZeroMQNodeState> writer) {
-        return new ZeroMQNodeStateDiffBuilder(ns, before, reader, writer);
-    }
-
-    static final class ZeroMQNodeStateDiffBuilder implements NodeStateDiff {
-
-        private final Function<String, ZeroMQNodeState> reader;
-        private final Consumer<ZeroMQNodeState> writer;
-
-        private Map<String, String> children;
-        private Map<String, ZeroMQPropertyState> properties;
-
-        private final ZeroMQNodeStore ns;
-        private final ZeroMQNodeState before;
-
-        private boolean dirty;
-
-        private ZeroMQNodeStateDiffBuilder(ZeroMQNodeStore ns, ZeroMQNodeState before, Function<String, ZeroMQNodeState> reader, Consumer<ZeroMQNodeState> writer) {
-            this.ns = ns;
-            this.reader = reader;
-            this.writer = writer;
-            this.before = before;
-            reset();
-        }
-
-        private void reset() {
-            this.children = new HashMap<>(1000);
-            this.properties = new HashMap<>(100);
-            this.children.putAll(before.children);
-            this.properties.putAll(before.properties);
-            this.dirty = false;
-        }
-
-        public ZeroMQNodeState getNodeState() {
-            if (dirty) {
-                final ZeroMQNodeState ret = new ZeroMQNodeState(this.ns, this.children, this.properties, null, reader, writer);
-                writer.accept(ret);
-                return ret;
-            } else {
-                return before;
-            }
-        }
-
-        @Override
-        public boolean propertyAdded(PropertyState after) {
-            properties.put(after.getName(), ZeroMQPropertyState.fromPropertyState(this.ns, after));
-            dirty = true;
-            return true;
-        }
-
-        @Override
-        public boolean propertyChanged(PropertyState before, PropertyState after) {
-            properties.remove(before.getName());
-            return propertyAdded(after);
-        }
-
-        @Override
-        public boolean propertyDeleted(PropertyState before) {
-            properties.remove(before.getName());
-            dirty = true;
-            return true;
-        }
-
-        @Override
-        public boolean childNodeAdded(String name, NodeState after) {
-            if (after instanceof ZeroMQNodeState) {
-                this.children.put(name, ((ZeroMQNodeState) after).getUuid());
-            } else {
-                final ZeroMQNodeState before = ns.emptyNode;
-                final ZeroMQNodeStateDiffBuilder diff = getNodeStateDiffBuilder(this.ns, before, reader, writer);
-                after.compareAgainstBaseState(before, diff);
-                final ZeroMQNodeState child = diff.getNodeState();
-                this.children.put(name, child.getUuid());
-            }
-            dirty = true;
-            return true;
-        }
-
-        @Override
-        public boolean childNodeChanged(String name, NodeState before, NodeState after) {
-            //final ZeroMQNodeStateDiffBuilder diff = getNodeStateDiffBuilder(this.ns, (ZeroMQNodeState) before, reader, writer);
-            //after.compareAgainstBaseState(before, diff);
-            //final ZeroMQNodeState child = diff.getNodeState();
-            this.children.remove(name);
-            if (after instanceof ZeroMQNodeState) {
-                this.children.put(name, ((ZeroMQNodeState) after).getUuid());
-            } else {
-                final ZeroMQNodeStateDiffBuilder diff = getNodeStateDiffBuilder(this.ns, (ZeroMQNodeState) before, reader, writer);
-                after.compareAgainstBaseState(before, diff);
-                final ZeroMQNodeState child = diff.getNodeState();
-                this.children.put(name, child.getUuid());
-            }
-            dirty = true;
-            return true;
-        }
-
-        @Override
-        public boolean childNodeDeleted(String name, NodeState before) {
-            this.children.remove(name);
-            dirty = true;
-            return true;
-        }
     }
 }
