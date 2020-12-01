@@ -54,11 +54,6 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
     }
 
     public void enter(NodeState before, NodeState after) {
-        if (before == null) {
-            writer.accept("n: " + ((ZeroMQNodeState) after).getUuid() + " " + UUID_NULL);
-        } else {
-            writer.accept("n: " + ((ZeroMQNodeState) after).getUuid() + " " + ((ZeroMQNodeState) before).getUuid());
-        }
     }
 
     public void leave(NodeState before, NodeState after) {
@@ -93,7 +88,7 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
 
     @Override
     public boolean childNodeAdded(String name, NodeState after) {
-        writer.accept("n+ " + safeEncode(name));
+        writer.accept("n+ " + safeEncode(name) + " " + ((ZeroMQNodeState) after).getUuid());
         this.enter(null, after);
         boolean ret = after.compareAgainstBaseState(EmptyNodeState.EMPTY_NODE, this);
         this.leave(null, after);
@@ -102,7 +97,7 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
 
     @Override
     public boolean childNodeChanged(String name, NodeState before, NodeState after) {
-        writer.accept("n^ " + safeEncode(name));
+        writer.accept("n^ " + safeEncode(name) + " " + ((ZeroMQNodeState) after).getUuid() + " " + ((ZeroMQNodeState) before).getUuid());
         this.enter(before, after);
         boolean ret = after.compareAgainstBaseState(before, this);
         this.leave(before, after);
@@ -115,8 +110,12 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
         return true;
     }
 
+    // TODO: this method should be replaced by one which
+    // - checks the size of the value
+    // - if the value exceeds a certain limit, stores it as a blob and a reference to that blob
+    // - uses the writer directly instead of going via a string
     private static String toString(final PropertyState ps) {
-        final StringBuilder val = new StringBuilder(); // TODO: an output stream would certainly be better
+        final StringBuilder val = new StringBuilder();
         val.append(safeEncode(ps.getName()));
         val.append(" <");
         val.append(ps.getType());
@@ -170,9 +169,9 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
     @NotNull
     @Override
     public NodeState processCommit(NodeState before, NodeState after, CommitInfo info) {
-        this.enter(before, after);
+        writer.accept("R: " + ((ZeroMQNodeState) after).getUuid() + " " + ((ZeroMQNodeState) before).getUuid());
         after.compareAgainstBaseState(before, this);
-        this.leave(before, after);
+        writer.accept("R!");
         return after;
     }
 }
