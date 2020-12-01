@@ -279,6 +279,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         final ZeroMQNodeStateDiffBuilder diff = new ZeroMQNodeStateDiffBuilder(this, emptyNode, this::readNodeState, this::write);
         newSuperRoot.compareAgainstBaseState(emptyNode, diff);
         final ZeroMQNodeState zmqNewSuperRoot = diff.getNodeState();
+        final LoggingHook loggingHook = LoggingHook.newLoggingHook(this::write, false);
+        loggingHook.processCommit(emptyNode, zmqNewSuperRoot, null);
         setRoot(zmqNewSuperRoot.getUuid());
     }
 
@@ -363,7 +365,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
             final ZeroMQNodeStateDiffBuilder diff = new ZeroMQNodeStateDiffBuilder(this, (ZeroMQNodeState) superRoot, this::readNodeState, this::write);
             newSuperRoot.compareAgainstBaseState(superRoot, diff);
             zmqNewSuperRoot = diff.getNodeState();
-            zmqNewSuperRoot.compareAgainstBaseState(superRoot, LoggingHook.newLoggingHook(this::write, false));
+            final LoggingHook loggingHook = LoggingHook.newLoggingHook(this::write, false);
+            loggingHook.processCommit(superRoot, zmqNewSuperRoot, null);
             setRoot(zmqNewSuperRoot.getUuid());
             return zmqNewSuperRoot;
         }
@@ -378,6 +381,9 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         rebase(builder, newBase);
         final NodeState after = builder.getNodeState();
         final NodeState afterHook = commitHook.processCommit(newBase, after, info);
+        if (afterHook.equals(newBase)) {
+            return newBase; // TODO: There seem to be commits without any changes in them. Need to investigate.
+        }
         mergeRoot("root", afterHook);
         ((ZeroMQNodeBuilder) builder).reset(afterHook);
         if (changeDispatcher != null) {
