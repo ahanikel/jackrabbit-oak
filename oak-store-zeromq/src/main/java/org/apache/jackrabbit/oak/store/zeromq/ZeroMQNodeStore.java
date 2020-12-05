@@ -26,22 +26,21 @@ import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.api.CommitFailedException;
 import org.apache.jackrabbit.oak.api.Descriptors;
 import org.apache.jackrabbit.oak.api.PropertyState;
-import org.apache.jackrabbit.oak.api.Type;
 import org.apache.jackrabbit.oak.api.jmx.CheckpointMBean;
 import org.apache.jackrabbit.oak.osgi.OsgiWhiteboard;
 import org.apache.jackrabbit.oak.plugins.memory.MemoryNodeBuilder;
 import org.apache.jackrabbit.oak.spi.blob.BlobOptions;
-import org.apache.jackrabbit.oak.spi.blob.BlobStore;
 import org.apache.jackrabbit.oak.spi.blob.GarbageCollectableBlobStore;
 import org.apache.jackrabbit.oak.spi.cluster.ClusterRepositoryInfo;
+import org.apache.jackrabbit.oak.spi.commit.ChangeDispatcher;
+import org.apache.jackrabbit.oak.spi.commit.CommitHook;
+import org.apache.jackrabbit.oak.spi.commit.CommitInfo;
 import org.apache.jackrabbit.oak.spi.commit.Observable;
 import org.apache.jackrabbit.oak.spi.commit.Observer;
-import org.apache.jackrabbit.oak.spi.commit.*;
 import org.apache.jackrabbit.oak.spi.descriptors.GenericDescriptors;
 import org.apache.jackrabbit.oak.spi.state.ConflictAnnotatingRebaseDiff;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
-import org.apache.jackrabbit.oak.spi.state.NodeStateDiff;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
 import org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardExecutor;
 import org.jetbrains.annotations.NotNull;
@@ -51,10 +50,6 @@ import org.osgi.service.component.ComponentContext;
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.ConfigurationPolicy;
-import org.osgi.service.component.annotations.Reference;
-import org.osgi.service.component.annotations.ReferenceCardinality;
-import org.osgi.service.component.annotations.ReferencePolicy;
-import org.osgi.service.component.annotations.ReferencePolicyOption;
 import org.osgi.service.component.annotations.ServiceScope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,7 +59,6 @@ import java.io.Closeable;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -80,7 +74,6 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.collect.Maps.newHashMap;
 import static org.apache.jackrabbit.oak.api.Type.LONG;
 import static org.apache.jackrabbit.oak.api.Type.STRING;
-import static org.apache.jackrabbit.oak.spi.blob.osgi.SplitBlobStoreService.ONLY_STANDALONE_TARGET;
 import static org.apache.jackrabbit.oak.spi.cluster.ClusterRepositoryInfo.getOrCreateId;
 
 /**
@@ -92,42 +85,29 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
 
     public static final String PARAM_CLUSTERINSTANCES = "clusterInstances";
     public static final String PARAM_BACKEND_PREFIX = "backendPrefix";
-    public static final String PARAM_JOURNAL_PREFIX = "journalPrefix";
-    public static final String PARAM_BLOBEND_PREFIX = "blobendPrefix";
     public static final String PARAM_WRITEBACKJOURNAL = "writeBackJournal";
-    public static final String PARAM_CUSTOMBLOBSTORE = "customBlobStore";
+    public static final String PARAM_WRITEBACKNODES = "writeBackNodes";
     public static final String PARAM_INITJOURNAL = "initJournal";
+    public static final String PARAM_REMOTEREADS = "remoteReads";
 
     public static String backendPrefix = System.getenv(PARAM_BACKEND_PREFIX);
-    public static String journalPrefix = System.getenv(PARAM_JOURNAL_PREFIX);
-    public static String blobendPrefix = System.getenv(PARAM_BLOBEND_PREFIX);
 
     private static final Logger log = LoggerFactory.getLogger(ZeroMQNodeStore.class.getName());
 
     @NotNull
     final ZMQ.Context context;
 
-    private final Integer clusterInstances;
-    private final boolean writeBackJournal;
-    private final Boolean customBlobStore;
+    private boolean initialised;
+    private int clusterInstances;
+    private boolean writeBackJournal;
+    private boolean writeBackNodes;
+    private boolean remoteReads;
 
     @NotNull
     final ZeroMQSocketProvider nodeStateReader[];
 
     @NotNull
     final ZeroMQSocketProvider nodeStateWriter[];
-
-    @NotNull
-    final ZeroMQSocketProvider journalReader;
-
-    @NotNull
-    final ZeroMQSocketProvider journalWriter;
-
-    @NotNull
-    final ZeroMQSocketProvider blobReader[];
-
-    @NotNull
-    final ZeroMQSocketProvider blobWriter[];
 
     @NotNull
     final Cache<String, ZeroMQNodeState> nodeStateCache;
@@ -139,61 +119,47 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
 
     private volatile ChangeDispatcher changeDispatcher;
 
-    final ZeroMQNodeState emptyNode = (ZeroMQNodeState) ZeroMQEmptyNodeState.EMPTY_NODE(this, this::readNodeState, this::write);
-    final ZeroMQNodeState missingNode = (ZeroMQNodeState) ZeroMQEmptyNodeState.MISSING_NODE(this, this::readNodeState, this::write);
+    public final ZeroMQNodeState emptyNode = (ZeroMQNodeState) ZeroMQEmptyNodeState.EMPTY_NODE(this, this::readNodeState, this::write);
+    public final ZeroMQNodeState missingNode = (ZeroMQNodeState) ZeroMQEmptyNodeState.MISSING_NODE(this, this::readNodeState, this::write);
 
     final Object mergeRootMonitor = new Object();
-    final Object mergeBlobMonitor = new Object();
 
     ExecutorService nodeWriterThread;
     ExecutorService blobWriterThread;
 
     private volatile String journalRoot;
 
-    @Reference(
-            cardinality = ReferenceCardinality.OPTIONAL,
-            policy = ReferencePolicy.STATIC,
-            policyOption = ReferencePolicyOption.GREEDY,
-            target = ONLY_STANDALONE_TARGET
-    )
-    private volatile BlobStore blobStore;
     private String initJournal;
 
     public ZeroMQNodeStore() {
+
+        initialised = false;
 
         context = ZMQ.context(20);
 
         nodeWriterThread = Executors.newFixedThreadPool(5);
         blobWriterThread = Executors.newFixedThreadPool(50); // each thread consumes 1 MB
 
-        clusterInstances = Integer.valueOf(System.getenv(PARAM_CLUSTERINSTANCES));
-        writeBackJournal = Boolean.valueOf(System.getenv(PARAM_WRITEBACKJOURNAL));
-        customBlobStore = Boolean.valueOf(System.getenv(PARAM_CUSTOMBLOBSTORE));
+        clusterInstances = Integer.parseInt(System.getenv(PARAM_CLUSTERINSTANCES));
+        writeBackJournal = Boolean.parseBoolean(System.getenv(PARAM_WRITEBACKJOURNAL));
+        writeBackNodes = Boolean.parseBoolean(System.getenv(PARAM_WRITEBACKNODES));
+        remoteReads = Boolean.parseBoolean(System.getenv(PARAM_REMOTEREADS));
         initJournal = System.getenv(PARAM_INITJOURNAL);
 
         nodeStateReader = new ZeroMQSocketProvider[clusterInstances];
         nodeStateWriter = new ZeroMQSocketProvider[clusterInstances];
-        blobReader = new ZeroMQSocketProvider[clusterInstances];
-        blobWriter = new ZeroMQSocketProvider[clusterInstances];
 
         if ("localhost".equals(backendPrefix)) {
             for (int i = 0; i < clusterInstances; ++i) {
                 nodeStateReader[i] = new ZeroMQSocketProvider("tcp://localhost:" + (8000 + 2*i), context, ZMQ.REQ);
                 nodeStateWriter[i] = new ZeroMQSocketProvider("tcp://localhost:" + (8001 + 2*i), context, ZMQ.REQ);
-                blobReader[i] = new ZeroMQSocketProvider("tcp://localhost:" + (11000 + 2*i), context, ZMQ.REQ);
-                blobWriter[i] = new ZeroMQSocketProvider("tcp://localhost:" + (11001 + 2*i), context, ZMQ.REQ);
             }
         } else {
             for (int i = 0; i < clusterInstances; ++i) {
                 nodeStateReader[i] = new ZeroMQSocketProvider(String.format("tcp://%s%d:8000", backendPrefix, i), context, ZMQ.REQ);
                 nodeStateWriter[i] = new ZeroMQSocketProvider(String.format("tcp://%s%d:8001", backendPrefix, i), context, ZMQ.REQ);
-                blobReader[i] = new ZeroMQSocketProvider(String.format("tcp://%s%d:11000", blobendPrefix, i), context, ZMQ.REQ);
-                blobWriter[i] = new ZeroMQSocketProvider(String.format("tcp://%s%d:11001", blobendPrefix, i), context, ZMQ.REQ);
             }
         }
-
-        journalReader = new ZeroMQSocketProvider("tcp://" + journalPrefix + ":9000", context, ZMQ.REQ);
-        journalWriter = new ZeroMQSocketProvider("tcp://" + journalPrefix + ":9001", context, ZMQ.REQ);
 
         nodeStateCache = CacheBuilder.newBuilder()
             .concurrencyLevel(10)
@@ -212,10 +178,6 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         for (int i = 0; i < clusterInstances; ++i) {
             nodeStateReader[i].close();
             nodeStateWriter[i].close();
-            blobReader[i].close();
-            blobWriter[i].close();
-            journalReader.close();
-            journalWriter.close();
         }
     }
 
@@ -253,7 +215,52 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         whiteboard.register(NodeStore.class, this, props);
     }
 
+    public int getClusterInstances() {
+        return clusterInstances;
+    }
+
+    public void setClusterInstances(int clusterInstances) {
+        if (initialised) {
+            throw new IllegalAccessError("Cannot be changed after init");
+        }
+        this.clusterInstances = clusterInstances;
+    }
+
+    public boolean doesWriteBackJournal() {
+        return writeBackJournal;
+    }
+
+    public void setWriteBackJournal(boolean writeBackJournal) {
+        if (initialised) {
+            throw new IllegalAccessError("Cannot be changed after init");
+        }
+        this.writeBackJournal = writeBackJournal;
+    }
+
+    public boolean doesWriteBackNodes() {
+        return writeBackNodes;
+    }
+
+    public void setWriteBackNodes(boolean writeBackNodes) {
+        if (initialised) {
+            throw new IllegalAccessError("Cannot be changed after init");
+        }
+        this.writeBackNodes = writeBackNodes;
+    }
+
+    public boolean doesRemoteReads() {
+        return remoteReads;
+    }
+
+    public void setRemoteReads(boolean remoteReads) {
+        if (initialised) {
+            throw new IllegalAccessError("Cannot be changed after init");
+        }
+        this.remoteReads = remoteReads;
+    }
+
     public void init() {
+        initialised = true;
         final String uuid = readRootRemote();
         log.info("Journal root initialised with {}", uuid);
         journalRoot = uuid;
@@ -276,7 +283,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         NodeState newSuperRoot = builder.getNodeState();
         // this may seem strange but is needed because newSuperRoot is a MemoryNodeState
         // and we need a ZeroMQNodeState
-        final ZeroMQNodeStateDiffBuilder diff = new ZeroMQNodeStateDiffBuilder(this, emptyNode, this::readNodeState, this::write);
+        final ZeroMQNodeStateDiffBuilder diff = new ZeroMQNodeStateDiffBuilder(this, emptyNode);
         newSuperRoot.compareAgainstBaseState(emptyNode, diff);
         final ZeroMQNodeState zmqNewSuperRoot = diff.getNodeState();
         final LoggingHook loggingHook = LoggingHook.newLoggingHook(this::write, false);
@@ -338,11 +345,12 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
     }
 
     private void setRootRemote(String uuid) {
-        String msg;
         while (true) {
             try {
-                nodeStateWriter[0].get().send("journal\n" + uuid);
-                msg = nodeStateWriter[0].get().recvStr();
+                synchronized (mergeRootMonitor) {
+                    nodeStateWriter[0].get().send("journal " + uuid);
+                    nodeStateWriter[0].get().recvStr(); // ignore
+                }
                 break;
             } catch (Throwable t) {
                 log.warn(t.toString());
@@ -352,22 +360,26 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
                 }
             }
         }
-        log.debug(msg);
     }
 
-    private NodeState mergeRoot(String root, NodeState ns) {
+    // this is public because it is not only used by mergeRoot but also by the NodeStateAggregator
+    public ZeroMQNodeState mergeSuperRoot(NodeState newSuperRoot, ZeroMQNodeState oldSuperRoot) {
+        final ZeroMQNodeStateDiffBuilder diff = new ZeroMQNodeStateDiffBuilder(this, oldSuperRoot);
+        newSuperRoot.compareAgainstBaseState(oldSuperRoot, diff);
+        ZeroMQNodeState zmqNewSuperRoot = diff.getNodeState();
+        setRoot(zmqNewSuperRoot.getUuid());
+        return zmqNewSuperRoot;
+    }
+
+    public NodeState mergeRoot(String root, NodeState ns) {
         synchronized (mergeRootMonitor) {
             final NodeState superRoot = getSuperRoot();
             final NodeBuilder superRootBuilder = superRoot.builder();
             superRootBuilder.setChildNode(root, ns);
             final NodeState newSuperRoot = superRootBuilder.getNodeState();
-            final ZeroMQNodeState zmqNewSuperRoot;
-            final ZeroMQNodeStateDiffBuilder diff = new ZeroMQNodeStateDiffBuilder(this, (ZeroMQNodeState) superRoot, this::readNodeState, this::write);
-            newSuperRoot.compareAgainstBaseState(superRoot, diff);
-            zmqNewSuperRoot = diff.getNodeState();
+            final ZeroMQNodeState zmqNewSuperRoot = mergeSuperRoot(newSuperRoot, (ZeroMQNodeState) superRoot);
             final LoggingHook loggingHook = LoggingHook.newLoggingHook(this::write, false);
             loggingHook.processCommit(superRoot, zmqNewSuperRoot, null);
-            setRoot(zmqNewSuperRoot.getUuid());
             return zmqNewSuperRoot;
         }
     }
@@ -392,23 +404,6 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         return afterHook;
     }
 
-    // only used for the alternative implementation
-    // in createBlobAlt
-    private NodeState mergeBlob(NodeBuilder builder) {
-        if (true) {
-            throw new IllegalStateException();
-        } else {
-            synchronized (mergeBlobMonitor) {
-                final NodeState newBase = getBlobRoot();
-                rebase(builder, newBase);
-                final NodeState after = builder.getNodeState();
-                mergeRoot("blobs", after);
-                ((ZeroMQNodeBuilder) builder).reset(after);
-                return after;
-            }
-        }
-    }
-
     private NodeState mergeCheckpoint(NodeBuilder builder) {
         final NodeState newBase = getCheckpointRoot();
         rebase(builder, newBase);
@@ -418,7 +413,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         return after;
     }
 
-    private ZeroMQNodeState readNodeState(String uuid) {
+    public ZeroMQNodeState readNodeState(String uuid) {
         try {
             if (log.isTraceEnabled()) {
                 log.trace("{} n? {}", Thread.currentThread().getId(), uuid);
@@ -447,9 +442,11 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
     }
 
     private String read(String uuid) {
+        if (!remoteReads) {
+            return "";
+        }
         StringBuilder msg;
-        final int inst = clusterInstanceForUuid(uuid);
-        final ZMQ.Socket socket = nodeStateReader[inst].get();
+        final ZMQ.Socket socket = nodeStateReader[0].get();
         while (true) {
             msg = new StringBuilder();
             try {
@@ -472,11 +469,13 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
     }
 
     private void write(String event) {
-        nodeStateWriter[0].get().send(event);
-        log.info(nodeStateWriter[0].get().recvStr());
+        if (writeBackNodes) {
+            nodeStateWriter[0].get().send(event);
+            nodeStateWriter[0].get().recvStr(); // ignore
+        }
     }
 
-    private void write(ZeroMQNodeState nodeState) {
+    void write(ZeroMQNodeState nodeState) {
         final String newUuid = nodeState.getUuid();
         if (nodeStateCache.getIfPresent(newUuid) != null) {
             return;
@@ -485,6 +484,10 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
     }
 
     private void writeBlob(ZeroMQBlob blob) {
+        if (!writeBackNodes) {
+            return;
+        }
+        // write b64+ events to kafka
         /*
         blobWriterThread.execute(() -> {
             final InputStream is = blob.getNewStream();
@@ -536,17 +539,10 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
     }
 
     private InputStream readBlob(String reference) {
-        InputStream ret = null;
-        if (customBlobStore) {
-            try {
-                ret = blobStore.getInputStream(reference);
-            } catch (IOException e) {
-            }
+        if (!remoteReads) {
+            return null;
         }
-        if (ret == null) {
-            final int inst = clusterInstanceForBlobId(reference);
-            ret = new ZeroMQBlobInputStream(blobReader[inst], reference);
-        }
+        final InputStream ret = new ZeroMQBlobInputStream(nodeStateReader[0], reference);
         return ret;
     }
 
@@ -583,28 +579,6 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
             blobCache.put(blob.getReference(), blob);
         }
         writeBlob(blob);
-        return blob;
-    }
-
-    // Alternative implementation: store blobs in repo under /blobs
-    public Blob createBlobAlt(InputStream inputStream) throws IOException {
-        final ZeroMQBlob blob = ZeroMQBlob.newInstance(inputStream);
-        if (blobCache.getIfPresent(blob.getReference()) == null) {
-            blobCache.put(blob.getReference(), blob);
-        }
-        blobWriterThread.execute(new Thread("BlobStore Writer Thread") {
-            public void run() {
-                try {
-                    final NodeBuilder builder = getBlobRoot().builder();
-                    final String sBlob = blob.serialise();
-                    final NodeBuilder nBlob = builder.child(blob.getReference());
-                    nBlob.setProperty("blob", sBlob, Type.STRING);
-                    mergeBlob(builder);
-                } catch (Throwable t) {
-                    log.error("Error occurred while saving blob", t);
-                }
-            }
-        });
         return blob;
     }
 
@@ -724,47 +698,6 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
     @Override
     public Closeable addObserver(Observer observer) {
         return changeDispatcher.addObserver(observer);
-    }
-
-    /**
-     * Divide the uuid space into @ref{clusterInstances} parts, starting from 0.
-     * This implementation limits the number of @ref{clusterInstances} to 2^32-1.
-     * If the space cannot be divided equally, the remaining uuids are assigned
-     * to the @ref{clusterInstances} - 1 part.
-     *
-     * @param sUuid
-     * @return
-     */
-    private int clusterInstanceForUuid(String sUuid) {
-        return clusterInstanceForUuid(clusterInstances, sUuid);
-    }
-
-    static int clusterInstanceForUuid(int clusterInstances, String sUuid) {
-        final UUID uuid = UUID.fromString(sUuid);
-        final long msb = uuid.getMostSignificantBits();
-        final long msbMsb = 0xffff_ffffL & (msb >> 32);
-        final long inst = msbMsb / (0x1_0000_0000L / clusterInstances);
-        if (inst < 0) {
-            throw new IllegalStateException("inst < 0");
-        }
-        if (inst > clusterInstances) {
-            throw new IllegalStateException("inst > clusterInstances");
-        }
-        return inst == clusterInstances ? clusterInstances - 1 : (int) inst;
-    }
-
-    private int clusterInstanceForBlobId(String id) {
-        // parse first 4 bytes = 32 bits
-        final long msb = Long.parseLong(id.substring(0, 8), 16);
-        final long msbMsb = msb & 0xffff_ffffL;
-        final long inst = msbMsb / (0x1_0000_0000L / clusterInstances);
-        if (inst < 0) {
-            throw new IllegalStateException("inst < 0");
-        }
-        if (inst > clusterInstances) {
-            throw new IllegalStateException("inst > clusterInstances");
-        }
-        return inst == clusterInstances ? clusterInstances - 1 : (int) inst;
     }
 
     public GarbageCollectableBlobStore getGarbageCollectableBlobStore() {

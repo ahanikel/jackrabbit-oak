@@ -4,6 +4,7 @@ YJP_ARGS="-Dorg.apache.sling.launcher.bootdelegation=com.yourkit.api,com.yourkit
 
 export clusterInstances=1
 export writeBackJournal=true
+export writeBackNodes=true
 export customBlobStore=false
 export backendPrefix=localhost
 export blobendPrefix=localhost

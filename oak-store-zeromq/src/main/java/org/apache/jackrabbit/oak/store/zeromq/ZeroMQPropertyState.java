@@ -560,7 +560,7 @@ public class ZeroMQPropertyState implements PropertyState {
         return new ZeroMQPropertyState(ns, pName.val(), pType.val(), pValues);
     }
 
-    static class ParseFailure extends Exception {
+    public static class ParseFailure extends Exception {
         private ParseFailure(String s) {
             super(s);
         }

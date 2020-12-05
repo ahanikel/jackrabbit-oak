@@ -37,7 +37,6 @@ import java.io.InputStream;
 import java.math.BigDecimal;
 import java.util.*;
 
-import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeStore.clusterInstanceForUuid;
 import static org.junit.Assert.*;
 
 public class ZeroMQNodeStateTest {
@@ -283,6 +282,7 @@ public class ZeroMQNodeStateTest {
         assertTrue(ns3.getProperty("bla").count() == 0);
     }
 
+    /*
     @Test
     public void testClusterInstanceForSegmentId() {
         final int[] expected = {0, 0, 0, 0, 1, 0};
@@ -290,4 +290,5 @@ public class ZeroMQNodeStateTest {
             assertEquals(expected[i], clusterInstanceForUuid(2, UUIDS[i].toString()));
         }
     }
+    */
 }
