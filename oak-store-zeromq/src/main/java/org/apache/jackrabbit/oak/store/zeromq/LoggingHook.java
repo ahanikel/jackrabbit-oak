@@ -29,6 +29,8 @@ import org.jetbrains.annotations.NotNull;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
+import java.util.Arrays;
+import java.util.Base64;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -151,6 +153,34 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
             b.setCharAt(b.length() - 1, newChar);
         } else {
             b.append(newChar);
+        }
+    }
+
+    public static void writeBlob(Blob b, Consumer<String> writer) throws IOException {
+        synchronized (writer) {
+            final int chunkSize = 256 * 1024;
+            final byte[] buffer = new byte[chunkSize];
+            final Base64.Encoder b64 = Base64.getEncoder();
+            String encoded;
+            try (final InputStream is = b.getNewStream()) {
+                writer.accept("b64+ " + b.getReference());
+                while (true) {
+                    int nBytes = is.read(buffer);
+                    if (nBytes < chunkSize) {
+                        encoded = b64.encodeToString(Arrays.copyOf(buffer, nBytes));
+                    } else if (nBytes == 0) {
+                        break;
+                    } else {
+                        encoded = b64.encodeToString(buffer);
+                    }
+                    writer.accept("b64d " + encoded);
+                }
+            } catch (IOException ioe) {
+                writer.accept("b64x " + safeEncode(ioe.getMessage()));
+                throw ioe;
+            } finally {
+                writer.accept("b64!");
+            }
         }
     }
 
