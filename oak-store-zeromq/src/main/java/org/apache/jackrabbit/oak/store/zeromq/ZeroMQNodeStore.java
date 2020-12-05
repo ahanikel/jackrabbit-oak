@@ -54,6 +54,7 @@ import org.osgi.service.component.annotations.ServiceScope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.zeromq.ZMQ;
+import sun.rmi.runtime.Log;
 
 import java.io.Closeable;
 import java.io.FileInputStream;
@@ -470,8 +471,9 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
 
     private void write(String event) {
         if (writeBackNodes) {
-            nodeStateWriter[0].get().send(event);
-            nodeStateWriter[0].get().recvStr(); // ignore
+            final ZMQ.Socket writer = nodeStateWriter[0].get();
+            writer.send(event);
+            writer.recvStr(); // ignore
         }
     }
 
@@ -483,59 +485,13 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         nodeStateCache.put(newUuid, nodeState);
     }
 
-    private void writeBlob(ZeroMQBlob blob) {
+    private void writeBlob(ZeroMQBlob blob) throws IOException {
         if (!writeBackNodes) {
             return;
         }
-        // write b64+ events to kafka
-        /*
-        blobWriterThread.execute(() -> {
-            final InputStream is = blob.getNewStream();
-            final String reference = blob.getReference();
-            int inst = clusterInstanceForBlobId(reference);
-            final byte[] buffer = new byte[1024 * 1024]; // 1 MB
-            final ZMQ.Socket writer = blobWriter[inst].get();
-            while (true) {
-                try {
-                    int count, nRead;
-                    final int MAX = 100 * 1024 * 1024;
-                    writer.sendMore(reference);
-                    for (nRead = is.read(buffer);
-                         nRead >= 0;
-                         nRead = is.read(buffer)) {
-                        if (nRead == 0) {
-                            Thread.sleep(10);
-                        } else {
-                            if (nRead < buffer.length) {
-                                writer.sendMore(Arrays.copyOfRange(buffer, 0, nRead));
-                            } else {
-                                writer.sendMore(buffer);
-                            }
-                        }
-                    }
-                    break;
-                } catch (Throwable t) {
-                    log.error(t.toString());
-                    try {
-                        Thread.sleep(100);
-                    } catch (InterruptedException e) {
-                        log.error(e.toString());
-                    }
-                } finally {
-                    try {
-                        writer.send(new byte[0]);
-                    } catch (Throwable t) {
-                        log.error(t.toString());
-                    }
-                    try {
-                        writer.recvStr(); // wait for confirmation
-                    } catch (Throwable t) {
-                        log.error(t.toString());
-                    }
-                }
-            }
-        });
-        */
+        synchronized (mergeRootMonitor) {
+            LoggingHook.writeBlob(blob, this::write);
+        }
     }
 
     private InputStream readBlob(String reference) {
@@ -576,9 +532,9 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
     public Blob createBlob(InputStream inputStream) throws IOException {
         final ZeroMQBlob blob = ZeroMQBlob.newInstance(inputStream);
         if (blobCache.getIfPresent(blob.getReference()) == null) {
+            writeBlob(blob);
             blobCache.put(blob.getReference(), blob);
         }
-        writeBlob(blob);
         return blob;
     }
 
