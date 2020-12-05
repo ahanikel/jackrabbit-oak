@@ -123,11 +123,13 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
         if (ps.getType() == BINARY) {
             val.append("= ");
             final Blob blob = ps.getValue(BINARY);
-            appendBlob(val, blob);
+            //appendBlob(val, blob);
+            val.append(blob.getReference());
         } else if (ps.getType() == BINARIES) {
             val.append("= [");
             ps.getValue(BINARIES).forEach((Blob b) -> {
-                appendBlob(val, b);
+                //appendBlob(val, b);
+                val.append(b.getReference());
                 val.append(',');
             });
             replaceOrAppendLastChar(val, ',', ']');
@@ -170,7 +172,11 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
     @Override
     public NodeState processCommit(NodeState before, NodeState after, CommitInfo info) {
         writer.accept("R: " + ((ZeroMQNodeState) after).getUuid() + " " + ((ZeroMQNodeState) before).getUuid());
-        after.compareAgainstBaseState(before, this);
+        try {
+            after.compareAgainstBaseState(before, this);
+        } catch (Throwable t) {
+            System.out.println(t.toString());
+        }
         writer.accept("R!");
         return after;
     }

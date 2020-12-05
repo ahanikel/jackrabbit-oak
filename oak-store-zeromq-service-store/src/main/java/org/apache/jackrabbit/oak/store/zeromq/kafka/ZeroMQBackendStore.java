@@ -18,6 +18,8 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq.kafka;
 
+import org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeState;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.serialization.Serdes;
@@ -36,6 +38,7 @@ import org.apache.kafka.streams.state.QueryableStoreTypes;
 import org.apache.kafka.streams.state.ReadOnlyKeyValueStore;
 import org.zeromq.ZMQ;
 
+import java.util.Map;
 import java.util.Properties;
 
 /**
@@ -45,7 +48,7 @@ public class ZeroMQBackendStore {
 
     static final String ZEROMQ_READER_PORT = "ZEROMQ_READER_PORT";
     static final String ZEROMQ_WRITER_PORT = "ZEROMQ_WRITER_PORT";
-    private static final int CHUNKSIZE = 256 * 1024;
+    //private static final int CHUNKSIZE = 256 * 1024;
 
     final ZMQ.Context context;
 
@@ -71,10 +74,14 @@ public class ZeroMQBackendStore {
     private int writerPort;
 
     private String kafkaTopic;
-    private KafkaStreams kafka;
+    // private KafkaStreams kafka;
     private KafkaProducer<String, String> producer;
+    private Thread nodeDiffHandler;
+    private NodeStateAggregator nodeStateAggregator;
+    /*
     private KTable<String, String> kafkaTable;
     private ReadOnlyKeyValueStore<Object, Object> kafkaStore;
+    */
 
     public ZeroMQBackendStore() {
         initKafka();
@@ -92,6 +99,8 @@ public class ZeroMQBackendStore {
         readerService = context.socket(ZMQ.REP);
         writerService = context.socket(ZMQ.REP);
         pollerItems = context.poller(2);
+        nodeStateAggregator = new NodeStateAggregator();
+        nodeDiffHandler = new Thread(nodeStateAggregator, "ZeroMQBackendStore NodeStateAggregator");
         socketHandler = new Thread("ZeroMQBackendStore Socket Handler") {
             @Override
             public void run() {
@@ -127,6 +136,7 @@ public class ZeroMQBackendStore {
         // ensure the topic has been created, otherwise the store will just shut down
         producer.send(new ProducerRecord<>(kafkaTopic, "hello", "world"));
 
+        /*
         final Properties kafkaStreamProperties = new Properties();
         kafkaStreamProperties.put(StreamsConfig.APPLICATION_ID_CONFIG, "oak-store-kafka");
         kafkaStreamProperties.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, System.getenv("KAFKA_SERVERS"));
@@ -150,10 +160,13 @@ public class ZeroMQBackendStore {
                 }
             }
         }
+        */
     }
 
     void handleReaderService(String msg) {
-        final String sNode = (String) kafkaStore.get(msg);
+        // final String sNode = (String) kafkaStore.get(msg);
+        final ZeroMQNodeState nodeState = nodeStateAggregator.readNodeState(msg);
+        final String sNode = nodeState.getSerialised();
         if (sNode != null) {
             readerService.send(sNode);
         } else {
@@ -163,7 +176,17 @@ public class ZeroMQBackendStore {
     }
 
     void handleWriterService(String msg) {
-        producer.send(new ProducerRecord<>(kafkaTopic, msg));
+        final int firstSpace = msg.indexOf(' ');
+        String key;
+        String value;
+        if (firstSpace < 0) {
+            key = msg;
+            value = "";
+        } else {
+            key = msg.substring(0, firstSpace);
+            value = msg.substring(firstSpace + 1);
+        }
+        producer.send(new ProducerRecord<>(kafkaTopic, key, value));
         writerService.send(msg + " confirmed");
     }
 
@@ -181,10 +204,12 @@ public class ZeroMQBackendStore {
         writerService.close();
         readerService.close();
         context.close();
+        /*
         if (kafka != null) {
             kafka.close();
             kafka = null;
         }
+        */
         if (producer != null) {
             producer.close();
             producer = null;
@@ -192,6 +217,16 @@ public class ZeroMQBackendStore {
     }
 
     private void startBackgroundThreads() {
+        if (nodeDiffHandler != null) {
+            nodeDiffHandler.start();
+            while (!nodeStateAggregator.hasCaughtUp()) {
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    break;
+                }
+            }
+        }
         if (socketHandler != null) {
             socketHandler.start();
         }
@@ -200,6 +235,9 @@ public class ZeroMQBackendStore {
     private void stopBackgroundThreads() {
         if (socketHandler != null) {
             socketHandler.interrupt();
+        }
+        if (nodeDiffHandler != null) {
+            nodeDiffHandler.interrupt();
         }
     }
 

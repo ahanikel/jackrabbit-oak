@@ -27,7 +27,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-final class ZeroMQNodeStateDiffBuilder implements NodeStateDiff {
+public final class ZeroMQNodeStateDiffBuilder implements NodeStateDiff {
 
     private final Function<String, ZeroMQNodeState> reader;
     private final Consumer<ZeroMQNodeState> writer;
@@ -40,10 +40,10 @@ final class ZeroMQNodeStateDiffBuilder implements NodeStateDiff {
 
     private boolean dirty;
 
-    ZeroMQNodeStateDiffBuilder(ZeroMQNodeStore ns, ZeroMQNodeState before, Function<String, ZeroMQNodeState> reader, Consumer<ZeroMQNodeState> writer) {
+    public ZeroMQNodeStateDiffBuilder(ZeroMQNodeStore ns, ZeroMQNodeState before) {
         this.ns = ns;
-        this.reader = reader;
-        this.writer = writer;
+        this.reader = ns::readNodeState;
+        this.writer = ns::write;
         this.before = before;
         reset();
     }
@@ -92,7 +92,7 @@ final class ZeroMQNodeStateDiffBuilder implements NodeStateDiff {
             this.children.put(name, ((ZeroMQNodeState) after).getUuid());
         } else {
             final ZeroMQNodeState before = ns.emptyNode;
-            final ZeroMQNodeStateDiffBuilder diff = new ZeroMQNodeStateDiffBuilder(this.ns, before, reader, writer);
+            final ZeroMQNodeStateDiffBuilder diff = new ZeroMQNodeStateDiffBuilder(this.ns, before);
             after.compareAgainstBaseState(before, diff);
             final ZeroMQNodeState child = diff.getNodeState();
             this.children.put(name, child.getUuid());
@@ -107,7 +107,7 @@ final class ZeroMQNodeStateDiffBuilder implements NodeStateDiff {
         if (after instanceof ZeroMQNodeState) {
             this.children.put(name, ((ZeroMQNodeState) after).getUuid());
         } else {
-            final ZeroMQNodeStateDiffBuilder diff = new ZeroMQNodeStateDiffBuilder(this.ns, (ZeroMQNodeState) before, reader, writer);
+            final ZeroMQNodeStateDiffBuilder diff = new ZeroMQNodeStateDiffBuilder(this.ns, (ZeroMQNodeState) before);
             after.compareAgainstBaseState(before, diff);
             final ZeroMQNodeState child = diff.getNodeState();
             this.children.put(name, child.getUuid());
