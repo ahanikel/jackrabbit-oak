@@ -186,7 +186,7 @@ public class ZeroMQBlob implements Blob {
         }
     }
 
-    static ZeroMQBlob newInstance(String reference, File f) {
+    public static ZeroMQBlob newInstance(String reference, File f) {
         try {
             File destFile = new File("/tmp/blobs/", reference);
             synchronized (ZeroMQBlob.class) {

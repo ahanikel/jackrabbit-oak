@@ -83,7 +83,7 @@ public class ZeroMQBackendStore {
     private ReadOnlyKeyValueStore<Object, Object> kafkaStore;
     */
 
-    public ZeroMQBackendStore() {
+    public ZeroMQBackendStore(String instance) {
         initKafka();
         try {
             readerPort = Integer.parseInt(System.getenv(ZEROMQ_READER_PORT));
@@ -99,7 +99,7 @@ public class ZeroMQBackendStore {
         readerService = context.socket(ZMQ.REP);
         writerService = context.socket(ZMQ.REP);
         pollerItems = context.poller(2);
-        nodeStateAggregator = new NodeStateAggregator();
+        nodeStateAggregator = new NodeStateAggregator(instance);
         nodeDiffHandler = new Thread(nodeStateAggregator, "ZeroMQBackendStore NodeStateAggregator");
         socketHandler = new Thread("ZeroMQBackendStore Socket Handler") {
             @Override
@@ -242,7 +242,12 @@ public class ZeroMQBackendStore {
     }
 
     public static void main(String[] args) {
-        final ZeroMQBackendStore zeroMQBackendStore = new ZeroMQBackendStore();
+        if (args.length != 1) {
+            System.err.println("Usage: java " + ZeroMQBackendStore.class.getCanonicalName() + " <instanceName>");
+            System.exit(1);
+        }
+        final String instance = args[0];
+        final ZeroMQBackendStore zeroMQBackendStore = new ZeroMQBackendStore(instance);
         while (true) {
             try {
                 Thread.sleep(1000);

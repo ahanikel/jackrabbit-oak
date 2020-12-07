@@ -99,10 +99,10 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
     final ZMQ.Context context;
 
     private boolean initialised;
-    private int clusterInstances;
-    private boolean writeBackJournal;
-    private boolean writeBackNodes;
-    private boolean remoteReads;
+    private int clusterInstances = 1;
+    private boolean writeBackJournal = false;
+    private boolean writeBackNodes = false;
+    private boolean remoteReads = false;
 
     @NotNull
     final ZeroMQSocketProvider nodeStateReader[];
@@ -141,11 +141,14 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         nodeWriterThread = Executors.newFixedThreadPool(5);
         blobWriterThread = Executors.newFixedThreadPool(50); // each thread consumes 1 MB
 
-        clusterInstances = Integer.parseInt(System.getenv(PARAM_CLUSTERINSTANCES));
-        writeBackJournal = Boolean.parseBoolean(System.getenv(PARAM_WRITEBACKJOURNAL));
-        writeBackNodes = Boolean.parseBoolean(System.getenv(PARAM_WRITEBACKNODES));
-        remoteReads = Boolean.parseBoolean(System.getenv(PARAM_REMOTEREADS));
-        initJournal = System.getenv(PARAM_INITJOURNAL);
+        try {
+            clusterInstances = Integer.parseInt(System.getenv(PARAM_CLUSTERINSTANCES));
+            writeBackJournal = Boolean.parseBoolean(System.getenv(PARAM_WRITEBACKJOURNAL));
+            writeBackNodes = Boolean.parseBoolean(System.getenv(PARAM_WRITEBACKNODES));
+            remoteReads = Boolean.parseBoolean(System.getenv(PARAM_REMOTEREADS));
+            initJournal = System.getenv(PARAM_INITJOURNAL);
+        } catch (Exception e) {
+        }
 
         nodeStateReader = new ZeroMQSocketProvider[clusterInstances];
         nodeStateWriter = new ZeroMQSocketProvider[clusterInstances];
@@ -300,6 +303,10 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         if (initJournal != null) {
             return initJournal;
         }
+        if (!remoteReads) {
+            return "undefined";
+        }
+
         String msg;
         while (true) {
             try {
@@ -322,7 +329,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         return getSuperRoot().getChildNode("root");
     }
 
-    private NodeState getSuperRoot() {
+    public NodeState getSuperRoot() {
         final String uuid = readRoot();
         if ("undefined".equals(uuid)) {
             throw new IllegalStateException("root is undefined, forgot to call init()?");
@@ -338,7 +345,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         return getSuperRoot().getChildNode("checkpoints");
     }
 
-    private void setRoot(String uuid) {
+    public void setRoot(String uuid) {
         journalRoot = uuid;
         if (writeBackJournal) {
             nodeWriterThread.execute(() -> setRootRemote(uuid));

@@ -37,7 +37,7 @@ public class ZeroMQBackendStoreTest {
 
     @Before
     public void testInit() {
-        store = new ZeroMQBackendStore();
+        store = new ZeroMQBackendStore("golden");
         try {
             readerPort = Integer.parseInt(System.getenv(ZEROMQ_READER_PORT));
         } catch (NumberFormatException e) {
