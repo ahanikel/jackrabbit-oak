@@ -164,12 +164,13 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
             String encoded;
             try (final InputStream is = b.getNewStream()) {
                 writer.accept("b64+ " + b.getReference());
-                while (true) {
-                    int nBytes = is.read(buffer);
+                int nBytes;
+                while ((nBytes = is.read(buffer)) >= 0) {
                     if (nBytes < chunkSize) {
                         encoded = b64.encodeToString(Arrays.copyOf(buffer, nBytes));
                     } else if (nBytes == 0) {
-                        break;
+                        Thread.sleep(100);
+                        continue;
                     } else {
                         encoded = b64.encodeToString(buffer);
                     }
@@ -178,6 +179,7 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
             } catch (IOException ioe) {
                 writer.accept("b64x " + safeEncode(ioe.getMessage()));
                 throw ioe;
+            } catch (InterruptedException e) {
             } finally {
                 writer.accept("b64!");
             }
