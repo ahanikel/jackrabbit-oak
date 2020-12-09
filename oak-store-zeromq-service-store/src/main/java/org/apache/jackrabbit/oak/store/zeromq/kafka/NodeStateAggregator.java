@@ -129,7 +129,9 @@ public class NodeStateAggregator implements Runnable {
                 }
                 final String baseUuid = tokens.nextToken();
                 final ZeroMQNodeState root = (ZeroMQNodeState) nodeStore.getSuperRoot();
-                if (!baseUuid.equals(root.getUuid())) {
+                if (!baseUuid.equals(root.getUuid())
+                        // special case: empty node store after init:
+                        && !"5dbc3e8d-b6d6-f7d0-6af3-102ecf99eb0c".equals(root.getUuid())) {
                     throw new IllegalStateException("Base root state is not the expected one");
                 }
                 builders.add(root.builder());
