@@ -54,7 +54,6 @@ import org.osgi.service.component.annotations.ServiceScope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.zeromq.ZMQ;
-import sun.rmi.runtime.Log;
 
 import java.io.Closeable;
 import java.io.FileInputStream;
@@ -97,6 +96,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
 
     @NotNull
     final ZMQ.Context context;
+    private final String instance;
 
     private boolean initialised;
     private int clusterInstances = 1;
@@ -133,6 +133,12 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
     private String initJournal;
 
     public ZeroMQNodeStore() {
+        this("golden");
+    }
+
+    public ZeroMQNodeStore(String instance) {
+
+        this.instance = instance;
 
         initialised = false;
 
@@ -356,8 +362,9 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         while (true) {
             try {
                 synchronized (mergeRootMonitor) {
-                    nodeStateWriter[0].get().send("journal " + uuid);
-                    nodeStateWriter[0].get().recvStr(); // ignore
+                    final ZMQ.Socket socket = nodeStateWriter[0].get();
+                    socket.send("journal " + instance + " " + uuid);
+                    socket.recvStr(); // ignore
                 }
                 break;
             } catch (Throwable t) {
@@ -478,9 +485,11 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
 
     private void write(String event) {
         if (writeBackNodes) {
-            final ZMQ.Socket writer = nodeStateWriter[0].get();
-            writer.send(event);
-            writer.recvStr(); // ignore
+            synchronized (mergeRootMonitor) {
+                final ZMQ.Socket writer = nodeStateWriter[0].get();
+                writer.send(event);
+                log.trace(writer.recvStr()); // ignore
+            }
         }
     }
 
