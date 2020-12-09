@@ -176,18 +176,21 @@ public class ZeroMQBackendStore {
     }
 
     void handleWriterService(String msg) {
-        final int firstSpace = msg.indexOf(' ');
-        String key;
-        String value;
-        if (firstSpace < 0) {
-            key = msg;
-            value = "";
-        } else {
-            key = msg.substring(0, firstSpace);
-            value = msg.substring(firstSpace + 1);
+        try {
+            final int firstSpace = msg.indexOf(' ');
+            String key;
+            String value;
+            if (firstSpace < 0) {
+                key = msg;
+                value = "";
+            } else {
+                key = msg.substring(0, firstSpace);
+                value = msg.substring(firstSpace + 1);
+            }
+            producer.send(new ProducerRecord<>(kafkaTopic, key, value));
+        } finally {
+            writerService.send("confirmed");
         }
-        producer.send(new ProducerRecord<>(kafkaTopic, key, value));
-        writerService.send(msg + " confirmed");
     }
 
     private void open() {
