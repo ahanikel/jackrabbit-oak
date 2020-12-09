@@ -62,7 +62,7 @@ public class NodeStateAggregator implements Runnable {
 
     public NodeStateAggregator(String instance) {
         this.instance = instance;
-        nodeStore = new ZeroMQNodeStore();
+        nodeStore = new ZeroMQNodeStore("aggregator");
         // It's about time the ZeroMQNodeStore gets its own builder...
         nodeStore.setClusterInstances(1);
         nodeStore.setRemoteReads(false);

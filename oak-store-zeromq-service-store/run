@@ -11,6 +11,6 @@ export journalPrefix=localhost                                                  
 
 ps auxww | grep java | grep oak-store-zeromq-service-store | awk '{print $2}' | xargs kill -9
 sleep 5
-java -Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=6006 -jar $(ls -1 target/*.jar | grep jar-with)
+java -Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=6006 -jar $(ls -1 target/*.jar | grep jar-with) golden 2>&1 | tee /tmp/zeromq-service-error.log
 
 
