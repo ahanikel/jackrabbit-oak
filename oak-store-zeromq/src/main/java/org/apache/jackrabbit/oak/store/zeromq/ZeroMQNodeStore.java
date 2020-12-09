@@ -131,6 +131,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
     private volatile String journalRoot;
 
     private String initJournal;
+    private volatile boolean skip;
 
     public ZeroMQNodeStore() {
         this("golden");
@@ -484,6 +485,23 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
     }
 
     private void write(String event) {
+        if (skip == true) {
+            if (event.startsWith("b64!")) {
+                skip = false;
+            }
+            return;
+        }
+        // TODO:
+        // for some reason, this blob (and only this one!) is not written correctly:
+        // b64+ 2E79... is ok
+        // b64d ... is sent on the quickstart side
+        //          but never arrives at the backend
+        //          and the quickstart waits forever for a confirmation
+        // we ignore the problem for now and just skip this blob
+        if (event.contains("2E79040765B71C748E4641664489CAD5")) {
+            skip = true;
+            return;
+        }
         if (writeBackNodes) {
             synchronized (mergeRootMonitor) {
                 final ZMQ.Socket writer = nodeStateWriter[0].get();
