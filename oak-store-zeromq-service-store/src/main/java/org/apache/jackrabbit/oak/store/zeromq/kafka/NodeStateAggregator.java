@@ -38,12 +38,16 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Properties;
 import java.util.StringTokenizer;
+import java.util.UUID;
 
 public class NodeStateAggregator implements Runnable {
+
+    private static final String TOPIC = "nodestates";
 
     private final KafkaConsumer<String, String> consumer;
     private final ZeroMQNodeStore nodeStore;
@@ -74,12 +78,13 @@ public class NodeStateAggregator implements Runnable {
         // Kafka consumer
         final Properties props = new Properties();
         props.setProperty("bootstrap.servers", "localhost:9092");
-        props.setProperty("group.id", "test");
+        props.setProperty("group.id", UUID.randomUUID().toString());
         props.setProperty("enable.auto.commit", "false");
         props.setProperty("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
         props.setProperty("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+        props.setProperty("auto.offset.reset", "earliest");
         consumer = new KafkaConsumer<>(props);
-        consumer.subscribe(Arrays.asList("nodestates"));
+        consumer.subscribe(Collections.singletonList(TOPIC));
         records = null;
     }
 
@@ -146,12 +151,13 @@ public class NodeStateAggregator implements Runnable {
                 final NodeState rootState = rootBuilder.getNodeState();
                 final ZeroMQNodeState baseState = (ZeroMQNodeState) rootBuilder.getBaseState();
                 final ZeroMQNodeState zmqRootState = nodeStore.mergeSuperRoot(rootState, baseState);
-                if (nodeUuids.size() != 1 || !nodeUuids.get(0).equals(zmqRootState.getUuid())) {
-                    throw new IllegalStateException("new uuid is not the expected one");
+                final String nodeUuid = nodeUuids.size() == 1 ? nodeUuids.get(0) : "size is " + nodeUuids.size();
+                if (nodeUuids.size() != 1 || !nodeUuid.equals(zmqRootState.getUuid())) {
+                    // throw new IllegalStateException("new uuid is not the expected one");
+                    log.warn("Expected uuid: {}, actual uuid: {}", nodeUuid, zmqRootState.getUuid());
                 }
                 nodeUuids.clear();
-                // commented out to force restarts from the beginning
-                // consumer.commitSync();
+                consumer.commitSync();
                 break;
             }
 
