@@ -277,13 +277,15 @@ public class ZeroMQNodeState extends AbstractNodeState {
         sb
             .append("begin ZeroMQNodeState\n")
             .append("begin children\n");
-        children.forEach((name, uuid) ->
+        List<String> childNames = new ArrayList<>(children.keySet());
+        childNames.sort(Comparator.naturalOrder());
+        childNames.forEach(name ->
         {
             try {
                 sb
                     .append(SafeEncode.safeEncode(name))
                     .append('\t')
-                    .append(uuid)
+                    .append(children.get(name))
                     .append('\n');
             } catch (UnsupportedEncodingException ex) {
                 e.compareAndSet(null, ex);
@@ -294,8 +296,10 @@ public class ZeroMQNodeState extends AbstractNodeState {
         }
         sb.append("end children\n");
         sb.append("begin properties\n");
-        properties.forEach((name, ps) ->
-            ps.serialise(sb).append('\n')
+        List<String> propertyNames = new ArrayList<>(properties.keySet());
+        propertyNames.sort(Comparator.naturalOrder());
+        propertyNames.forEach(name ->
+            properties.get(name).serialise(sb).append('\n')
         );
         sb.append("end properties\n");
         sb.append("end ZeroMQNodeState\n");
