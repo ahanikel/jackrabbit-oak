@@ -663,7 +663,7 @@ public class ZeroMQPropertyState implements PropertyState {
                 }
                 if (last.startsWith("[")) {
                     // array
-                    String[] vals = last.substring(1, last.length() - 1).split("[\\[\\],]");
+                    String[] vals = last.substring(1, last.length() - 1).split("[\\[\\],]", -1);
                     for (String val : vals) {
                         list.add(SafeEncode.safeDecode(val));
                     }
