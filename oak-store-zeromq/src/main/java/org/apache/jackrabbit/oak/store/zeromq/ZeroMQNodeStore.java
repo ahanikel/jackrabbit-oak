@@ -302,7 +302,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         setRoot(zmqNewSuperRoot.getUuid());
     }
 
-    private String readRoot() {
+    public String readRoot() {
         return journalRoot;
     }
 

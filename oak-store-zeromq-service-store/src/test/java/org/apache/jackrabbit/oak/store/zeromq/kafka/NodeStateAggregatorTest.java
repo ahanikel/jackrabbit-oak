@@ -18,6 +18,7 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq.kafka;
 
+import com.google.common.io.LineReader;
 import org.apache.jackrabbit.oak.api.Type;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.Assert;
@@ -25,6 +26,9 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.io.ByteArrayOutputStream;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Arrays;
@@ -52,17 +56,18 @@ public class NodeStateAggregatorTest {
 
     @Test
     public void testAggregator() {
-        NodeStateAggregator nodeStateAggregator = new NodeStateAggregator("golden");
+        NodeStateAggregator.RecordHandler recordHandler = new NodeStateAggregator.RecordHandler("golden");
         for (String[] rec : consumerRecords) {
-            nodeStateAggregator.handleRecord(rec[0], rec[1]);
+            recordHandler.handleRecord(rec[0], rec[1]);
         }
         Assert.assertEquals("520fef06-50ce-4e5f-8ce1-9ae47d515322",
-                nodeStateAggregator
+                recordHandler
+                        .getNodeStore()
                         .readNodeState("617f9357-5dc5-0f26-8e80-ffef5c938022")
                         .getProperty(":clusterId")
                         .getValue(Type.STRING));
         final byte[] hello = new byte[12];
-        final InputStream blobIs = nodeStateAggregator
+        final InputStream blobIs = recordHandler.getNodeStore()
                 .readNodeState("617f9357-5dc5-0f26-8e80-ffef5c938022")
                 .getProperty("testblob")
                 .getValue(Type.BINARY)
@@ -75,5 +80,25 @@ public class NodeStateAggregatorTest {
         }
         Assert.assertEquals(12, bytesRead);
         Assert.assertEquals("hello world", new String(Arrays.copyOf(hello, 11)));
+    }
+
+    @Test
+    public void testDebug() throws IOException {
+        final NodeStateAggregator.RecordHandler recordHandler = new NodeStateAggregator.RecordHandler("golden");
+        //final LineReader r = new LineReader(new FileReader("/var/folders/nr/scf5thc9157cz730xynsnh140000gp/T/logFile-1605835284401988811.log"));
+        final LineReader r = new LineReader(new FileReader("/tmp/quickstart.log"));
+        for (String line = r.readLine(); line != null; line = r.readLine()) {
+            int pos = line.indexOf(' ');
+            String key;
+            String val;
+            if (pos >= 0) {
+                key = line.substring(0, pos);
+                val = line.substring(pos + 1);
+            } else {
+                key = line;
+                val = "";
+            }
+            recordHandler.handleRecord(key, val);
+        }
     }
 }

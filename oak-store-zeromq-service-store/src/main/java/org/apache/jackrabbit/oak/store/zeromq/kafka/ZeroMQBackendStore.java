@@ -165,7 +165,7 @@ public class ZeroMQBackendStore {
 
     void handleReaderService(String msg) {
         // final String sNode = (String) kafkaStore.get(msg);
-        final ZeroMQNodeState nodeState = nodeStateAggregator.readNodeState(msg);
+        final ZeroMQNodeState nodeState = nodeStateAggregator.getNodeStore().readNodeState(msg);
         final String sNode = nodeState.getSerialised();
         if (sNode != null) {
             readerService.send(sNode);
