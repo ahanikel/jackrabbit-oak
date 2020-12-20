@@ -14,6 +14,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Supplier;
 
+import static com.google.common.base.Preconditions.checkNotNull;
+
 public class ZeroMQBlob implements Blob {
 
     private final Supplier<File> fileSupplier;
@@ -82,7 +84,8 @@ public class ZeroMQBlob implements Blob {
         private final CountDownLatch countDownLatch;
         private final boolean exists;
 
-        InputStreamFileSupplier(File file, InputStream is) {
+        InputStreamFileSupplier(File file, @NotNull InputStream is) {
+            checkNotNull(is);
             this.file = file;
             this.is = is;
             this.exists = file.exists();
@@ -147,6 +150,9 @@ public class ZeroMQBlob implements Blob {
     }
 
     static ZeroMQBlob newInstance(InputStream is) {
+        if (is == null) {
+            throw new IllegalArgumentException();
+        }
         final byte[] readBuffer = new byte[1024*1024];
         try {
             final MessageDigest md = MessageDigest.getInstance("MD5");
@@ -203,7 +209,8 @@ public class ZeroMQBlob implements Blob {
         }
     }
 
-    static ZeroMQBlob newInstance(String reference, InputStream is) {
+    static ZeroMQBlob newInstance(String reference, @NotNull InputStream is) {
+        checkNotNull(is);
         return new ZeroMQBlob(reference, new InputStreamFileSupplier(new File(blobCacheDir, reference), is));
     }
 
