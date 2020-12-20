@@ -180,7 +180,16 @@ public class NodeStateAggregator implements Runnable {
                     if (!baseUuid.equals(rootUuid)
                             // special case: empty node store after init:
                             && !"823f2252-db37-b0ca-3f7e-09cd073b530a".equals(rootUuid)) {
-                       throw new IllegalStateException("Base root state is not the expected one");
+                        final StringBuilder msg = new StringBuilder();
+                        msg
+                                .append("Base root state is not the expected one. ")
+                                .append("Line: ")
+                                .append(line)
+                                .append(", expected: ")
+                                .append(baseUuid)
+                                .append(", actual: ")
+                                .append(rootUuid);
+                       throw new IllegalStateException(msg.toString());
                     }
                     builders.add(nodeStore.getSuperRoot().builder());
                     break;

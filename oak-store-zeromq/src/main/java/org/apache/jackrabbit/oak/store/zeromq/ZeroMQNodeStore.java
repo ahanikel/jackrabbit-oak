@@ -55,6 +55,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.zeromq.ZMQ;
 
+import java.io.ByteArrayInputStream;
 import java.io.Closeable;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -586,9 +587,9 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
                 ZeroMQBlob ret = ZeroMQBlob.newInstance(reference, readBlob(reference));
                 return ret;
             });
-        } catch (ExecutionException e) {
-            log.warn("Could not load blob: " + e.toString());
-            return null;
+        } catch (Exception e) {
+            log.error("Could not load blob: " + e.toString());
+            return ZeroMQBlob.newInstance(new ByteArrayInputStream((reference + " not found: " + e.toString()).getBytes()));
         }
     }
 
