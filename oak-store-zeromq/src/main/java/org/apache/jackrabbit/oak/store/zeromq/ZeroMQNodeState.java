@@ -307,13 +307,15 @@ public class ZeroMQNodeState extends AbstractNodeState {
     }
 
     private String generateUuid() throws UnsupportedEncodingException {
-        if (children.isEmpty() && properties.isEmpty()) {
-            return ZeroMQEmptyNodeState.UUID_NULL.toString();
+        synchronized (md) {
+            if (children.isEmpty() && properties.isEmpty()) {
+                return ZeroMQEmptyNodeState.UUID_NULL.toString();
+            }
+            final byte[] digest = md.digest(serialised.getBytes("UTF-8"));
+            final long msb = Longs.fromByteArray(Arrays.copyOfRange(digest, 0, 8));
+            final long lsb = Longs.fromByteArray(Arrays.copyOfRange(digest, 8, 16));
+            return new UUID(msb, lsb).toString();
         }
-        final byte[] digest = md.digest(serialised.getBytes("UTF-8"));
-        final long msb = Longs.fromByteArray(Arrays.copyOfRange(digest, 0, 8));
-        final long lsb = Longs.fromByteArray(Arrays.copyOfRange(digest, 8, 16));
-        return new UUID(msb, lsb).toString();
     }
 
     @Override
