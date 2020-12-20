@@ -336,7 +336,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         return getSuperRoot().getChildNode("root");
     }
 
-    public NodeState getSuperRoot() {
+    public ZeroMQNodeState getSuperRoot() {
         final String uuid = readRoot();
         if ("undefined".equals(uuid)) {
             throw new IllegalStateException("root is undefined, forgot to call init()?");
@@ -378,25 +378,16 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         }
     }
 
-    // this is public because it is not only used by mergeRoot but also by the NodeStateAggregator
-    public ZeroMQNodeState mergeSuperRoot(NodeState newSuperRoot, ZeroMQNodeState oldSuperRoot) {
-        final ZeroMQNodeStateDiffBuilder diff = new ZeroMQNodeStateDiffBuilder(this, oldSuperRoot);
-        newSuperRoot.compareAgainstBaseState(oldSuperRoot, diff);
-        ZeroMQNodeState zmqNewSuperRoot = diff.getNodeState();
-        setRoot(zmqNewSuperRoot.getUuid());
-        return zmqNewSuperRoot;
-    }
-
     public NodeState mergeRoot(String root, NodeState ns) {
         synchronized (mergeRootMonitor) {
-            final NodeState superRoot = getSuperRoot();
+            final ZeroMQNodeState superRoot = getSuperRoot();
             final NodeBuilder superRootBuilder = superRoot.builder();
             superRootBuilder.setChildNode(root, ns);
-            final NodeState newSuperRoot = superRootBuilder.getNodeState();
-            final ZeroMQNodeState zmqNewSuperRoot = mergeSuperRoot(newSuperRoot, (ZeroMQNodeState) superRoot);
+            final ZeroMQNodeState newSuperRoot = (ZeroMQNodeState) superRootBuilder.getNodeState();
+            setRoot(newSuperRoot.getUuid());
             final LoggingHook loggingHook = LoggingHook.newLoggingHook(this::write, false);
-            loggingHook.processCommit(superRoot, zmqNewSuperRoot, null);
-            return zmqNewSuperRoot;
+            loggingHook.processCommit(superRoot, newSuperRoot, null);
+            return newSuperRoot;
         }
     }
 
@@ -406,6 +397,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
             throw new IllegalArgumentException();
         }
         final NodeState newBase = getRoot();
+        // rebase does nothing if the base hasn't changed
         rebase(builder, newBase);
         final NodeState after = builder.getNodeState();
         final NodeState afterHook = commitHook.processCommit(newBase, after, info);
