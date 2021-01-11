@@ -19,26 +19,12 @@
 package org.apache.jackrabbit.oak.store.zeromq.kafka;
 
 import org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeState;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
-import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.common.serialization.StringSerializer;
-import org.apache.kafka.common.utils.Bytes;
-import org.apache.kafka.streams.KafkaStreams;
-import org.apache.kafka.streams.StoreQueryParameters;
-import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
-import org.apache.kafka.streams.Topology;
-import org.apache.kafka.streams.errors.InvalidStateStoreException;
-import org.apache.kafka.streams.kstream.KTable;
-import org.apache.kafka.streams.kstream.Materialized;
-import org.apache.kafka.streams.state.KeyValueStore;
-import org.apache.kafka.streams.state.QueryableStoreTypes;
-import org.apache.kafka.streams.state.ReadOnlyKeyValueStore;
 import org.zeromq.ZMQ;
 
-import java.util.Map;
 import java.util.Properties;
 
 /**
@@ -77,7 +63,7 @@ public class ZeroMQBackendStore {
     // private KafkaStreams kafka;
     private KafkaProducer<String, String> producer;
     private Thread nodeDiffHandler;
-    private NodeStateAggregator nodeStateAggregator;
+    private KafkaNodeStateAggregator kafkaNodeStateAggregator;
     /*
     private KTable<String, String> kafkaTable;
     private ReadOnlyKeyValueStore<Object, Object> kafkaStore;
@@ -99,8 +85,8 @@ public class ZeroMQBackendStore {
         readerService = context.socket(ZMQ.REP);
         writerService = context.socket(ZMQ.REP);
         pollerItems = context.poller(2);
-        nodeStateAggregator = new NodeStateAggregator(instance);
-        nodeDiffHandler = new Thread(nodeStateAggregator, "ZeroMQBackendStore NodeStateAggregator");
+        kafkaNodeStateAggregator = new KafkaNodeStateAggregator(instance);
+        nodeDiffHandler = new Thread(kafkaNodeStateAggregator, "ZeroMQBackendStore NodeStateAggregator");
         socketHandler = new Thread("ZeroMQBackendStore Socket Handler") {
             @Override
             public void run() {
@@ -173,9 +159,9 @@ public class ZeroMQBackendStore {
         String ret = null;
         if (msg.startsWith("journal ")) {
             final String instance = msg.substring("journal ".length());
-            ret = nodeStateAggregator.getJournalHead(instance);
+            ret = kafkaNodeStateAggregator.getJournalHead(instance);
         } else {
-            final ZeroMQNodeState nodeState = nodeStateAggregator.getNodeStore().readNodeState(msg);
+            final ZeroMQNodeState nodeState = kafkaNodeStateAggregator.getNodeStore().readNodeState(msg);
             ret = nodeState.getSerialised();
         }
         if (ret != null) {
@@ -233,7 +219,7 @@ public class ZeroMQBackendStore {
     private void startBackgroundThreads() {
         if (nodeDiffHandler != null) {
             nodeDiffHandler.start();
-            while (!nodeStateAggregator.hasCaughtUp()) {
+            while (!kafkaNodeStateAggregator.hasCaughtUp()) {
                 try {
                     Thread.sleep(100);
                 } catch (InterruptedException e) {
