@@ -35,7 +35,7 @@ import java.util.Properties;
 import java.util.StringTokenizer;
 import java.util.UUID;
 
-public class KafkaNodeStateAggregator implements Runnable {
+public class KafkaNodeStateAggregator implements org.apache.jackrabbit.oak.store.zeromq.NodeStateAggregator {
 
     private static final String TOPIC = "nodestates";
     private static final Logger log = LoggerFactory.getLogger(KafkaNodeStateAggregator.class);
@@ -101,14 +101,17 @@ public class KafkaNodeStateAggregator implements Runnable {
         }
     }
 
+    @Override
     public boolean hasCaughtUp() {
         return caughtup;
     }
 
+    @Override
     public ZeroMQNodeStore getNodeStore() {
         return recordHandler.getNodeStore();
     }
 
+    @Override
     public String getJournalHead(String journalName) {
         final String ret = recordHandler.getJournalHead(journalName);
         if (ret == null) {
