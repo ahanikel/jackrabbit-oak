@@ -20,20 +20,17 @@ package org.apache.jackrabbit.oak.store.zeromq.kafka;
 
 import com.google.common.io.LineReader;
 import org.apache.jackrabbit.oak.api.Type;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.jackrabbit.oak.store.zeromq.RecordHandler;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.io.ByteArrayOutputStream;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Arrays;
 
-public class NodeStateAggregatorTest {
+public class KafkaNodeStateAggregatorTest {
 
     public static String[][] consumerRecords = new String[][]{
             {"b64+", "8b3235b9ec9e796e0d343dded5f617a3"},
@@ -56,7 +53,7 @@ public class NodeStateAggregatorTest {
 
     @Test
     public void testAggregator() {
-        NodeStateAggregator.RecordHandler recordHandler = new NodeStateAggregator.RecordHandler("golden");
+        RecordHandler recordHandler = new RecordHandler("golden");
         for (String[] rec : consumerRecords) {
             recordHandler.handleRecord(rec[0], rec[1]);
         }
@@ -84,7 +81,7 @@ public class NodeStateAggregatorTest {
 
     @Test
     public void testDebug() throws IOException {
-        final NodeStateAggregator.RecordHandler recordHandler = new NodeStateAggregator.RecordHandler("golden");
+        final RecordHandler recordHandler = new RecordHandler("golden");
         //final LineReader r = new LineReader(new FileReader("/var/folders/nr/scf5thc9157cz730xynsnh140000gp/T/logFile-1605835284401988811.log"));
         final LineReader r = new LineReader(new FileReader("/tmp/quickstart.log"));
         for (String line = r.readLine(); line != null; line = r.readLine()) {
