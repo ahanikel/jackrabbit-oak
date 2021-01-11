@@ -7,7 +7,9 @@ export writeBackJournal=true
 export customBlobStore=false
 export backendPrefix=localhost
 export blobendPrefix=localhost
-export journalPrefix=localhost                                                                                                                                                                                  export initJournal=undefined
+export journalPrefix=localhost
+export initJournal=undefined
+export logNodeStates=false
 
 ps auxww | grep java | grep oak-store-zeromq-service-store | awk '{print $2}' | xargs kill -9
 sleep 5

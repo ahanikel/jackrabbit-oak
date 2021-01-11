@@ -19,7 +19,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
 public class ZeroMQBlob implements Blob {
 
     private final Supplier<File> fileSupplier;
-    private final String reference;
+    private String reference;
     private static final File blobCacheDir = new File("/tmp/blobs");
 
     private static final Logger log = LoggerFactory.getLogger(ZeroMQBlob.class);
@@ -232,6 +232,12 @@ public class ZeroMQBlob implements Blob {
     @Override
     public @Nullable String getReference() {
         return this.reference;
+    }
+
+    // This is for the very special case where we create a blob that
+    // could not be loaded. TODO: not sure if that's a good idea
+    public void setReference(String reference) {
+        this.reference = reference;
     }
 
     @Override

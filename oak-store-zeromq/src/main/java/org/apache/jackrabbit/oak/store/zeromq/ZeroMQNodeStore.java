@@ -57,7 +57,9 @@ import org.zeromq.ZMQ;
 
 import java.io.ByteArrayInputStream;
 import java.io.Closeable;
+import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Collections;
@@ -66,9 +68,12 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
@@ -90,6 +95,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
     public static final String PARAM_WRITEBACKNODES = "writeBackNodes";
     public static final String PARAM_INITJOURNAL = "initJournal";
     public static final String PARAM_REMOTEREADS = "remoteReads";
+    private static final String PARAM_LOG_NODE_STATES = "logNodeStates";
 
     public static String backendPrefix = System.getenv(PARAM_BACKEND_PREFIX);
 
@@ -104,6 +110,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
     private boolean writeBackJournal = false;
     private boolean writeBackNodes = false;
     private boolean remoteReads = false;
+    private boolean logNodeStates = true;
 
     @NotNull
     final ZeroMQSocketProvider nodeStateReader[];
@@ -112,10 +119,10 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
     final ZeroMQSocketProvider nodeStateWriter[];
 
     @NotNull
-    final Cache<String, ZeroMQNodeState> nodeStateCache;
+    final KVStore<String, ZeroMQNodeState> nodeStateCache;
 
     @NotNull
-    final Cache<String, ZeroMQBlob> blobCache;
+    final KVStore<String, ZeroMQBlob> blobCache;
 
     private volatile ComponentContext ctx;
 
@@ -133,6 +140,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
 
     private String initJournal;
     private volatile boolean skip;
+    private AtomicLong line = new AtomicLong(0);
+    private FileOutputStream nodeStateOutput; // this is only meant for debugging
 
     public ZeroMQNodeStore() {
         this("golden");
@@ -155,6 +164,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
             writeBackNodes = Boolean.parseBoolean(System.getenv(PARAM_WRITEBACKNODES));
             remoteReads = Boolean.parseBoolean(System.getenv(PARAM_REMOTEREADS));
             initJournal = System.getenv(PARAM_INITJOURNAL);
+            logNodeStates = Boolean.parseBoolean(System.getenv(PARAM_LOG_NODE_STATES));
         } catch (Exception e) {
         }
 
@@ -173,13 +183,58 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
             }
         }
 
-        nodeStateCache = CacheBuilder.newBuilder()
-            .concurrencyLevel(10)
-            .maximumSize(1000000).build();
+        /*
+            If we allow remote reads, we just cache the return values
+            otherwise we store them in a map
+         */
+        if (remoteReads) {
+            final Cache<String, ZeroMQNodeState> cache =
+                    CacheBuilder.newBuilder()
+                            .concurrencyLevel(10)
+                            .maximumSize(1000000).build();
+            nodeStateCache = new NodeStateCache<>(cache, uuid -> {
 
-        blobCache = CacheBuilder.newBuilder()
-                .concurrencyLevel(10)
-                .maximumSize(100000).build();
+                final String sNode = read(uuid);
+                try {
+                    final ZeroMQNodeState ret = ZeroMQNodeState.deSerialise(this, sNode, this::readNodeState, this::write);
+                    return ret;
+                } catch (ZeroMQNodeState.ParseFailure parseFailure) {
+                    if ("Node not found".equals(sNode)) {
+                        log.error("Node not found: " + uuid);
+                        throw new IllegalStateException("Node not found");
+                    } else {
+                        log.error(parseFailure.getMessage());
+                        throw new IllegalStateException(parseFailure);
+                    }
+                }
+            });
+            final Cache<String, ZeroMQBlob> bCache =
+                    CacheBuilder.newBuilder()
+                            .concurrencyLevel(10)
+                            .maximumSize(100000).build();
+            blobCache = new NodeStateCache<>(bCache, reference -> {
+                try {
+                    ZeroMQBlob ret = ZeroMQBlob.newInstance(reference, readBlob(reference));
+                    return ret;
+                } catch (Throwable t) {
+                    log.error("Could not load blob: " + t.toString());
+                    ZeroMQBlob ret = ZeroMQBlob.newInstance(new ByteArrayInputStream((reference + " not found: " + t.toString()).getBytes()));
+                    ret.setReference(reference);
+                    return ret;
+                }
+            });
+        } else {
+            final Map<String, ZeroMQNodeState> store = new ConcurrentHashMap<>(1000000);
+            nodeStateCache = new NodeStateMemoryStore(store);
+            final Map<String, ZeroMQBlob> bStore = new ConcurrentHashMap<>(1000000);
+            blobCache = new NodeStateMemoryStore<>(bStore);
+        }
+        if (logNodeStates) {
+            try {
+                nodeStateOutput = new FileOutputStream(File.createTempFile("nodeStates-", ".log", new File("/tmp")));
+            } catch (IOException e) {
+            }
+        }
     }
 
 
@@ -190,6 +245,13 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         for (int i = 0; i < clusterInstances; ++i) {
             nodeStateReader[i].close();
             nodeStateWriter[i].close();
+        }
+        try {
+            if (nodeStateOutput != null) {
+                nodeStateOutput.close();
+                nodeStateOutput = null;
+            }
+        } catch (IOException e) {
         }
     }
 
@@ -318,7 +380,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         String msg;
         while (true) {
             try {
-                nodeStateReader[0].get().send("journal");
+                nodeStateReader[0].get().send("journal " + instance);
                 msg = nodeStateReader[0].get().recvStr();
                 break;
             } catch (Throwable t) {
@@ -353,7 +415,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         return getSuperRoot().getChildNode("checkpoints");
     }
 
-    public void setRoot(String uuid) {
+    private void setRoot(String uuid) {
         journalRoot = uuid;
         if (writeBackJournal) {
             nodeWriterThread.execute(() -> setRootRemote(uuid));
@@ -362,18 +424,18 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
 
     private void setRootRemote(String uuid) {
         while (true) {
-            try {
-                synchronized (mergeRootMonitor) {
+            synchronized (mergeRootMonitor) {
+                try {
                     final ZMQ.Socket socket = nodeStateWriter[0].get();
                     socket.send("journal " + instance + " " + uuid);
                     socket.recvStr(); // ignore
-                }
-                break;
-            } catch (Throwable t) {
-                log.warn(t.toString());
-                try {
-                    Thread.sleep(100);
-                } catch (InterruptedException e) {
+                    break;
+                } catch (Throwable t) {
+                    log.warn(t.toString() + " at line " + line.get());
+                    try {
+                        Thread.sleep(100);
+                    } catch (InterruptedException e) {
+                    }
                 }
             }
         }
@@ -422,37 +484,24 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         return after;
     }
 
+    @NotNull
     public ZeroMQNodeState readNodeState(String uuid) {
-        try {
-            if (log.isTraceEnabled()) {
-                log.trace("{} n? {}", Thread.currentThread().getId(), uuid);
-            }
-            return nodeStateCache.get(uuid, () -> {
-                if (emptyNode.getUuid().equals(uuid)) {
-                    return emptyNode;
-                }
-                final String sNode = read(uuid);
-                try {
-                    final ZeroMQNodeState ret = ZeroMQNodeState.deSerialise(this, sNode, this::readNodeState, this::write);
-                    return ret;
-                } catch (ZeroMQNodeState.ParseFailure parseFailure) {
-                    if ("Node not found".equals(sNode)) {
-                        log.error("Node not found: " + uuid);
-                        throw new IllegalStateException("Node not found");
-                    } else {
-                        log.error(parseFailure.getMessage());
-                        throw new IllegalStateException(parseFailure);
-                    }
-                }
-            });
-        } catch (ExecutionException e) {
-            throw new IllegalStateException(e);
+        if (log.isTraceEnabled()) {
+            log.trace("{} n? {}", Thread.currentThread().getId(), uuid);
         }
+        if (emptyNode.getUuid().equals(uuid)) {
+            return emptyNode;
+        }
+        final ZeroMQNodeState ret = nodeStateCache.get(uuid);
+        if (ret == null) {
+            throw new IllegalStateException("Node not found: " + uuid);
+        }
+        return ret;
     }
 
     private String read(String uuid) {
         if (!remoteReads) {
-            return "";
+            throw new IllegalStateException("read(uuid) called with remoteReads == false");
         }
         StringBuilder msg;
         final ZMQ.Socket socket = nodeStateReader[0].get();
@@ -481,8 +530,10 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         if (skip == true) {
             if (event.startsWith("b64!")) {
                 skip = false;
+                return;
+            } else if (event.startsWith("b")) {
+                return;
             }
-            return;
         }
         // TODO:
         // for some reason, this blob (and only this one!) is not written correctly:
@@ -491,25 +542,37 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         //          but never arrives at the backend
         //          and the quickstart waits forever for a confirmation
         // we ignore the problem for now and just skip this blob
-        if (event.contains("2E79040765B71C748E4641664489CAD5")) {
+        if (event.startsWith("b64+ 2E79040765B71C748E4641664489CAD5")) {
             skip = true;
             return;
         }
         if (writeBackNodes) {
             synchronized (mergeRootMonitor) {
-                final ZMQ.Socket writer = nodeStateWriter[0].get();
-                writer.send(event);
-                log.trace(writer.recvStr()); // ignore
+                long currentLine = line.incrementAndGet();
+                try {
+                    final ZMQ.Socket writer = nodeStateWriter[0].get();
+                    writer.send(event);
+                    log.trace(writer.recvStr()); // ignore
+                } catch (Throwable t) {
+                    log.error(t.getMessage() + " at line " + currentLine);
+                }
             }
         }
     }
 
     void write(ZeroMQNodeState nodeState) {
         final String newUuid = nodeState.getUuid();
-        if (nodeStateCache.getIfPresent(newUuid) != null) {
+        if (nodeStateCache.get(newUuid) != null) {
             return;
         }
         nodeStateCache.put(newUuid, nodeState);
+        if (nodeStateOutput != null) {
+            final String msg = nodeState.getUuid() + "\n" + nodeState.getSerialised() + "\n";
+            try {
+                nodeStateOutput.write(msg.getBytes());
+            } catch (IOException e) {
+            }
+        }
     }
 
     private void writeBlob(ZeroMQBlob blob) throws IOException {
@@ -517,7 +580,11 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
             return;
         }
         synchronized (mergeRootMonitor) {
-            LoggingHook.writeBlob(blob, this::write);
+            try {
+                LoggingHook.writeBlob(blob, this::write);
+            } catch (Throwable t) {
+                log.error(t.getMessage() + " at line " + line.get());
+            }
         }
     }
 
@@ -558,7 +625,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
     @Override
     public Blob createBlob(InputStream inputStream) throws IOException {
         final ZeroMQBlob blob = ZeroMQBlob.newInstance(inputStream);
-        if (blobCache.getIfPresent(blob.getReference()) == null) {
+        if (blobCache.get(blob.getReference()) == null) {
             writeBlob(blob);
             blobCache.put(blob.getReference(), blob);
         }
@@ -583,13 +650,12 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
             if (reference == null) {
                 throw new NullPointerException("reference is null");
             }
-            return blobCache.get(reference, () -> {
-                ZeroMQBlob ret = ZeroMQBlob.newInstance(reference, readBlob(reference));
-                return ret;
-            });
+            return checkNotNull(blobCache.get(reference));
         } catch (Exception e) {
             log.error("Could not load blob: " + e.toString());
-            return ZeroMQBlob.newInstance(new ByteArrayInputStream((reference + " not found: " + e.toString()).getBytes()));
+            ZeroMQBlob ret = ZeroMQBlob.newInstance(new ByteArrayInputStream((reference + " not found: " + e.toString()).getBytes()));
+            ret.setReference(reference);
+            return ret;
         }
     }
 
@@ -801,5 +867,53 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
 
             }
         };
+    }
+
+    private static interface KVStore<K, V> {
+        @Nullable
+        public V get(K key);
+        public void put(K key, V value);
+    }
+
+    private static class NodeStateMemoryStore<K, V> implements KVStore<K, V> {
+        private final Map<K, V> store;
+
+        public NodeStateMemoryStore(Map<K, V> store) {
+            this.store = store;
+        }
+
+        @Override
+        public V get(K key) {
+            return store.get(key);
+        }
+
+        @Override
+        public void put(K key, V value) {
+            store.put(key, value);
+        }
+    }
+
+    private static class NodeStateCache<K, V> implements KVStore<K, V> {
+        private final Cache<K, V> cache;
+        private final Function<K, V> remoteReader;
+
+        public NodeStateCache(Cache<K, V> cache, Function<K, V> remoteReader) {
+            this.cache = cache;
+            this.remoteReader = remoteReader;
+        }
+
+        @Override
+        public V get(K key) {
+            try {
+                return cache.get(key, () -> remoteReader.apply(key));
+            } catch (ExecutionException e) {
+                return null;
+            }
+        }
+
+        @Override
+        public void put(K key, V value) {
+            cache.put(key, value);
+        }
     }
 }
