@@ -45,9 +45,11 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.StringTokenizer;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class NodeStateAggregator implements Runnable {
 
@@ -75,8 +77,17 @@ public class NodeStateAggregator implements Runnable {
         consumer.subscribe(Collections.singletonList(TOPIC), new HandleRebalance());
         records = null;
         recordHandler = new RecordHandler(instance);
-        recordHandler.setOnCommit(() -> consumer.commitSync());
-        recordHandler.setOnNode(() -> consumer.commitSync());
+        recordHandler.setOnCommit(() -> {
+            try {
+                consumer.commitSync();
+            } catch (Exception e) {
+            }
+        });
+        recordHandler.setOnNode(() -> {
+            try {
+                consumer.commitSync();
+            } catch (Exception e) {}
+        });
     }
 
     private ConsumerRecord<String, String> nextRecord() {
@@ -114,6 +125,14 @@ public class NodeStateAggregator implements Runnable {
         return recordHandler.getNodeStore();
     }
 
+    public String getJournalHead(String journal) {
+        final String ret = recordHandler.heads.get(journal);
+        if (ret == null) {
+            return "undefined";
+        }
+        return ret;
+    }
+
     private static class HandleRebalance implements ConsumerRebalanceListener {
         public void onPartitionsAssigned(Collection<TopicPartition> partitions) {
             // Implement what you want to do once rebalancing is done.
@@ -136,9 +155,11 @@ public class NodeStateAggregator implements Runnable {
         private Runnable onCommit;
         private Runnable onNode;
         private int line = 0;
+        private final Map<String, String> heads;
 
         public RecordHandler(String instance) {
             this.instance = instance;
+            this.heads = new ConcurrentHashMap<>();
             nodeStore = new ZeroMQNodeStore("aggregator");
             // It's about time the ZeroMQNodeStore gets its own builder...
             nodeStore.setClusterInstances(1);
@@ -168,7 +189,7 @@ public class NodeStateAggregator implements Runnable {
             switch (key) {
                 case "R:": {
                     if (nodeUuids.size() != 0) {
-                        throw new IllegalStateException("rootUuid is not null");
+                        throw new IllegalStateException("rootUuid is not null at line " + line);
                     }
                     final String newUuid = tokens.nextToken();
                     nodeUuids.add(newUuid);
@@ -176,22 +197,7 @@ public class NodeStateAggregator implements Runnable {
                         throw new IllegalStateException("builders.size() is not 0");
                     }
                     final String baseUuid = tokens.nextToken();
-                    final String rootUuid = nodeStore.readRoot();
-                    if (!baseUuid.equals(rootUuid)
-                            // special case: empty node store after init:
-                            && !"823f2252-db37-b0ca-3f7e-09cd073b530a".equals(rootUuid)) {
-                        final StringBuilder msg = new StringBuilder();
-                        msg
-                                .append("Base root state is not the expected one. ")
-                                .append("Line: ")
-                                .append(line)
-                                .append(", expected: ")
-                                .append(baseUuid)
-                                .append(", actual: ")
-                                .append(rootUuid);
-                       throw new IllegalStateException(msg.toString());
-                    }
-                    builders.add(nodeStore.getSuperRoot().builder());
+                    builders.add(nodeStore.readNodeState(baseUuid).builder());
                     break;
                 }
 
@@ -202,14 +208,11 @@ public class NodeStateAggregator implements Runnable {
                     final NodeBuilder rootBuilder = builders.remove(0);
                     final NodeState rootState = rootBuilder.getNodeState();
                     final ZeroMQNodeState baseState = (ZeroMQNodeState) rootBuilder.getBaseState();
-                    //final ZeroMQNodeState zmqRootState = nodeStore.mergeSuperRoot(rootState, baseState);
                     final ZeroMQNodeState zmqRootState = (ZeroMQNodeState) rootState;
-                    nodeStore.setRoot(zmqRootState.getUuid());
                     final String nodeUuid = nodeUuids.size() == 1 ? nodeUuids.get(0) : "size is " + nodeUuids.size();
                     if (nodeUuids.size() != 1 || !nodeUuid.equals(zmqRootState.getUuid())) {
                         // throw new IllegalStateException("new uuid is not the expected one");
-                        log.warn("Expected uuid: {}, actual uuid: {}", nodeUuid, zmqRootState.getUuid());
-                        System.err.format("Expected uuid: {}, actual uuid: {}", nodeUuid, zmqRootState.getUuid());
+                        warn(String.format("Expected uuid: %s, actual uuid: %s", nodeUuid, zmqRootState.getUuid()));
                     }
                     nodeUuids.clear();
                     if (onCommit != null) {
@@ -249,7 +252,7 @@ public class NodeStateAggregator implements Runnable {
                     final String baseUuid = ((ZeroMQNodeState) childBuilder.getBaseState()).getUuid();
                     final String expectedBaseUuid = tokens.nextToken();
                     if (!baseUuid.equals(expectedBaseUuid)) {
-                        System.err.format("Expected baseUuid: %s, actual: %s", expectedBaseUuid, baseUuid);
+                        error(String.format("Expected baseUuid: %s, actual: %s", expectedBaseUuid, baseUuid));
                     }
                     builders.add(childBuilder);
                     break;
@@ -272,9 +275,7 @@ public class NodeStateAggregator implements Runnable {
                     final String nodeUuid = nodeUuids.remove(nodeUuids.size() - 1);
                     final String builderUuid = ((ZeroMQNodeState) builder.getNodeState()).getUuid();
                     if (!nodeUuid.equals(builderUuid)) {
-                        // throw new IllegalStateException("new uuid is not the expected one");
-                        log.warn("Expected uuid: {}, actual uuid: {}", nodeUuid, builderUuid);
-                        System.err.format("Expected uuid: %s, actual uuid: %s", nodeUuid, builderUuid);
+                        warn(String.format("Expected uuid: %s, actual uuid: %s", nodeUuid, builderUuid));
                     }
                     if (onNode != null) {
                         onNode.run();
@@ -321,7 +322,7 @@ public class NodeStateAggregator implements Runnable {
                         currentBlobFile = File.createTempFile("b64temp", "dat", blobDir);
                         currentBlobFos = new FileOutputStream(currentBlobFile);
                     } catch (IOException e) {
-                        log.error("Unable to create temp file, looping forever");
+                        error("Unable to create temp file, looping forever");
                         while (true) {
                             try {
                                 Thread.sleep(1000);
@@ -380,17 +381,41 @@ public class NodeStateAggregator implements Runnable {
                 case "journal": {
                     final String instance = tokens.nextToken();
                     final String head = tokens.nextToken();
-                    if (!this.instance.equals(instance)) {
-                        break;
-                    }
-                    nodeStore.setRoot(head);
+                    heads.put(instance, head);
                     break;
                 }
             }
         }
 
+        private String formatError(String baseUuid, String rootUuid) {
+            final StringBuilder msg = new StringBuilder();
+            msg
+                    .append("Base root state is not the expected one. ")
+                    .append("Line: ")
+                    .append(line)
+                    .append(", expected: ")
+                    .append(baseUuid)
+                    .append(", actual: ")
+                    .append(rootUuid)
+                    .append('\n')
+                    .append('\n')
+                    .append(nodeStore.readNodeState(rootUuid).getSerialised())
+            ;
+            return msg.toString();
+        }
+
         public ZeroMQNodeStore getNodeStore() {
             return nodeStore;
+        }
+
+        private void error(String message) {
+            log.warn(line + " " + message);
+            System.err.println(line + " " + message);
+        }
+
+        private void warn(String message) {
+            log.warn(line + " " + message);
+            System.err.println(line + " " + message);
         }
     }
 }

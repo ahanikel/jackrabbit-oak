@@ -106,6 +106,12 @@ public class ZeroMQBackendStore {
             public void run() {
                 while (!isInterrupted()) {
                     try {
+                        while (readerService.hasReceiveMore()) {
+                            readerService.recv();
+                        }
+                        while (writerService.hasReceiveMore()) {
+                            writerService.recv();
+                        }
                         pollerItems.poll();
                         if (pollerItems.pollin(0)) {
                             handleReaderService(readerService.recvStr());
@@ -164,11 +170,16 @@ public class ZeroMQBackendStore {
     }
 
     void handleReaderService(String msg) {
-        // final String sNode = (String) kafkaStore.get(msg);
-        final ZeroMQNodeState nodeState = nodeStateAggregator.getNodeStore().readNodeState(msg);
-        final String sNode = nodeState.getSerialised();
-        if (sNode != null) {
-            readerService.send(sNode);
+        String ret = null;
+        if (msg.startsWith("journal ")) {
+            final String instance = msg.substring("journal ".length());
+            ret = nodeStateAggregator.getJournalHead(instance);
+        } else {
+            final ZeroMQNodeState nodeState = nodeStateAggregator.getNodeStore().readNodeState(msg);
+            ret = nodeState.getSerialised();
+        }
+        if (ret != null) {
+            readerService.send(ret);
         } else {
             readerService.send("Node not found");
             System.err.println("Requested node not found: " + msg);

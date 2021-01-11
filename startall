@@ -10,6 +10,7 @@ export backendPrefix=localhost
 export blobendPrefix=localhost
 export journalPrefix=localhost
 export initJournal=undefined
+export logNodeStates=true
 
 ps auxww|grep java|grep quickstart|awk '{print $2}'|xargs kill -9
 #(cd /Users/axel/Documents/git/jackrabbit-oak/quickstart-remotesegment-docker && docker-compose down)

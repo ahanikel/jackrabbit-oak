@@ -124,13 +124,15 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
         val.append("> ");
         if (ps.getType() == BINARY) {
             val.append("= ");
-            final Blob blob = ps.getValue(BINARY);
-            //appendBlob(val, blob);
-            val.append(blob.getReference());
+            try {
+                final Blob blob = ps.getValue(BINARY);
+                val.append(blob.getReference());
+            } catch (Throwable t) {
+                val.append(safeEncode(t.getMessage()));
+            }
         } else if (ps.getType() == BINARIES) {
             val.append("= [");
             ps.getValue(BINARIES).forEach((Blob b) -> {
-                //appendBlob(val, b);
                 val.append(b.getReference());
                 val.append(',');
             });
