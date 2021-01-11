@@ -18,17 +18,17 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq.kafka;
 
-import org.apache.jackrabbit.oak.store.zeromq.kafka.ZeroMQBackendStore;
+import org.apache.jackrabbit.oak.store.zeromq.BackendStore;
 import org.junit.Before;
 import org.junit.Test;
 import org.zeromq.ZMQ;
 
-import static org.apache.jackrabbit.oak.store.zeromq.kafka.ZeroMQBackendStore.ZEROMQ_READER_PORT;
-import static org.apache.jackrabbit.oak.store.zeromq.kafka.ZeroMQBackendStore.ZEROMQ_WRITER_PORT;
+import static org.apache.jackrabbit.oak.store.zeromq.kafka.KafkaBackendStore.ZEROMQ_READER_PORT;
+import static org.apache.jackrabbit.oak.store.zeromq.kafka.KafkaBackendStore.ZEROMQ_WRITER_PORT;
 import static org.junit.Assert.assertEquals;
 
-public class ZeroMQBackendStoreTest {
-    private ZeroMQBackendStore store;
+public class KafkaBackendStoreTest {
+    private BackendStore store;
     private int readerPort;
     private int writerPort;
     private ZMQ.Context context;
@@ -37,7 +37,7 @@ public class ZeroMQBackendStoreTest {
 
     @Before
     public void testInit() {
-        store = new ZeroMQBackendStore("golden");
+        store = new KafkaBackendStore("golden");
         try {
             readerPort = Integer.parseInt(System.getenv(ZEROMQ_READER_PORT));
         } catch (NumberFormatException e) {

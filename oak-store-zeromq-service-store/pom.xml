@@ -90,7 +90,7 @@
                             <archive>
                                 <manifest>
                                     <mainClass>
-                                        org.apache.jackrabbit.oak.store.zeromq.kafka.ZeroMQBackendStore
+                                        org.apache.jackrabbit.oak.store.zeromq.kafka.KafkaBackendStore
                                     </mainClass>
                                 </manifest>
                             </archive>
