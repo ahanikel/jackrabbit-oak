@@ -66,9 +66,19 @@ public class LogfileNodeStateAggregator implements org.apache.jackrabbit.oak.sto
     public void run() {
         while (true) {
             final String line = nextRecord();
+            if (line == null) {
+                caughtup = true;
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                }
+                break;
+            }
             final int afterKey = line.indexOf(' ');
             if (afterKey >= 0) {
                 recordHandler.handleRecord(line.substring(0, afterKey), line.substring(afterKey + 1));
+            } else {
+                recordHandler.handleRecord(line, "");
             }
         }
     }
