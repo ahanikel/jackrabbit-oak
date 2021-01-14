@@ -18,7 +18,7 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq.kafka;
 
-import org.apache.jackrabbit.oak.store.zeromq.BackendStore;
+import org.apache.jackrabbit.oak.store.zeromq.ZeroMQBackendStore;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.serialization.StringSerializer;
@@ -29,7 +29,7 @@ import java.util.Properties;
 /**
  * A store used for in-memory operations.
  */
-public class KafkaBackendStore extends org.apache.jackrabbit.oak.store.zeromq.ZeroMQBackendStore {
+public class KafkaBackendStore extends ZeroMQBackendStore {
 
     private String kafkaTopic;
     private KafkaProducer<String, String> producer;
@@ -76,22 +76,6 @@ public class KafkaBackendStore extends org.apache.jackrabbit.oak.store.zeromq.Ze
         if (producer != null) {
             producer.close();
             producer = null;
-        }
-    }
-
-    public static void main(String[] args) {
-        if (args.length != 1) {
-            System.err.println("Usage: java " + KafkaBackendStore.class.getCanonicalName() + " <instanceName>");
-            System.exit(1);
-        }
-        final String instance = args[0];
-        final BackendStore backendStore = new KafkaBackendStore(instance);
-        while (true) {
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                break;
-            }
         }
     }
 }

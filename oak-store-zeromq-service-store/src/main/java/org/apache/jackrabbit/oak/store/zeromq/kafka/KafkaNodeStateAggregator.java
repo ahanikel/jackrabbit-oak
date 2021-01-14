@@ -103,6 +103,7 @@ public class KafkaNodeStateAggregator implements org.apache.jackrabbit.oak.store
 
     @Override
     public boolean hasCaughtUp() {
+        log.info("We have caught up!");
         return caughtup;
     }
 
@@ -123,10 +124,12 @@ public class KafkaNodeStateAggregator implements org.apache.jackrabbit.oak.store
     private static class HandleRebalance implements ConsumerRebalanceListener {
         public void onPartitionsAssigned(Collection<TopicPartition> partitions) {
             // Implement what you want to do once rebalancing is done.
+            log.warn("Partitions reassigned");
         }
 
         public void onPartitionsRevoked(Collection<TopicPartition> partitions) {
             // commit current method
+            log.warn("Partitions revoked");
         }
     }
 }

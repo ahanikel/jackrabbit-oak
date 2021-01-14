@@ -53,6 +53,7 @@ public class LogfileNodeStateAggregator implements org.apache.jackrabbit.oak.sto
                 try {
                     Thread.sleep(100);
                 } catch (InterruptedException interruptedException) {
+                    return null;
                 }
             }
         }
@@ -67,6 +68,7 @@ public class LogfileNodeStateAggregator implements org.apache.jackrabbit.oak.sto
         while (true) {
             final String line = nextRecord();
             if (line == null) {
+                log.info("We have caught up!");
                 caughtup = true;
                 try {
                     Thread.sleep(100);
