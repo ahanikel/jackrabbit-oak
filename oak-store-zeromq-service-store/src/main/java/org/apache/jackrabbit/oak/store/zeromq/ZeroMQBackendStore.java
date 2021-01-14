@@ -1,11 +1,14 @@
 package org.apache.jackrabbit.oak.store.zeromq;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.zeromq.ZMQ;
 
 import java.util.function.Consumer;
 
 public abstract class ZeroMQBackendStore implements BackendStore {
 
+    public static final Logger log = LoggerFactory.getLogger(ZeroMQBackendStore.class);
     public static final String ZEROMQ_READER_PORT = "ZEROMQ_READER_PORT";
     public static final String ZEROMQ_WRITER_PORT = "ZEROMQ_WRITER_PORT";
 
@@ -73,7 +76,7 @@ public abstract class ZeroMQBackendStore implements BackendStore {
                             handleWriterService(writerService.recvStr());
                         }
                     } catch (Throwable t) {
-                        System.err.println(t.toString());
+                        log.error(t.toString());
                     }
                 }
             }
@@ -98,7 +101,7 @@ public abstract class ZeroMQBackendStore implements BackendStore {
             readerService.send(ret);
         } else {
             readerService.send("Node not found");
-            System.err.println("Requested node not found: " + msg);
+            log.error("Requested node not found: {}", msg);
         }
     }
 

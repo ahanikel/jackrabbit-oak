@@ -18,7 +18,9 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq.log;
 
-import org.apache.jackrabbit.oak.store.zeromq.BackendStore;
+import org.apache.jackrabbit.oak.store.zeromq.ZeroMQBackendStore;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -28,8 +30,9 @@ import java.io.OutputStream;
 /**
  * A store used for in-memory operations.
  */
-public class LogBackendStore extends org.apache.jackrabbit.oak.store.zeromq.ZeroMQBackendStore {
+public class LogBackendStore extends ZeroMQBackendStore {
 
+    private static final Logger log = LoggerFactory.getLogger(LogBackendStore.class);
     private final OutputStream logOut;
 
     public LogBackendStore(String instance, String logFile) throws FileNotFoundException {
@@ -44,6 +47,21 @@ public class LogBackendStore extends org.apache.jackrabbit.oak.store.zeromq.Zero
     }
 
     private void writeEvent(String event) {
+        for (int i = 0; ; ++i) {
+            try {
+                logOut.write(event.getBytes());
+                break;
+            } catch (IOException e) {
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException interruptedException) {
+                    break;
+                }
+                if (i % 600 == 0) {
+                    log.error("An IOException occurred but I'll keep retrying every 100ms: {}", e.getMessage());
+                }
+            }
+        }
     }
 
     @Override
@@ -52,23 +70,6 @@ public class LogBackendStore extends org.apache.jackrabbit.oak.store.zeromq.Zero
         try {
             logOut.close();
         } catch (IOException e) {
-        }
-    }
-
-    public static void main(String[] args) throws FileNotFoundException {
-        if (args.length != 2) {
-            System.err.println("Usage: java " + LogBackendStore.class.getCanonicalName() + " <instanceName> <logFileName>");
-            System.exit(1);
-        }
-        final String instance = args[0];
-        final String logFile = args[1];
-        final BackendStore backendStore = new LogBackendStore(instance, logFile);
-        while (true) {
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                break;
-            }
         }
     }
 }

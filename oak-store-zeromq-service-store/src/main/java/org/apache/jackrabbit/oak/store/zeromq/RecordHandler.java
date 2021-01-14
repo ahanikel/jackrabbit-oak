@@ -84,12 +84,16 @@ public class RecordHandler {
         switch (key) {
             case "R:": {
                 if (nodeUuids.size() != 0) {
-                    throw new IllegalStateException("rootUuid is not null at line " + line);
+                    final String msg = "rootUuid is not null at line " + line;
+                    log.error(msg);
+                    throw new IllegalStateException(msg);
                 }
                 final String newUuid = tokens.nextToken();
                 nodeUuids.add(newUuid);
                 if (builders.size() != 0) {
-                    throw new IllegalStateException("builders.size() is not 0");
+                    final String msg = "builders.size() is not 0";
+                    log.error(msg);
+                    throw new IllegalStateException(msg);
                 }
                 final String baseUuid = tokens.nextToken();
                 builders.add(nodeStore.readNodeState(baseUuid).builder());
@@ -98,7 +102,9 @@ public class RecordHandler {
 
             case "R!": {
                 if (builders.size() != 1) {
-                    throw new IllegalStateException("builders.size() is not 1");
+                    final String msg = "builders.size() is not 1";
+                    log.error(msg);
+                    throw new IllegalStateException(msg);
                 }
                 final NodeBuilder rootBuilder = builders.remove(0);
                 final NodeState rootState = rootBuilder.getNodeState();
@@ -107,7 +113,7 @@ public class RecordHandler {
                 final String nodeUuid = nodeUuids.size() == 1 ? nodeUuids.get(0) : "size is " + nodeUuids.size();
                 if (nodeUuids.size() != 1 || !nodeUuid.equals(zmqRootState.getUuid())) {
                     // throw new IllegalStateException("new uuid is not the expected one");
-                    warn(String.format("Expected uuid: %s, actual uuid: %s", nodeUuid, zmqRootState.getUuid()));
+                    log.warn("Expected uuid: %s, actual uuid: %s", nodeUuid, zmqRootState.getUuid());
                 }
                 nodeUuids.clear();
                 if (onCommit != null) {
@@ -118,13 +124,16 @@ public class RecordHandler {
 
             case "n+": {
                 if (builders.size() < 1) {
-                    throw new IllegalStateException();
+                    final String msg = "builders is not empty";
+                    log.error(msg);
+                    throw new IllegalStateException(msg);
                 }
                 final NodeBuilder parentBuilder = builders.get(builders.size() - 1);
                 final String name;
                 try {
                     name = SafeEncode.safeDecode(tokens.nextToken());
                 } catch (UnsupportedEncodingException e) {
+                    log.error(e.getMessage());
                     throw new IllegalStateException(e);
                 }
                 final String newUuid = tokens.nextToken();
@@ -139,6 +148,7 @@ public class RecordHandler {
                 try {
                     name = SafeEncode.safeDecode(tokens.nextToken());
                 } catch (UnsupportedEncodingException e) {
+                    log.error(e.getMessage());
                     throw new IllegalStateException(e);
                 }
                 final String newUuid = tokens.nextToken();
@@ -147,7 +157,7 @@ public class RecordHandler {
                 final String baseUuid = ((ZeroMQNodeState) childBuilder.getBaseState()).getUuid();
                 final String expectedBaseUuid = tokens.nextToken();
                 if (!baseUuid.equals(expectedBaseUuid)) {
-                    error(String.format("Expected baseUuid: %s, actual: %s", expectedBaseUuid, baseUuid));
+                    log.error("Expected baseUuid: %s, actual: %s", expectedBaseUuid, baseUuid);
                 }
                 builders.add(childBuilder);
                 break;
@@ -159,6 +169,7 @@ public class RecordHandler {
                 try {
                     name = SafeEncode.safeDecode(tokens.nextToken());
                 } catch (UnsupportedEncodingException e) {
+                    log.error(e.getMessage());
                     throw new IllegalStateException(e);
                 }
                 parentBuilder.getChildNode(name).remove();
@@ -170,7 +181,7 @@ public class RecordHandler {
                 final String nodeUuid = nodeUuids.remove(nodeUuids.size() - 1);
                 final String builderUuid = ((ZeroMQNodeState) builder.getNodeState()).getUuid();
                 if (!nodeUuid.equals(builderUuid)) {
-                    warn(String.format("Expected uuid: %s, actual uuid: %s", nodeUuid, builderUuid));
+                    log.warn("Expected uuid: %s, actual uuid: %s", nodeUuid, builderUuid);
                 }
                 if (onNode != null) {
                     onNode.run();
@@ -185,6 +196,7 @@ public class RecordHandler {
                 try {
                     ps = ZeroMQPropertyState.deSerialise(nodeStore, value);
                 } catch (ZeroMQPropertyState.ParseFailure parseFailure) {
+                    log.error(parseFailure.getMessage());
                     throw new IllegalStateException(parseFailure);
                 }
                 parentBuilder.setProperty(ps);
@@ -197,6 +209,7 @@ public class RecordHandler {
                 try {
                     name = SafeEncode.safeDecode(tokens.nextToken());
                 } catch (UnsupportedEncodingException e) {
+                    log.error(e.getMessage());
                     throw new IllegalStateException(e);
                 }
                 parentBuilder.removeProperty(name);
@@ -206,26 +219,31 @@ public class RecordHandler {
             case "b64+": {
                 final String ref = tokens.nextToken();
                 if (currentBlobRef != null) {
-                    throw new IllegalStateException("Blob " + currentBlobRef + " still open when starting with new blob " + ref);
+                    final String msg = "Blob " + currentBlobRef + " still open when starting with new blob " + ref;
+                    log.error(msg);
+                    throw new IllegalStateException(msg);
                 }
                 currentBlobRef = ref;
-                try {
-                    File blobDir = new File("/tmp/blobs");
-                    if (!blobDir.exists()) {
-                        blobDir.mkdirs();
-                    }
-                    currentBlobFile = File.createTempFile("b64temp", "dat", blobDir);
-                    currentBlobFos = new FileOutputStream(currentBlobFile);
-                } catch (IOException e) {
-                    error("Unable to create temp file, looping forever");
-                    while (true) {
+                for (int i = 0; ; ++i) {
+                    try {
+                        File blobDir = new File("/tmp/blobs");
+                        if (!blobDir.exists()) {
+                            blobDir.mkdirs();
+                        }
+                        currentBlobFile = File.createTempFile("b64temp", "dat", blobDir);
+                        currentBlobFos = new FileOutputStream(currentBlobFile);
+                    } catch (IOException e) {
+                        if (i % 600 == 0) {
+                            log.error("Unable to create temp file, retrying every 100ms: {}", e.getMessage());
+                        }
                         try {
-                            Thread.sleep(1000);
+                            Thread.sleep(100);
                         } catch (InterruptedException interruptedException) {
+                            break;
                         }
                     }
+                    break;
                 }
-                break;
             }
 
             case "b64x": {
@@ -233,6 +251,7 @@ public class RecordHandler {
                     try {
                         currentBlobFos.close();
                     } catch (IOException e) {
+                        log.warn(e.getMessage());
                     }
                     currentBlobFos = null;
                 }
@@ -246,19 +265,25 @@ public class RecordHandler {
 
             case "b64d": {
                 if (currentBlobFos == null) {
-                    throw new IllegalStateException("Blob is not open");
+                    final String msg = "Blob is not open";
+                    log.error(msg);
+                    throw new IllegalStateException(msg);
                 }
                 try {
                     currentBlobFos.write(b64.decode(tokens.nextToken()));
                 } catch (IOException e) {
-                    throw new IllegalStateException("Unable to write blob " + currentBlobRef);
+                    final String msg = "Unable to write blob " + currentBlobRef;
+                    log.error(msg);
+                    throw new IllegalStateException(msg);
                 }
                 break;
             }
 
             case "b64!": {
                 if (currentBlobFos == null) {
-                    throw new IllegalStateException("Blob is not open");
+                    final String msg = "Blob is not open";
+                    log.error(msg);
+                    throw new IllegalStateException(msg);
                 }
                 try {
                     currentBlobFos.close();
@@ -268,6 +293,7 @@ public class RecordHandler {
                     currentBlobFile = null;
                     currentBlobRef = null;
                 } catch (IOException e) {
+                    log.error(e.getMessage());
                     throw new IllegalStateException(e);
                 }
                 break;
@@ -305,15 +331,5 @@ public class RecordHandler {
 
     public String getJournalHead(String journalName) {
         return heads.get(journalName);
-    }
-
-    private void error(String message) {
-        log.warn(line + " " + message);
-        System.err.println(line + " " + message);
-    }
-
-    private void warn(String message) {
-        log.warn(line + " " + message);
-        System.err.println(line + " " + message);
     }
 }

@@ -20,12 +20,8 @@ package org.apache.jackrabbit.oak.store.zeromq;
 
 import org.apache.jackrabbit.oak.store.zeromq.kafka.KafkaBackendStore;
 import org.apache.jackrabbit.oak.store.zeromq.log.LogBackendStore;
-import org.apache.jackrabbit.oak.store.zeromq.log.LogfileNodeStateAggregator;
 
 import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
 
 /**
  * A store used for in-memory operations.
