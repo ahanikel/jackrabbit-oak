@@ -75,6 +75,9 @@ public class RecordHandler {
     public void handleRecord(String key, String value) {
 
         ++line;
+        if (line % 100000 == 0) {
+            log.info("We're at line {}", line);
+        }
         StringTokenizer tokens = new StringTokenizer(value);
 
         if (key == null) {
@@ -230,7 +233,7 @@ public class RecordHandler {
                         if (!blobDir.exists()) {
                             blobDir.mkdirs();
                         }
-                        currentBlobFile = File.createTempFile("b64temp", "dat", blobDir);
+                        currentBlobFile = File.createTempFile("b64temp", ".dat", blobDir);
                         currentBlobFos = new FileOutputStream(currentBlobFile);
                     } catch (IOException e) {
                         if (i % 600 == 0) {
@@ -244,6 +247,7 @@ public class RecordHandler {
                     }
                     break;
                 }
+                break;
             }
 
             case "b64x": {
@@ -265,8 +269,8 @@ public class RecordHandler {
 
             case "b64d": {
                 if (currentBlobFos == null) {
-                    final String msg = "Blob is not open";
-                    log.error(msg);
+                    final String msg = "{}: Blob is not open";
+                    log.error(msg, line);
                     throw new IllegalStateException(msg);
                 }
                 try {
@@ -289,6 +293,7 @@ public class RecordHandler {
                     currentBlobFos.close();
                     currentBlobFos = null;
                     Blob blob = ZeroMQBlob.newInstance(currentBlobRef, currentBlobFile);
+                    nodeStore.createBlob(blob);
                     log.trace("Created new blob {}", blob.getReference());
                     currentBlobFile = null;
                     currentBlobRef = null;
