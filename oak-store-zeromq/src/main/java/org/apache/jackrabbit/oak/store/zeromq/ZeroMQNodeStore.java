@@ -632,8 +632,13 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         return blob;
     }
 
-    Blob createBlob(Blob blob) throws IOException {
-        if (blob instanceof ZeroMQBlob || blob instanceof ZeroMQBlobStoreBlob) {
+    public Blob createBlob(Blob blob) throws IOException {
+        if (blob instanceof ZeroMQBlob) {
+            blobCache.put(blob.getReference(), (ZeroMQBlob) blob);
+            return blob;
+        }
+        // TODO: remove this?
+        if (blob instanceof ZeroMQBlobStoreBlob) {
             return blob;
         }
         String ref = blob.getReference();
@@ -650,13 +655,21 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
             if (reference == null) {
                 throw new NullPointerException("reference is null");
             }
-            return checkNotNull(blobCache.get(reference));
-        } catch (Exception e) {
-            log.error("Could not load blob: " + e.toString());
-            ZeroMQBlob ret = ZeroMQBlob.newInstance(new ByteArrayInputStream((reference + " not found: " + e.toString()).getBytes()));
-            ret.setReference(reference);
+            final Blob ret = blobCache.get(reference);
+            if (ret == null) {
+                return blobNotFoundBlob(reference, "Blob not in cache");
+            }
             return ret;
+        } catch (Exception e) {
+            return blobNotFoundBlob(reference, e.getMessage());
         }
+    }
+
+    private Blob blobNotFoundBlob(String reference, String message) {
+        log.error("Could not load blob: {} {}", reference, message);
+        ZeroMQBlob ret = ZeroMQBlob.newInstance(new ByteArrayInputStream((reference + " not found: " + message).getBytes()));
+        ret.setReference(reference);
+        return ret;
     }
 
     @Override
