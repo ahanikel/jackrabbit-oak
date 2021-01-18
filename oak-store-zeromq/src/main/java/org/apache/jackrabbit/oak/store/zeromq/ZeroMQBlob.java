@@ -192,6 +192,19 @@ public class ZeroMQBlob implements Blob {
         }
     }
 
+    /*
+        Check if a blob already exists in the filesystem.
+        @return an instance of ZeroMQBlob if it exists, otherwise null.
+    */
+    @Nullable
+    public static ZeroMQBlob newInstance(String reference) {
+        File destFile = new File("/tmp/blobs/", reference);
+        if (destFile.exists()) {
+            return new ZeroMQBlob(reference, () -> destFile);
+        }
+        return null;
+    }
+
     public static ZeroMQBlob newInstance(String reference, File f) {
         try {
             File destFile = new File("/tmp/blobs/", reference);
