@@ -44,6 +44,7 @@ public class RecordHandler {
     private final List<NodeBuilder> builders = new ArrayList<>();
     private String currentBlobRef = null;
     private File currentBlobFile = null;
+    private Blob currentBlobFound = null;
     private FileOutputStream currentBlobFos = null;
     private final Base64.Decoder b64 = Base64.getDecoder();
     private final String instance;
@@ -226,6 +227,15 @@ public class RecordHandler {
                     log.error(msg);
                     throw new IllegalStateException(msg);
                 }
+                if (currentBlobFound != null) {
+                    final String msg = "currentBlobFound is not null";
+                    log.error(msg);
+                    throw new IllegalStateException(msg);
+                }
+                currentBlobFound = ZeroMQBlob.newInstance(ref);
+                if (currentBlobFound != null) {
+                    break;
+                }
                 currentBlobRef = ref;
                 for (int i = 0; ; ++i) {
                     try {
@@ -251,6 +261,10 @@ public class RecordHandler {
             }
 
             case "b64x": {
+                if (currentBlobFound != null) {
+                    currentBlobFound = null;
+                    break;
+                }
                 if (currentBlobFos != null) {
                     try {
                         currentBlobFos.close();
@@ -268,6 +282,9 @@ public class RecordHandler {
             }
 
             case "b64d": {
+                if (currentBlobFound != null) {
+                    break;
+                }
                 if (currentBlobFos == null) {
                     final String msg = "{}: Blob is not open";
                     log.error(msg, line);
@@ -284,6 +301,16 @@ public class RecordHandler {
             }
 
             case "b64!": {
+                if (currentBlobFound != null) {
+                    try {
+                        nodeStore.createBlob(currentBlobFound);
+                    } catch (IOException e) {
+                        log.error(e.getMessage());
+                        throw new IllegalStateException(e);
+                    }
+                    currentBlobFound = null;
+                    break;
+                }
                 if (currentBlobFos == null) {
                     final String msg = "Blob is not open";
                     log.error(msg);
