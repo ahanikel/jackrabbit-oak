@@ -484,7 +484,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         return after;
     }
 
-    @NotNull
+    @Nullable
     public ZeroMQNodeState readNodeState(String uuid) {
         if (log.isTraceEnabled()) {
             log.trace("{} n? {}", Thread.currentThread().getId(), uuid);
@@ -494,7 +494,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         }
         final ZeroMQNodeState ret = nodeStateCache.get(uuid);
         if (ret == null) {
-            throw new IllegalStateException("Node not found: " + uuid);
+            log.warn("Node not found: {} ", uuid);
         }
         return ret;
     }
