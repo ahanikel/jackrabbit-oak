@@ -50,6 +50,7 @@ public class LogBackendStore extends ZeroMQBackendStore {
         for (int i = 0; ; ++i) {
             try {
                 logOut.write(event.getBytes());
+                logOut.write(0x0a);
                 break;
             } catch (IOException e) {
                 try {
