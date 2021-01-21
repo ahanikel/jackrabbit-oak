@@ -18,10 +18,8 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq.kafka;
 
-import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.store.zeromq.AbstractNodeStateAggregator;
-import org.apache.jackrabbit.oak.store.zeromq.RecordHandler;
-import org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeState;
+import org.apache.jackrabbit.oak.store.zeromq.NodeStoreRecordHandler;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -34,7 +32,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.Properties;
-import java.util.StringTokenizer;
 import java.util.UUID;
 
 public class KafkaNodeStateAggregator extends AbstractNodeStateAggregator {
@@ -60,7 +57,7 @@ public class KafkaNodeStateAggregator extends AbstractNodeStateAggregator {
         consumer = new KafkaConsumer<>(props);
         consumer.subscribe(Collections.singletonList(TOPIC), new HandleRebalance());
         records = null;
-        recordHandler = new RecordHandler(instance);
+        recordHandler = new NodeStoreRecordHandler(instance);
         recordHandler.setOnCommit(() -> {
             try {
                 consumer.commitSync();
@@ -93,7 +90,6 @@ public class KafkaNodeStateAggregator extends AbstractNodeStateAggregator {
 
     @Override
     public void run() {
-
         while (true) {
             ConsumerRecord<String, String> rec = nextRecord();
             recordHandler.handleRecord(rec.key(), rec.value());
