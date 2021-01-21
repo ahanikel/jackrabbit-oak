@@ -19,7 +19,10 @@
 package org.apache.jackrabbit.oak.store.zeromq.log;
 
 import com.google.common.io.LineReader;
+import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.store.zeromq.RecordHandler;
+import org.apache.jackrabbit.oak.store.zeromq.ZeroMQBlob;
+import org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeState;
 import org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -91,16 +94,21 @@ public class LogfileNodeStateAggregator implements org.apache.jackrabbit.oak.sto
     }
 
     @Override
-    public ZeroMQNodeStore getNodeStore() {
-        return recordHandler.getNodeStore();
-    }
-
-    @Override
     public String getJournalHead(String journalName) {
         final String ret = recordHandler.getJournalHead(journalName);
         if (ret == null) {
             return "undefined";
         }
         return ret;
+    }
+
+    @Override
+    public ZeroMQNodeState readNodeState(String msg) {
+        return recordHandler.readNodeState(msg);
+    }
+
+    @Override
+    public Blob getBlob(String reference) {
+        return recordHandler.getBlob(reference);
     }
 }

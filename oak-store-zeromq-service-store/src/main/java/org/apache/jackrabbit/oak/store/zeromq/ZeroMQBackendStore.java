@@ -110,7 +110,7 @@ public abstract class ZeroMQBackendStore implements BackendStore {
             final String instance = msg.substring("journal ".length());
             ret = nodeStateAggregator.getJournalHead(instance);
         } else {
-            final ZeroMQNodeState nodeState = nodeStateAggregator.getNodeStore().readNodeState(msg);
+            final ZeroMQNodeState nodeState = nodeStateAggregator.readNodeState(msg);
             if (nodeState != null) {
                 ret = nodeState.getSerialised();
             }

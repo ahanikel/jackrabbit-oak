@@ -357,11 +357,15 @@ public class RecordHandler {
         return msg.toString();
     }
 
-    public ZeroMQNodeStore getNodeStore() {
-        return nodeStore;
-    }
-
     public String getJournalHead(String journalName) {
         return heads.get(journalName);
+    }
+
+    public ZeroMQNodeState readNodeState(String msg) {
+        return nodeStore.readNodeState(msg);
+    }
+
+    public Blob getBlob(String reference) {
+        return nodeStore.getBlob(reference);
     }
 }

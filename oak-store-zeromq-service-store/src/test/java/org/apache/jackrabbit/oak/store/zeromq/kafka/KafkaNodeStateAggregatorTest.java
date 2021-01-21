@@ -59,12 +59,11 @@ public class KafkaNodeStateAggregatorTest {
         }
         Assert.assertEquals("520fef06-50ce-4e5f-8ce1-9ae47d515322",
                 recordHandler
-                        .getNodeStore()
                         .readNodeState("617f9357-5dc5-0f26-8e80-ffef5c938022")
                         .getProperty(":clusterId")
                         .getValue(Type.STRING));
         final byte[] hello = new byte[12];
-        final InputStream blobIs = recordHandler.getNodeStore()
+        final InputStream blobIs = recordHandler
                 .readNodeState("617f9357-5dc5-0f26-8e80-ffef5c938022")
                 .getProperty("testblob")
                 .getValue(Type.BINARY)

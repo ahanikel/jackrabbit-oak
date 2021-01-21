@@ -1,9 +1,10 @@
 package org.apache.jackrabbit.oak.store.zeromq;
 
+import org.apache.jackrabbit.oak.api.Blob;
+
 public interface NodeStateAggregator extends Runnable {
     boolean hasCaughtUp();
-
-    ZeroMQNodeStore getNodeStore();
-
     String getJournalHead(String journalName);
+    ZeroMQNodeState readNodeState(String msg);
+    Blob getBlob(String reference);
 }

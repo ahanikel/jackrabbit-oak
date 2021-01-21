@@ -18,8 +18,9 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq.kafka;
 
+import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.store.zeromq.RecordHandler;
-import org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeStore;
+import org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeState;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -81,7 +82,10 @@ public class KafkaNodeStateAggregator implements org.apache.jackrabbit.oak.store
         if (records.hasNext()) {
             return records.next();
         }
-        caughtup = true;
+        if (!caughtup) {
+            log.info("We have caught up!");
+            caughtup = true;
+        }
         while (!records.hasNext()) {
             records = consumer.poll(Duration.ofMillis(100)).iterator();
         }
@@ -103,13 +107,7 @@ public class KafkaNodeStateAggregator implements org.apache.jackrabbit.oak.store
 
     @Override
     public boolean hasCaughtUp() {
-        log.info("We have caught up!");
         return caughtup;
-    }
-
-    @Override
-    public ZeroMQNodeStore getNodeStore() {
-        return recordHandler.getNodeStore();
     }
 
     @Override
@@ -119,6 +117,16 @@ public class KafkaNodeStateAggregator implements org.apache.jackrabbit.oak.store
             return "undefined";
         }
         return ret;
+    }
+
+    @Override
+    public ZeroMQNodeState readNodeState(String msg) {
+        return recordHandler.readNodeState(msg);
+    }
+
+    @Override
+    public Blob getBlob(String reference) {
+        return recordHandler.getBlob(reference);
     }
 
     private static class HandleRebalance implements ConsumerRebalanceListener {

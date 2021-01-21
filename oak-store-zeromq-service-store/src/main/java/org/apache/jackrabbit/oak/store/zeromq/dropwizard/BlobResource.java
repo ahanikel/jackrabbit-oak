@@ -22,7 +22,7 @@ public class BlobResource {
     @GET
     @Timed
     public StreamRepresentation getBlob(@QueryParam("reference") String reference) {
-        final Blob ret = nodeStateAggregator.getNodeStore().getBlob(reference);
+        final Blob ret = nodeStateAggregator.getBlob(reference);
         return new StreamRepresentation(ret);
     }
 }
