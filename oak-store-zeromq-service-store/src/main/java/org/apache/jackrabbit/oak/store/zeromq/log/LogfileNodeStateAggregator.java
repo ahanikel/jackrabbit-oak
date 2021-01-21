@@ -20,7 +20,7 @@ package org.apache.jackrabbit.oak.store.zeromq.log;
 
 import com.google.common.io.LineReader;
 import org.apache.jackrabbit.oak.store.zeromq.AbstractNodeStateAggregator;
-import org.apache.jackrabbit.oak.store.zeromq.RecordHandler;
+import org.apache.jackrabbit.oak.store.zeromq.NodeStoreRecordHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,7 +37,7 @@ public class LogfileNodeStateAggregator extends AbstractNodeStateAggregator {
 
     public LogfileNodeStateAggregator(String instance, String filePath) throws FileNotFoundException {
         caughtup = false;
-        recordHandler = new RecordHandler(instance);
+        recordHandler = new NodeStoreRecordHandler(instance);
         final InputStreamReader inputStreamReader = new InputStreamReader(new FileInputStream(filePath));
         reader = new LineReader(inputStreamReader);
     }
