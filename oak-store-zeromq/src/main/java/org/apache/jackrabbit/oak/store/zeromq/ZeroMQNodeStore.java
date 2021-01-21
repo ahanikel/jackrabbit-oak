@@ -201,11 +201,10 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
                 } catch (ZeroMQNodeState.ParseFailure parseFailure) {
                     if ("Node not found".equals(sNode)) {
                         log.error("Node not found: " + uuid);
-                        throw new IllegalStateException("Node not found");
                     } else {
                         log.error(parseFailure.getMessage());
-                        throw new IllegalStateException(parseFailure);
                     }
+                    return null;
                 }
             });
             final Cache<String, ZeroMQBlob> bCache =
