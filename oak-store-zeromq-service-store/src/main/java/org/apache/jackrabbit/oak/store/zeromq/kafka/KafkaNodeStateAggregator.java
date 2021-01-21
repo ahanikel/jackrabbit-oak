@@ -19,6 +19,7 @@
 package org.apache.jackrabbit.oak.store.zeromq.kafka;
 
 import org.apache.jackrabbit.oak.api.Blob;
+import org.apache.jackrabbit.oak.store.zeromq.AbstractNodeStateAggregator;
 import org.apache.jackrabbit.oak.store.zeromq.RecordHandler;
 import org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeState;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
@@ -36,15 +37,13 @@ import java.util.Properties;
 import java.util.StringTokenizer;
 import java.util.UUID;
 
-public class KafkaNodeStateAggregator implements org.apache.jackrabbit.oak.store.zeromq.NodeStateAggregator {
+public class KafkaNodeStateAggregator extends AbstractNodeStateAggregator {
 
     private static final String TOPIC = "nodestates";
     private static final Logger log = LoggerFactory.getLogger(KafkaNodeStateAggregator.class);
 
-    private final RecordHandler recordHandler;
     private final KafkaConsumer<String, String> consumer;
     private Iterator<ConsumerRecord<String, String>> records;
-    private volatile boolean caughtup;
 
     public KafkaNodeStateAggregator(String instance) {
         caughtup = false;
@@ -92,10 +91,6 @@ public class KafkaNodeStateAggregator implements org.apache.jackrabbit.oak.store
         return records.next();
     }
 
-    private StringTokenizer tokens(String value) {
-        return new StringTokenizer(value);
-    }
-
     @Override
     public void run() {
 
@@ -103,30 +98,6 @@ public class KafkaNodeStateAggregator implements org.apache.jackrabbit.oak.store
             ConsumerRecord<String, String> rec = nextRecord();
             recordHandler.handleRecord(rec.key(), rec.value());
         }
-    }
-
-    @Override
-    public boolean hasCaughtUp() {
-        return caughtup;
-    }
-
-    @Override
-    public String getJournalHead(String journalName) {
-        final String ret = recordHandler.getJournalHead(journalName);
-        if (ret == null) {
-            return "undefined";
-        }
-        return ret;
-    }
-
-    @Override
-    public ZeroMQNodeState readNodeState(String msg) {
-        return recordHandler.readNodeState(msg);
-    }
-
-    @Override
-    public Blob getBlob(String reference) {
-        return recordHandler.getBlob(reference);
     }
 
     private static class HandleRebalance implements ConsumerRebalanceListener {
