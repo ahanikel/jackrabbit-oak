@@ -21,7 +21,7 @@ public class NodeStateResource {
     @GET
     @Timed
     public KeyValueRepresentation getNodeState(@QueryParam("uuid") String uuid) {
-        String ret = nodeStateAggregator.getNodeStore().readNodeState(uuid).getSerialised();
+        String ret = nodeStateAggregator.readNodeState(uuid).getSerialised();
         return new KeyValueRepresentation(uuid, ret);
     }
 }
