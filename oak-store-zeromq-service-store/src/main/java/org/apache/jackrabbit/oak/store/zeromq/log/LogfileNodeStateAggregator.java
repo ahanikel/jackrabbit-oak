@@ -19,11 +19,8 @@
 package org.apache.jackrabbit.oak.store.zeromq.log;
 
 import com.google.common.io.LineReader;
-import org.apache.jackrabbit.oak.api.Blob;
+import org.apache.jackrabbit.oak.store.zeromq.AbstractNodeStateAggregator;
 import org.apache.jackrabbit.oak.store.zeromq.RecordHandler;
-import org.apache.jackrabbit.oak.store.zeromq.ZeroMQBlob;
-import org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeState;
-import org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,15 +28,12 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.util.StringTokenizer;
 
-public class LogfileNodeStateAggregator implements org.apache.jackrabbit.oak.store.zeromq.NodeStateAggregator {
+public class LogfileNodeStateAggregator extends AbstractNodeStateAggregator {
 
     private static final Logger log = LoggerFactory.getLogger(LogfileNodeStateAggregator.class);
 
-    private final RecordHandler recordHandler;
     private final LineReader reader;
-    private volatile boolean caughtup;
 
     public LogfileNodeStateAggregator(String instance, String filePath) throws FileNotFoundException {
         caughtup = false;
@@ -62,10 +56,6 @@ public class LogfileNodeStateAggregator implements org.apache.jackrabbit.oak.sto
         }
     }
 
-    private StringTokenizer tokens(String value) {
-        return new StringTokenizer(value);
-    }
-
     @Override
     public void run() {
         while (true) {
@@ -86,29 +76,5 @@ public class LogfileNodeStateAggregator implements org.apache.jackrabbit.oak.sto
                 recordHandler.handleRecord(line, "");
             }
         }
-    }
-
-    @Override
-    public boolean hasCaughtUp() {
-        return caughtup;
-    }
-
-    @Override
-    public String getJournalHead(String journalName) {
-        final String ret = recordHandler.getJournalHead(journalName);
-        if (ret == null) {
-            return "undefined";
-        }
-        return ret;
-    }
-
-    @Override
-    public ZeroMQNodeState readNodeState(String msg) {
-        return recordHandler.readNodeState(msg);
-    }
-
-    @Override
-    public Blob getBlob(String reference) {
-        return recordHandler.getBlob(reference);
     }
 }

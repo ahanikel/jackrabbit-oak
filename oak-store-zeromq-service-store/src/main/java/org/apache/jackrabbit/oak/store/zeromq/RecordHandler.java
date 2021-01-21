@@ -361,8 +361,12 @@ public class RecordHandler {
         return heads.get(journalName);
     }
 
-    public ZeroMQNodeState readNodeState(String msg) {
-        return nodeStore.readNodeState(msg);
+    public String readNodeState(String msg) {
+        final ZeroMQNodeState zeroMQNodeState = nodeStore.readNodeState(msg);
+        if (zeroMQNodeState == null) {
+            return null;
+        }
+        return zeroMQNodeState.getSerialised();
     }
 
     public Blob getBlob(String reference) {
