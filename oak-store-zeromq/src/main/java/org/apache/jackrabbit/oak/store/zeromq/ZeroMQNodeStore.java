@@ -561,7 +561,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
 
     void write(ZeroMQNodeState nodeState) {
         final String newUuid = nodeState.getUuid();
-        if (nodeStateCache.get(newUuid) != null) {
+        if (nodeStateCache.isCached(newUuid)) {
             return;
         }
         nodeStateCache.put(newUuid, nodeState);
@@ -885,6 +885,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         @Nullable
         public V get(K key);
         public void put(K key, V value);
+        public boolean isCached(K key);
     }
 
     private static class NodeStateMemoryStore<K, V> implements KVStore<K, V> {
@@ -902,6 +903,11 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         @Override
         public void put(K key, V value) {
             store.put(key, value);
+        }
+
+        @Override
+        public boolean isCached(K key) {
+            return store.containsKey(key);
         }
     }
 
@@ -926,6 +932,11 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         @Override
         public void put(K key, V value) {
             cache.put(key, value);
+        }
+
+        @Override
+        public boolean isCached(K key) {
+            return cache.getIfPresent(key) != null;
         }
     }
 }
