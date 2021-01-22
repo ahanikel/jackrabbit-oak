@@ -25,6 +25,7 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
@@ -202,17 +203,18 @@ public class SimpleRecordHandler implements RecordHandler {
                         }
                         currentBlobFile = File.createTempFile("b64temp", ".dat", blobDir);
                         currentBlobFos = new FileOutputStream(currentBlobFile);
+                        break;
                     } catch (IOException e) {
                         if (i % 600 == 0) {
-                            log.error("Unable to create temp file, retrying every 100ms: {}", e.getMessage());
+                            log.error("Unable to create temp file, retrying every 100ms (#{}): {}", i, e.getMessage());
                         }
                         try {
                             Thread.sleep(100);
                         } catch (InterruptedException interruptedException) {
+                            log.info(interruptedException.getMessage());
                             break;
                         }
                     }
-                    break;
                 }
                 break;
             }
@@ -220,7 +222,6 @@ public class SimpleRecordHandler implements RecordHandler {
             case "b64x": {
                 if (currentBlobFound != null) {
                     currentBlobFound = null;
-                    break;
                 }
                 if (currentBlobFos != null) {
                     try {
@@ -275,6 +276,9 @@ public class SimpleRecordHandler implements RecordHandler {
                     currentBlobFile = null;
                     currentBlobRef = null;
                 } catch (IOException e) {
+                    currentBlobFos = null;
+                    currentBlobFile = null;
+                    currentBlobRef = null;
                     log.error(e.getMessage());
                     throw new IllegalStateException(e);
                 }
@@ -286,6 +290,10 @@ public class SimpleRecordHandler implements RecordHandler {
                 final String head = tokens.nextToken();
                 heads.put(instance, head);
                 break;
+            }
+
+            default: {
+                log.warn("Unrecognised key at line {}: {}", key, value);
             }
         }
     }
@@ -311,6 +319,8 @@ public class SimpleRecordHandler implements RecordHandler {
 
     private static class SimpleNodeStore {
         private Map<String, SimpleNodeState> nodeStore;
+        private final boolean writeNodeStates = false; // for debugging
+        private static final File nodeStateDir = new File("/tmp/nodestates"); // for debugging
 
         private SimpleNodeStore() {
             this.nodeStore = new ConcurrentHashMap<>(10000000);
@@ -318,6 +328,9 @@ public class SimpleRecordHandler implements RecordHandler {
             final SimpleNodeState empty = new SimpleNodeState(emptyUuid);
             empty.makeImmutable();
             this.nodeStore.put(emptyUuid, empty);
+            if (writeNodeStates) {
+                nodeStateDir.mkdir();
+            }
         }
 
         private SimpleNodeState getNodeState(String uuid) {
@@ -328,11 +341,25 @@ public class SimpleRecordHandler implements RecordHandler {
             ns.makeImmutable();
             final String uuid = ns.getUuid();
             nodeStore.put(uuid, ns);
+            if (writeNodeStates) {
+                writeNodeState(ns);
+            }
             log.trace("Stored {}, size {}", uuid, nodeStore.size());
         }
 
         public boolean hasNodeState(String uuid) {
             return nodeStore.containsKey(uuid);
+        }
+
+        private void writeNodeState(SimpleNodeState ns) {
+            try {
+                final OutputStream os = new FileOutputStream(new File(nodeStateDir, ns.getUuid()));
+                final String s = ns.serialise();
+                os.write(s.getBytes());
+                os.close();
+            } catch (IOException ioe) {
+                log.warn(ioe.getMessage());
+            }
         }
     }
 

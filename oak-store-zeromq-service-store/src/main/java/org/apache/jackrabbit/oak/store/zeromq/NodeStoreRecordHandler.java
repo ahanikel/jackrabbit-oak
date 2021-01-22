@@ -27,6 +27,7 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -52,6 +53,8 @@ public class NodeStoreRecordHandler implements RecordHandler {
     private Runnable onNode;
     private int line = 0;
     private final Map<String, String> heads;
+    private final boolean writeNodeStates = false; // for debugging
+    private static final File nodeStateDir = new File("/tmp/nodestates.works"); // for debugging
 
     public NodeStoreRecordHandler(String instance) {
         this.instance = instance;
@@ -63,6 +66,9 @@ public class NodeStoreRecordHandler implements RecordHandler {
         nodeStore.setWriteBackJournal(false);
         nodeStore.setWriteBackNodes(false);
         nodeStore.init();
+        if (writeNodeStates) {
+            nodeStateDir.mkdir();
+        }
     }
 
     @Override
@@ -126,6 +132,9 @@ public class NodeStoreRecordHandler implements RecordHandler {
                 if (onCommit != null) {
                     onCommit.run();
                 }
+                if (writeNodeStates) {
+                    writeNodeState(zmqRootState.getUuid(), zmqRootState.getSerialised());
+                }
                 break;
             }
 
@@ -186,12 +195,16 @@ public class NodeStoreRecordHandler implements RecordHandler {
             case "n!": {
                 final ZeroMQNodeBuilder builder = (ZeroMQNodeBuilder) builders.remove(builders.size() - 1);
                 final String nodeUuid = nodeUuids.remove(nodeUuids.size() - 1);
-                final String builderUuid = ((ZeroMQNodeState) builder.getNodeState()).getUuid();
+                final ZeroMQNodeState zeroMQNodeState = ((ZeroMQNodeState) builder.getNodeState());
+                final String builderUuid = zeroMQNodeState.getUuid();
                 if (!nodeUuid.equals(builderUuid)) {
                     log.warn("Expected uuid: %s, actual uuid: %s", nodeUuid, builderUuid);
                 }
                 if (onNode != null) {
                     onNode.run();
+                }
+                if (writeNodeStates) {
+                    writeNodeState(zeroMQNodeState.getUuid(), zeroMQNodeState.getSerialised());
                 }
                 break;
             }
@@ -343,23 +356,6 @@ public class NodeStoreRecordHandler implements RecordHandler {
         }
     }
 
-    private String formatError(String baseUuid, String rootUuid) {
-        final StringBuilder msg = new StringBuilder();
-        msg
-                .append("Base root state is not the expected one. ")
-                .append("Line: ")
-                .append(line)
-                .append(", expected: ")
-                .append(baseUuid)
-                .append(", actual: ")
-                .append(rootUuid)
-                .append('\n')
-                .append('\n')
-                .append(nodeStore.readNodeState(rootUuid).getSerialised())
-        ;
-        return msg.toString();
-    }
-
     @Override
     public String getJournalHead(String journalName) {
         return heads.get(journalName);
@@ -377,5 +373,15 @@ public class NodeStoreRecordHandler implements RecordHandler {
     @Override
     public Blob getBlob(String reference) {
         return nodeStore.getBlob(reference);
+    }
+
+    private void writeNodeState(String uuid, String ns) {
+        try {
+            final OutputStream os = new FileOutputStream(new File(nodeStateDir, uuid));
+            os.write(ns.getBytes());
+            os.close();
+        } catch (IOException ioe) {
+            log.warn(ioe.getMessage());
+        }
     }
 }
