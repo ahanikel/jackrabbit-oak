@@ -20,14 +20,24 @@ package org.apache.jackrabbit.oak.store.zeromq;
 
 import com.google.common.primitives.Longs;
 import org.apache.jackrabbit.oak.api.PropertyState;
-import org.apache.jackrabbit.oak.spi.state.*;
+import org.apache.jackrabbit.oak.spi.state.AbstractNodeState;
+import org.apache.jackrabbit.oak.spi.state.ChildNodeEntry;
+import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
+import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.UnsupportedEncodingException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -73,7 +83,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
         this.reader = reader;
         this.writer = writer;
         this.uuid = ZeroMQEmptyNodeState.UUID_NULL.toString();
-        serialised = serialise();
+        serialised = runSerialise();
     }
 
     ZeroMQNodeState(ZeroMQNodeStore ns, Map<String, String> children, Map<String, ZeroMQPropertyState> properties, String serialised, Function<String, ZeroMQNodeState> reader, Consumer<ZeroMQNodeState> writer) {
@@ -83,7 +93,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
         this.reader = reader;
         this.writer = writer;
         if (serialised == null) {
-            this.serialised = serialise();
+            this.serialised = runSerialise();
         } else {
             this.serialised = serialised;
         }
@@ -271,7 +281,31 @@ public class ZeroMQNodeState extends AbstractNodeState {
         return serialised;
     }
 
-    private String serialise() {
+    private String runSerialise() {
+        return serialise1(children, properties);
+    }
+
+    static String serialise1(Map<String, String> children, Map<String, ZeroMQPropertyState> properties) {
+        final StringBuilder sb = new StringBuilder();
+        List<String> propertyNames = new ArrayList<>(properties.keySet());
+        propertyNames.sort(Comparator.naturalOrder());
+        for (String name : propertyNames) {
+            properties.get(name).serialise(sb).append('\n');
+        }
+        return ZeroMQNodeState.serialise3(children, sb);
+    }
+
+    static String serialise2(Map<String, String> children, Map<String, String> properties) {
+        final StringBuilder sb = new StringBuilder();
+        List<String> propertyNames = new ArrayList<>(properties.keySet());
+        propertyNames.sort(Comparator.naturalOrder());
+        for (String name : propertyNames) {
+            sb.append(properties.get(name)).append('\n');
+        }
+        return ZeroMQNodeState.serialise3(children, sb);
+    }
+
+    static String serialise3(Map<String, String> children, StringBuilder properties) {
         final AtomicReference<Exception> e = new AtomicReference<>();
         final StringBuilder sb = new StringBuilder();
         sb
@@ -296,11 +330,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
         }
         sb.append("end children\n");
         sb.append("begin properties\n");
-        List<String> propertyNames = new ArrayList<>(properties.keySet());
-        propertyNames.sort(Comparator.naturalOrder());
-        propertyNames.forEach(name ->
-            properties.get(name).serialise(sb).append('\n')
-        );
+        sb.append(properties);
         sb.append("end properties\n");
         sb.append("end ZeroMQNodeState\n");
         return sb.toString();
