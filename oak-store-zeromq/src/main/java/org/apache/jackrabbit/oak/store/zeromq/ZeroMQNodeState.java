@@ -292,48 +292,70 @@ public class ZeroMQNodeState extends AbstractNodeState {
         for (String name : propertyNames) {
             properties.get(name).serialise(sb).append('\n');
         }
-        return ZeroMQNodeState.serialise3(children, sb);
+        return ZeroMQNodeState.serialise3(children, sb, true);
     }
 
+    // This one is for use by the SimpleNodeState. Be aware that this one does not encode
+    // the names.
     static String serialise2(Map<String, String> children, Map<String, String> properties) {
         final StringBuilder sb = new StringBuilder();
-        List<String> propertyNames = new ArrayList<>(properties.keySet());
-        propertyNames.sort(Comparator.naturalOrder());
-        for (String name : propertyNames) {
-            sb.append(properties.get(name)).append('\n');
+        final AtomicReference<Exception> e = new AtomicReference<>();
+        Map<String, String> propertyNames = new HashMap<>();
+        properties.keySet().forEach(pName -> {
+            try {
+                final String pNameDecoded = SafeEncode.safeDecode(pName);
+                propertyNames.put(pNameDecoded, pName);
+            } catch (UnsupportedEncodingException uee) {
+                e.compareAndSet(null, uee);
+            }
+        });
+        if (e.get() != null) {
+            log.error(e.get().getMessage());
+            throw new IllegalStateException(e.get());
         }
-        return ZeroMQNodeState.serialise3(children, sb);
+        List<String> propertyNamesKeySet = new ArrayList<>(propertyNames.keySet());
+        propertyNamesKeySet.sort(Comparator.naturalOrder());
+        for (String name : propertyNamesKeySet) {
+            sb.append(properties.get(propertyNames.get(name))).append('\n');
+        }
+        return ZeroMQNodeState.serialise3(children, sb, false);
     }
 
-    static String serialise3(Map<String, String> children, StringBuilder properties) {
-        final AtomicReference<Exception> e = new AtomicReference<>();
+    static String serialise3(Map<String, String> children, StringBuilder properties, boolean encodeNames) {
         final StringBuilder sb = new StringBuilder();
         sb
             .append("begin ZeroMQNodeState\n")
-            .append("begin children\n");
+            .append("begin children\n")
+            .append(serialiseChildren(children, encodeNames))
+            .append("end children\n")
+            .append("begin properties\n")
+            .append(properties)
+            .append("end properties\n")
+            .append("end ZeroMQNodeState\n");
+        return sb.toString();
+    }
+
+    static StringBuilder serialiseChildren(Map<String, String> children, boolean encodeName) {
+        final StringBuilder sb = new StringBuilder();
+        final AtomicReference<Exception> e = new AtomicReference<>();
         List<String> childNames = new ArrayList<>(children.keySet());
         childNames.sort(Comparator.naturalOrder());
-        childNames.forEach(name ->
-        {
+        childNames.forEach(name -> {
             try {
                 sb
-                    .append(SafeEncode.safeEncode(name))
-                    .append('\t')
-                    .append(children.get(name))
-                    .append('\n');
+                        .append(encodeName ? SafeEncode.safeEncode(name) : name)
+                        .append('\t')
+                        .append(children.get(name))
+                        .append('\n');
             } catch (UnsupportedEncodingException ex) {
                 e.compareAndSet(null, ex);
             }
         });
         if (e.get() != null) {
+            log.error(e.get().getMessage());
             throw new IllegalStateException(e.get());
         }
-        sb.append("end children\n");
-        sb.append("begin properties\n");
-        sb.append(properties);
-        sb.append("end properties\n");
-        sb.append("end ZeroMQNodeState\n");
-        return sb.toString();
+        return sb;
     }
 
     private String generateUuid() throws UnsupportedEncodingException {
