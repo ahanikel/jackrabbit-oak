@@ -213,7 +213,10 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
                             .maximumSize(100000).build();
             blobCache = new NodeStateCache<>(bCache, reference -> {
                 try {
-                    ZeroMQBlob ret = ZeroMQBlob.newInstance(reference, readBlob(reference));
+                    ZeroMQBlob ret = ZeroMQBlob.newInstance(reference);
+                    if (ret == null) {
+                        ret = ZeroMQBlob.newInstance(reference, readBlob(reference));
+                    }
                     return ret;
                 } catch (Throwable t) {
                     log.error("Could not load blob: " + t.toString());
@@ -526,25 +529,6 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
     }
 
     private void write(String event) {
-        if (skip == true) {
-            if (event.startsWith("b64!")) {
-                skip = false;
-                return;
-            } else if (event.startsWith("b")) {
-                return;
-            }
-        }
-        // TODO:
-        // for some reason, this blob (and only this one!) is not written correctly:
-        // b64+ 2E79... is ok
-        // b64d ... is sent on the quickstart side
-        //          but never arrives at the backend
-        //          and the quickstart waits forever for a confirmation
-        // we ignore the problem for now and just skip this blob
-        if (event.startsWith("b64+ 2E79040765B71C748E4641664489CAD5")) {
-            skip = true;
-            return;
-        }
         if (writeBackNodes) {
             synchronized (mergeRootMonitor) {
                 long currentLine = line.incrementAndGet();
