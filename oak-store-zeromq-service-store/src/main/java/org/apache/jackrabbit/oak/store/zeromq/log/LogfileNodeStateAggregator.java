@@ -20,7 +20,6 @@ package org.apache.jackrabbit.oak.store.zeromq.log;
 
 import com.google.common.io.LineReader;
 import org.apache.jackrabbit.oak.store.zeromq.AbstractNodeStateAggregator;
-import org.apache.jackrabbit.oak.store.zeromq.NodeStoreRecordHandler;
 import org.apache.jackrabbit.oak.store.zeromq.SimpleRecordHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
