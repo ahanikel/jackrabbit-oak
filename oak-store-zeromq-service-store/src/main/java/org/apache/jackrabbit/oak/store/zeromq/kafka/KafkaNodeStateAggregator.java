@@ -19,7 +19,7 @@
 package org.apache.jackrabbit.oak.store.zeromq.kafka;
 
 import org.apache.jackrabbit.oak.store.zeromq.AbstractNodeStateAggregator;
-import org.apache.jackrabbit.oak.store.zeromq.NodeStoreRecordHandler;
+import org.apache.jackrabbit.oak.store.zeromq.SimpleRecordHandler;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -57,17 +57,16 @@ public class KafkaNodeStateAggregator extends AbstractNodeStateAggregator {
         consumer = new KafkaConsumer<>(props);
         consumer.subscribe(Collections.singletonList(TOPIC), new HandleRebalance());
         records = null;
-        recordHandler = new NodeStoreRecordHandler(instance);
+        recordHandler = new SimpleRecordHandler(instance);
         recordHandler.setOnCommit(() -> {
             try {
+                // TODO: this is quite expensive, perhaps we can commit every second or so instead of
+                // after every transaction? Or enable autocommit?
                 consumer.commitSync();
             } catch (Exception e) {
             }
         });
         recordHandler.setOnNode(() -> {
-            try {
-                consumer.commitSync();
-            } catch (Exception e) {}
         });
     }
 
@@ -78,6 +77,7 @@ public class KafkaNodeStateAggregator extends AbstractNodeStateAggregator {
         if (records.hasNext()) {
             return records.next();
         }
+        // TODO: this doesn't work here, caughtup is signalled right at the start
         if (!caughtup) {
             log.info("We have caught up!");
             caughtup = true;

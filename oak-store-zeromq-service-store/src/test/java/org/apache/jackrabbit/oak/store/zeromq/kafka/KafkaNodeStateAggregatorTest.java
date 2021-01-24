@@ -19,9 +19,8 @@
 package org.apache.jackrabbit.oak.store.zeromq.kafka;
 
 import com.google.common.io.LineReader;
-import org.apache.jackrabbit.oak.api.Type;
-import org.apache.jackrabbit.oak.store.zeromq.NodeStoreRecordHandler;
 import org.apache.jackrabbit.oak.store.zeromq.RecordHandler;
+import org.apache.jackrabbit.oak.store.zeromq.SimpleRecordHandler;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -54,7 +53,7 @@ public class KafkaNodeStateAggregatorTest {
 
     @Test
     public void testAggregator() {
-        NodeStoreRecordHandler recordHandler = new NodeStoreRecordHandler("golden");
+        RecordHandler recordHandler = new SimpleRecordHandler("golden");
         for (String[] rec : consumerRecords) {
             recordHandler.handleRecord(rec[0], rec[1]);
         }
@@ -75,7 +74,7 @@ public class KafkaNodeStateAggregatorTest {
 
     @Test
     public void testDebug() throws IOException {
-        final RecordHandler recordHandler = new NodeStoreRecordHandler("golden");
+        final RecordHandler recordHandler = new SimpleRecordHandler("golden");
         //final LineReader r = new LineReader(new FileReader("/var/folders/nr/scf5thc9157cz730xynsnh140000gp/T/logFile-1605835284401988811.log"));
         final LineReader r = new LineReader(new FileReader("/tmp/quickstart.log"));
         for (String line = r.readLine(); line != null; line = r.readLine()) {
