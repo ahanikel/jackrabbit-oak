@@ -132,6 +132,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
     public final ZeroMQNodeState missingNode = (ZeroMQNodeState) ZeroMQEmptyNodeState.MISSING_NODE(this, this::readNodeState, this::write);
 
     final Object mergeRootMonitor = new Object();
+    final Object checkpointMonitor = new Object();
 
     ExecutorService nodeWriterThread;
     ExecutorService blobWriterThread;
@@ -478,12 +479,14 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
     }
 
     private NodeState mergeCheckpoint(NodeBuilder builder) {
-        final NodeState newBase = getCheckpointRoot();
-        rebase(builder, newBase);
-        final NodeState after = builder.getNodeState();
-        mergeRoot("checkpoints", after);
-        ((ZeroMQNodeBuilder) builder).reset(after);
-        return after;
+        synchronized (checkpointMonitor) {
+            final NodeState newBase = getCheckpointRoot();
+            rebase(builder, newBase);
+            final NodeState after = builder.getNodeState();
+            mergeRoot("checkpoints", after);
+            ((ZeroMQNodeBuilder) builder).reset(after);
+            return after;
+        }
     }
 
     @Nullable
