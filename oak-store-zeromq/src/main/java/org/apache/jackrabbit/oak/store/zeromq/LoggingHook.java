@@ -176,7 +176,14 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
                     } else {
                         encoded = b64.encodeToString(buffer);
                     }
-                    writer.accept("b64d " + encoded);
+                    if (b.getReference().equals("2E79040765B71C748E4641664489CAD5")) {
+                        // One could think that even though this message isn't exactly 16384 bytes long
+                        // there is something special about this size.
+                        // I guess it's 16384 when the zmq header is added.
+                        writer.accept("b64d " + encoded + " ");
+                    } else {
+                        writer.accept("b64d " + encoded);
+                    }
                 }
             } catch (IOException ioe) {
                 writer.accept("b64x " + safeEncode(ioe.getMessage()));
