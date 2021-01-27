@@ -23,6 +23,9 @@ import org.apache.jackrabbit.oak.api.Blob;
 public interface RecordHandler {
     void handleRecord(String key, String value);
     String getJournalHead(String journalName);
+
+    String getCheckpointHead(String instanceName);
+
     String readNodeState(String msg);
     Blob getBlob(String reference);
     void setOnCommit(Runnable onCommit);
