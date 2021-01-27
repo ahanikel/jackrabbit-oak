@@ -48,12 +48,14 @@ public class SimpleRecordHandler implements RecordHandler {
     private Runnable onNode;
     private int line = 0;
     private final Map<String, String> heads;
+    private final Map<String, String> checkpoints;
     private final SimpleNodeStore store;
     private final List<SimpleNodeState> nodeStates;
 
     public SimpleRecordHandler(String instance) {
         this.instance = instance;
         this.heads = new ConcurrentHashMap<>();
+        this.checkpoints = new ConcurrentHashMap<>();
         store = new SimpleNodeStore();
         nodeStates = new ArrayList<>();
     }
@@ -292,6 +294,13 @@ public class SimpleRecordHandler implements RecordHandler {
                 break;
             }
 
+            case "checkpoints": {
+                final String instance = tokens.nextToken();
+                final String head = tokens.nextToken();
+                checkpoints.put(instance, head);
+                break;
+            }
+
             default: {
                 log.warn("Unrecognised key at line {}: {}", key, value);
             }
@@ -299,8 +308,13 @@ public class SimpleRecordHandler implements RecordHandler {
     }
 
     @Override
-    public String getJournalHead(String journalName) {
-        return heads.get(journalName);
+    public String getJournalHead(String instanceName) {
+        return heads.get(instanceName);
+    }
+
+    @Override
+    public String getCheckpointHead(String instanceName) {
+        return checkpoints.get(instanceName);
     }
 
     @Override

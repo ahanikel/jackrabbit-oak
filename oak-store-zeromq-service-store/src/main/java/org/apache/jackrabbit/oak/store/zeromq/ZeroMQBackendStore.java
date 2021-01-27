@@ -109,6 +109,9 @@ public abstract class ZeroMQBackendStore implements BackendStore {
         if (msg.startsWith("journal ")) {
             final String instance = msg.substring("journal ".length());
             ret = nodeStateAggregator.getJournalHead(instance);
+        } else if (msg.startsWith("checkpoints ")) {
+            final String instance = msg.substring("checkpoints ".length());
+            ret = nodeStateAggregator.getCheckpointHead(instance);
         } else {
             ret = nodeStateAggregator.readNodeState(msg);
         }

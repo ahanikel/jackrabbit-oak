@@ -138,6 +138,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
     ExecutorService blobWriterThread;
 
     private volatile String journalRoot;
+    private volatile String checkpointRoot;
 
     private String initJournal;
     private volatile boolean skip;
@@ -339,6 +340,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
     public void init() {
         initialised = true;
         final String uuid = readRootRemote();
+        checkpointRoot = readCPRootRemote();
         log.info("Journal root initialised with {}", uuid);
         journalRoot = uuid;
         if ("undefined".equals(uuid)) {
@@ -366,6 +368,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         final LoggingHook loggingHook = LoggingHook.newLoggingHook(this::write, false);
         loggingHook.processCommit(emptyNode, zmqNewSuperRoot, null);
         setRoot(zmqNewSuperRoot.getUuid());
+        setCheckpointRoot(emptyNode.getUuid());
     }
 
     public String readRoot() {
@@ -397,6 +400,28 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         return msg;
     }
 
+    private String readCPRootRemote() {
+        if (!remoteReads) {
+            return "undefined";
+        }
+
+        String msg;
+        while (true) {
+            try {
+                nodeStateReader[0].get().send("checkpoints " + instance);
+                msg = nodeStateReader[0].get().recvStr();
+                break;
+            } catch (Throwable t) {
+                log.warn(t.toString());
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException ex) {
+                }
+            }
+        }
+        return msg;
+    }
+
     @Override
     public NodeState getRoot() {
         return getSuperRoot().getChildNode("root");
@@ -415,22 +440,32 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
     }
 
     NodeState getCheckpointRoot() {
-        return getSuperRoot().getChildNode("checkpoints");
+        if ("undefined".equals(checkpointRoot) || checkpointRoot == null) {
+            throw new IllegalStateException("root is undefined, forgot to call init()?");
+        }
+        return readNodeState(checkpointRoot);
     }
 
     private void setRoot(String uuid) {
         journalRoot = uuid;
         if (writeBackJournal) {
-            nodeWriterThread.execute(() -> setRootRemote(uuid));
+            nodeWriterThread.execute(() -> setRootRemote("journal", uuid));
         }
     }
 
-    private void setRootRemote(String uuid) {
+    private void setCheckpointRoot(String uuid) {
+        checkpointRoot = uuid;
+        if (writeBackJournal) {
+            nodeWriterThread.execute(() -> setRootRemote("checkpoints", uuid));
+        }
+    }
+
+    private void setRootRemote(String type, String uuid) {
         while (true) {
             synchronized (mergeRootMonitor) {
                 try {
                     final ZMQ.Socket socket = nodeStateWriter[0].get();
-                    socket.send("journal " + instance + " " + uuid);
+                    socket.send(type + " " + instance + " " + uuid);
                     socket.recvStr(); // ignore
                     break;
                 } catch (Throwable t) {
@@ -482,8 +517,12 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         synchronized (checkpointMonitor) {
             final NodeState newBase = getCheckpointRoot();
             rebase(builder, newBase);
-            final NodeState after = builder.getNodeState();
-            mergeRoot("checkpoints", after);
+            final ZeroMQNodeState after = (ZeroMQNodeState) builder.getNodeState();
+            final LoggingHook loggingHook = LoggingHook.newLoggingHook(this::write, false);
+            synchronized (mergeRootMonitor) {
+                loggingHook.processCommit(newBase, after, null);
+            }
+            setCheckpointRoot(after.getUuid());
             ((ZeroMQNodeBuilder) builder).reset(after);
             return after;
         }

@@ -195,20 +195,6 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
         }
     }
 
-    private static void appendBlob(StringBuilder sb, Blob blob) {
-        final InputStream is = blob.getNewStream();
-        final char[] hex = "0123456789ABCDEF".toCharArray();
-        int b;
-        try {
-            while ((b = is.read()) >= 0) {
-                sb.append(hex[b >> 4]);
-                sb.append(hex[b & 0x0f]);
-            }
-        } catch (IOException ex) {
-            throw new IllegalStateException(ex);
-        }
-    }
-
     @NotNull
     @Override
     public NodeState processCommit(NodeState before, NodeState after, CommitInfo info) {

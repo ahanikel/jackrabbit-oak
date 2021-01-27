@@ -35,8 +35,17 @@ public abstract class AbstractNodeStateAggregator implements NodeStateAggregator
     }
 
     @Override
-    public String getJournalHead(String journalName) {
-        final String ret = recordHandler.getJournalHead(journalName);
+    public String getJournalHead(String instanceName) {
+        final String ret = recordHandler.getJournalHead(instanceName);
+        if (ret == null) {
+            return "undefined";
+        }
+        return ret;
+    }
+
+    @Override
+    public String getCheckpointHead(String instanceName) {
+        final String ret = recordHandler.getCheckpointHead(instanceName);
         if (ret == null) {
             return "undefined";
         }
