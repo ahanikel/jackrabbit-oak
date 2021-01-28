@@ -93,7 +93,7 @@ public class ZeroMQNodeStateTest {
         ZeroMQNodeState ret = null;
 
         try {
-            ret = ZeroMQNodeState.deSerialise(null, serialised, this::staticReader, this::storageWriter);
+            ret = ZeroMQNodeState.deSerialise(null, serialised);
         } catch (ZeroMQNodeState.ParseFailure parseFailure) {
         }
 
@@ -103,7 +103,7 @@ public class ZeroMQNodeStateTest {
     private ZeroMQNodeState storageReader(String s) {
         final String ser = storage.get(s);
         try {
-            return ZeroMQNodeState.deSerialise(null, ser, this::storageReader, this::storageWriter);
+            return ZeroMQNodeState.deSerialise(null, ser);
         } catch (ZeroMQNodeState.ParseFailure parseFailure) {
             throw new IllegalStateException(parseFailure);
         }
@@ -176,7 +176,7 @@ public class ZeroMQNodeStateTest {
     // This test fails without a real node store
     public void diff() throws IOException {
         storage.clear();
-        final ZeroMQNodeState ns = (ZeroMQNodeState) ZeroMQEmptyNodeState.EMPTY_NODE(null, this::staticReader, this::storageWriter);
+        final ZeroMQNodeState ns = (ZeroMQNodeState) ZeroMQEmptyNodeState.EMPTY_NODE(null);
         final NodeBuilder builder = ns.builder();
         builder.child("first")
                 .setProperty("1p", "blurb", Type.STRING)
@@ -264,7 +264,7 @@ public class ZeroMQNodeStateTest {
     public void emptyArray() throws ZeroMQNodeState.ParseFailure {
         storage.clear();
 
-        final ZeroMQNodeState ns = (ZeroMQNodeState) ZeroMQEmptyNodeState.EMPTY_NODE(null, this::staticReader, this::storageWriter);
+        final ZeroMQNodeState ns = (ZeroMQNodeState) ZeroMQEmptyNodeState.EMPTY_NODE(null);
         final NodeBuilder builder = ns.builder();
         builder.setProperty("bla", new ArrayList<String>()  , Type.STRINGS);
         final NodeState ns2 = builder.getNodeState();
@@ -278,7 +278,7 @@ public class ZeroMQNodeStateTest {
         }
         final String s = ((ZeroMQNodeState) ns2).getSerialised();
         assertTrue(s.contains("[]"));
-        final NodeState ns3 = ZeroMQNodeState.deSerialise(null, s, this::staticReader, this::storageWriter);
+        final NodeState ns3 = ZeroMQNodeState.deSerialise(null, s);
         assertTrue(ns3.getProperty("bla").count() == 0);
     }
 

@@ -128,11 +128,12 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
 
     private volatile ChangeDispatcher changeDispatcher;
 
-    public final ZeroMQNodeState emptyNode = (ZeroMQNodeState) ZeroMQEmptyNodeState.EMPTY_NODE(this, this::readNodeState, this::write);
-    public final ZeroMQNodeState missingNode = (ZeroMQNodeState) ZeroMQEmptyNodeState.MISSING_NODE(this, this::readNodeState, this::write);
+    public final ZeroMQNodeState emptyNode = (ZeroMQNodeState) ZeroMQEmptyNodeState.EMPTY_NODE(this);
+    public final ZeroMQNodeState missingNode = (ZeroMQNodeState) ZeroMQEmptyNodeState.MISSING_NODE(this);
 
     final Object mergeRootMonitor = new Object();
     final Object checkpointMonitor = new Object();
+    final Object writeMonitor = new Object();
 
     ExecutorService nodeWriterThread;
     ExecutorService blobWriterThread;
@@ -144,6 +145,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
     private volatile boolean skip;
     private AtomicLong line = new AtomicLong(0);
     private FileOutputStream nodeStateOutput; // this is only meant for debugging
+    private final LoggingHook loggingHook;
 
     public ZeroMQNodeStore() {
         this("golden");
@@ -198,7 +200,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
 
                 final String sNode = read(uuid);
                 try {
-                    final ZeroMQNodeState ret = ZeroMQNodeState.deSerialise(this, sNode, this::readNodeState, this::write);
+                    final ZeroMQNodeState ret = ZeroMQNodeState.deSerialise(this, sNode);
                     return ret;
                 } catch (ZeroMQNodeState.ParseFailure parseFailure) {
                     if ("Node not found".equals(sNode)) {
@@ -239,6 +241,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
             } catch (IOException e) {
             }
         }
+        loggingHook = LoggingHook.newLoggingHook(this::write);
     }
 
 
@@ -359,16 +362,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         builder.setChildNode("root");
         builder.setChildNode("checkpoints");
         builder.setChildNode("blobs");
-        NodeState newSuperRoot = builder.getNodeState();
-        // this may seem strange but is needed because newSuperRoot is a MemoryNodeState
-        // and we need a ZeroMQNodeState
-        final ZeroMQNodeStateDiffBuilder diff = new ZeroMQNodeStateDiffBuilder(this, emptyNode);
-        newSuperRoot.compareAgainstBaseState(emptyNode, diff);
-        final ZeroMQNodeState zmqNewSuperRoot = diff.getNodeState();
-        if (writeBackNodes) {
-            final LoggingHook loggingHook = LoggingHook.newLoggingHook(this::write);
-            loggingHook.processCommit(emptyNode, zmqNewSuperRoot, null);
-        }
+        final NodeState newSuperRoot = builder.getNodeState();
+        final ZeroMQNodeState zmqNewSuperRoot = (ZeroMQNodeState) newSuperRoot;
         setRoot(zmqNewSuperRoot.getUuid());
         setCheckpointRoot(emptyNode.getUuid());
     }
@@ -443,7 +438,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
 
     NodeState getCheckpointRoot() {
         if ("undefined".equals(checkpointRoot) || checkpointRoot == null) {
-            throw new IllegalStateException("root is undefined, forgot to call init()?");
+            throw new IllegalStateException("checkpointRoot is undefined, forgot to call init()?");
         }
         return readNodeState(checkpointRoot);
     }
@@ -481,40 +476,36 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         }
     }
 
-    public NodeState mergeRoot(String root, NodeState ns) {
-        synchronized (mergeRootMonitor) {
-            final ZeroMQNodeState superRoot = getSuperRoot();
-            final NodeBuilder superRootBuilder = superRoot.builder();
-            superRootBuilder.setChildNode(root, ns);
-            final ZeroMQNodeState newSuperRoot = (ZeroMQNodeState) superRootBuilder.getNodeState();
-            setRoot(newSuperRoot.getUuid());
-            if (writeBackNodes) {
-                final LoggingHook loggingHook = LoggingHook.newLoggingHook(this::write);
-                loggingHook.processCommit(superRoot, newSuperRoot, null);
-            }
-            return newSuperRoot;
-        }
+    private NodeState mergeRoot(String root, NodeState ns) {
+        final ZeroMQNodeState superRoot = getSuperRoot();
+        final NodeBuilder superRootBuilder = superRoot.builder();
+        superRootBuilder.setChildNode(root, ns);
+        final ZeroMQNodeState newSuperRoot = (ZeroMQNodeState) superRootBuilder.getNodeState();
+        setRoot(newSuperRoot.getUuid());
+        return newSuperRoot;
     }
 
     @Override
     public NodeState merge(NodeBuilder builder, CommitHook commitHook, CommitInfo info) throws CommitFailedException {
-        if (!(builder instanceof ZeroMQNodeBuilder)) {
-            throw new IllegalArgumentException();
+        synchronized (mergeRootMonitor) {
+            if (!(builder instanceof ZeroMQNodeBuilder)) {
+                throw new IllegalArgumentException();
+            }
+            final NodeState newBase = getRoot();
+            // rebase does nothing if the base hasn't changed
+            rebase(builder, newBase);
+            final NodeState after = builder.getNodeState();
+            final NodeState afterHook = commitHook.processCommit(newBase, after, info);
+            if (afterHook.equals(newBase)) {
+                return newBase; // TODO: There seem to be commits without any changes in them. Need to investigate.
+            }
+            mergeRoot("root", afterHook);
+            ((ZeroMQNodeBuilder) builder).reset(afterHook);
+            if (changeDispatcher != null) {
+                changeDispatcher.contentChanged(afterHook, info);
+            }
+            return afterHook;
         }
-        final NodeState newBase = getRoot();
-        // rebase does nothing if the base hasn't changed
-        rebase(builder, newBase);
-        final NodeState after = builder.getNodeState();
-        final NodeState afterHook = commitHook.processCommit(newBase, after, info);
-        if (afterHook.equals(newBase)) {
-            return newBase; // TODO: There seem to be commits without any changes in them. Need to investigate.
-        }
-        mergeRoot("root", afterHook);
-        ((ZeroMQNodeBuilder) builder).reset(afterHook);
-        if (changeDispatcher != null) {
-            changeDispatcher.contentChanged(afterHook, info);
-        }
-        return afterHook;
     }
 
     private NodeState mergeCheckpoint(NodeBuilder builder) {
@@ -522,12 +513,6 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
             final NodeState newBase = getCheckpointRoot();
             rebase(builder, newBase);
             final ZeroMQNodeState after = (ZeroMQNodeState) builder.getNodeState();
-            if (writeBackNodes) {
-                synchronized (mergeRootMonitor) {
-                    final LoggingHook loggingHook = LoggingHook.newLoggingHook(this::write);
-                    loggingHook.processCommit(newBase, after, null);
-                }
-            }
             setCheckpointRoot(after.getUuid());
             ((ZeroMQNodeBuilder) builder).reset(after);
             return after;
@@ -578,27 +563,30 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
 
     private void write(String event) {
         if (writeBackNodes) {
-            synchronized (mergeRootMonitor) {
-                long currentLine = line.incrementAndGet();
-                try {
-                    final ZMQ.Socket writer = nodeStateWriter[0].get();
-                    writer.send(event);
-                    log.trace(writer.recvStr()); // ignore
-                } catch (Throwable t) {
-                    log.error(t.getMessage() + " at line " + currentLine);
-                }
+            long currentLine = line.incrementAndGet();
+            try {
+                final ZMQ.Socket writer = nodeStateWriter[0].get();
+                writer.send(event);
+                log.trace(writer.recvStr()); // ignore
+            } catch (Throwable t) {
+                log.error(t.getMessage() + " at line " + currentLine);
             }
         }
     }
 
-    void write(ZeroMQNodeState nodeState) {
-        final String newUuid = nodeState.getUuid();
+    void write(ZeroMQNodeState before, ZeroMQNodeState after) {
+        final String newUuid = after.getUuid();
         if (nodeStateCache.isCached(newUuid)) {
             return;
         }
-        nodeStateCache.put(newUuid, nodeState);
+        nodeStateCache.put(newUuid, after);
+        if (writeBackNodes) {
+            synchronized (writeMonitor) {
+                loggingHook.processCommit(before, after, null);
+            }
+        }
         if (nodeStateOutput != null) {
-            final String msg = nodeState.getUuid() + "\n" + nodeState.getSerialised() + "\n";
+            final String msg = after.getUuid() + "\n" + after.getSerialised() + "\n";
             try {
                 nodeStateOutput.write(msg.getBytes());
             } catch (IOException e) {
@@ -610,7 +598,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         if (!writeBackNodes) {
             return;
         }
-        synchronized (mergeRootMonitor) {
+        synchronized (writeMonitor) {
             try {
                 LoggingHook.writeBlob(blob, this::write);
             } catch (Throwable t) {

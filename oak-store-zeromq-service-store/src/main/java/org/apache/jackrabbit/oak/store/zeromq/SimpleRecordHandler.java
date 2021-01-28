@@ -82,7 +82,7 @@ public class SimpleRecordHandler implements RecordHandler {
         }
 
         switch (key) {
-            case "R:": {
+            case "n:": {
                 final String newUuid = tokens.nextToken();
                 SimpleNodeState newNode;
                 if (store.hasNodeState(newUuid)) {
@@ -97,7 +97,7 @@ public class SimpleRecordHandler implements RecordHandler {
                 break;
             }
 
-            case "R!": {
+            case "n!": {
                 if (nodeStates.size() != 1) {
                     log.error("There should only be one nodestate left");
                 }
@@ -105,40 +105,20 @@ public class SimpleRecordHandler implements RecordHandler {
                 if (!ns.skip) {
                     store.putNodeState(ns);
                 }
-                if (onCommit != null) {
-                    onCommit.run();
+                if (onNode != null) {
+                    onNode.run();
                 }
                 break;
             }
 
-            case "n+": {
+            case "n+":
+            case "n^": {
                 final String name = tokens.nextToken();
                 final String uuid = tokens.nextToken();
-                final SimpleNodeState child = new SimpleNodeState(uuid, store.hasNodeState(uuid));
                 final SimpleNodeState parent = nodeStates.get(nodeStates.size()-1);
                 if (!parent.skip) {
                     parent.setChild(name, uuid);
                 }
-                nodeStates.add(child);
-                break;
-            }
-
-            case "n^": {
-                final String name = tokens.nextToken();
-                final String uuid = tokens.nextToken();
-                final String oldid = tokens.nextToken();
-                SimpleNodeState newNode;
-                if (store.hasNodeState(uuid)) {
-                    newNode = new SimpleNodeState(uuid, true);
-                } else {
-                    final SimpleNodeState oldNode = store.getNodeState(oldid);
-                    newNode = oldNode.clone(uuid);
-                }
-                final SimpleNodeState parent = nodeStates.get(nodeStates.size() - 1);
-                if (!parent.skip) {
-                    parent.setChild(name, uuid);
-                }
-                nodeStates.add(newNode);
                 break;
             }
 
@@ -147,17 +127,6 @@ public class SimpleRecordHandler implements RecordHandler {
                 final SimpleNodeState parent = nodeStates.get(nodeStates.size()-1);
                 if (!parent.skip) {
                     parent.removeChild(name);
-                }
-                break;
-            }
-
-            case "n!": {
-                final SimpleNodeState ns = nodeStates.remove(nodeStates.size()-1);
-                if (!ns.skip) {
-                    store.putNodeState(ns);
-                }
-                if (onNode != null) {
-                    onNode.run();
                 }
                 break;
             }
@@ -291,6 +260,9 @@ public class SimpleRecordHandler implements RecordHandler {
                 final String instance = tokens.nextToken();
                 final String head = tokens.nextToken();
                 heads.put(instance, head);
+                if (onCommit != null) {
+                    onCommit.run();
+                }
                 break;
             }
 

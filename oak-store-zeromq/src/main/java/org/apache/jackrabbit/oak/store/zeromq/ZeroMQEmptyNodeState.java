@@ -36,26 +36,21 @@ import static java.util.Collections.emptyList;
  */
 public final class ZeroMQEmptyNodeState extends ZeroMQNodeState {
 
-    private final Function<String, ZeroMQNodeState> reader;
-    private final Consumer<ZeroMQNodeState> writer;
-
-    public static final NodeState EMPTY_NODE(ZeroMQNodeStore ns, Function<String, ZeroMQNodeState> reader, Consumer<ZeroMQNodeState> writer) {
-        return new ZeroMQEmptyNodeState(ns, true, reader, writer);
+    public static final NodeState EMPTY_NODE(ZeroMQNodeStore ns) {
+        return new ZeroMQEmptyNodeState(ns, true);
     }
 
-    public static final NodeState MISSING_NODE(ZeroMQNodeStore ns, Function<String, ZeroMQNodeState> reader, Consumer<ZeroMQNodeState> writer) {
-        return new ZeroMQEmptyNodeState(ns, false, reader, writer);
+    public static final NodeState MISSING_NODE(ZeroMQNodeStore ns) {
+        return new ZeroMQEmptyNodeState(ns, false);
     }
 
     static final UUID UUID_NULL = new UUID(0L, 0L);
 
     private final boolean exists;
 
-    private ZeroMQEmptyNodeState(ZeroMQNodeStore ns, boolean exists, Function<String, ZeroMQNodeState> reader, Consumer<ZeroMQNodeState> writer) {
-        super(ns, reader, writer);
+    private ZeroMQEmptyNodeState(ZeroMQNodeStore ns, boolean exists) {
+        super(ns);
         this.exists = exists;
-        this.reader = reader;
-        this.writer = writer;
     }
 
     @Override
@@ -127,7 +122,7 @@ public final class ZeroMQEmptyNodeState extends ZeroMQNodeState {
     @Override @NotNull
     public NodeState getChildNode(@NotNull String name) {
         checkValidName(name);
-        return MISSING_NODE(this.ns, reader, writer);
+        return MISSING_NODE(this.ns);
     }
 
     @Override
@@ -142,7 +137,7 @@ public final class ZeroMQEmptyNodeState extends ZeroMQNodeState {
 
     @Override @NotNull
     public NodeBuilder builder() {
-        return new ZeroMQNodeBuilder(this.ns, this, reader, writer);
+        return new ZeroMQNodeBuilder(this.ns, this);
     }
 
     @Override

@@ -70,28 +70,22 @@ public class ZeroMQNodeState extends AbstractNodeState {
     private final String uuid;
     final Map<String, String> children;
     final Map<String, ZeroMQPropertyState> properties;
-    private final Function<String, ZeroMQNodeState> reader;
-    private final Consumer<ZeroMQNodeState> writer;
     private final String serialised;
     private List<ChildNodeEntry> childNodeEntries;
 
     // not private because ZeroMQEmptyNodeState needs it
-    ZeroMQNodeState(ZeroMQNodeStore ns, Function<String, ZeroMQNodeState> reader, Consumer<ZeroMQNodeState> writer) {
+    ZeroMQNodeState(ZeroMQNodeStore ns) {
         this.ns = ns;
         this.children = new HashMap<>(1000);
         this.properties = new HashMap<>(100);
-        this.reader = reader;
-        this.writer = writer;
         this.uuid = ZeroMQEmptyNodeState.UUID_NULL.toString();
         serialised = runSerialise();
     }
 
-    ZeroMQNodeState(ZeroMQNodeStore ns, Map<String, String> children, Map<String, ZeroMQPropertyState> properties, String serialised, Function<String, ZeroMQNodeState> reader, Consumer<ZeroMQNodeState> writer) {
+    ZeroMQNodeState(ZeroMQNodeStore ns, Map<String, String> children, Map<String, ZeroMQPropertyState> properties, String serialised) {
         this.ns = ns;
         this.children = children;
         this.properties = properties;
-        this.reader = reader;
-        this.writer = writer;
         if (serialised == null) {
             this.serialised = runSerialise();
         } else {
@@ -227,7 +221,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
         }
     }
 
-    static ZeroMQNodeState deSerialise(ZeroMQNodeStore ns, String s, Function<String, ZeroMQNodeState> reader, Consumer<ZeroMQNodeState> writer) throws ParseFailure {
+    static ZeroMQNodeState deSerialise(ZeroMQNodeStore ns, String s) throws ParseFailure {
         final List<String> children = new ArrayList<>();
         final List<String> properties = new ArrayList<>();
         final Map<String, String> childrenMap = new HashMap<>(1000);
@@ -273,7 +267,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
                     .parseRegexp(allTheRestPattern, 0).appendToValues(pValues);
             propertiesMap.put(pName.val(), new ZeroMQPropertyState(ns, pName.val(), pType.val(), pValues));
         }
-        final ZeroMQNodeState ret = new ZeroMQNodeState(ns, childrenMap, propertiesMap, s, reader, writer);
+        final ZeroMQNodeState ret = new ZeroMQNodeState(ns, childrenMap, propertiesMap, s);
         return ret;
     }
 
@@ -406,7 +400,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
     @Override
     public NodeState getChildNode(String name) throws IllegalArgumentException {
         if (children.containsKey(name)) {
-            return reader.apply(children.get(name));
+            return ns.readNodeState(children.get(name));
         } else {
             return ns.missingNode;
         }
@@ -433,7 +427,7 @@ public class ZeroMQNodeState extends AbstractNodeState {
 
     @Override
     public NodeBuilder builder() {
-        return new ZeroMQNodeBuilder(this.ns, this, reader, writer);
+        return new ZeroMQNodeBuilder(this.ns, this);
     }
 
     public String getUuid() {

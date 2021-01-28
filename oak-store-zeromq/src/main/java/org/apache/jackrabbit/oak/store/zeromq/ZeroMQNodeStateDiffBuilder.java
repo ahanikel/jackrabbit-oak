@@ -24,13 +24,14 @@ import org.apache.jackrabbit.oak.spi.state.NodeStateDiff;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
 public final class ZeroMQNodeStateDiffBuilder implements NodeStateDiff {
 
     private final Function<String, ZeroMQNodeState> reader;
-    private final Consumer<ZeroMQNodeState> writer;
+    private final BiConsumer<ZeroMQNodeState, ZeroMQNodeState> writer;
 
     private Map<String, String> children;
     private Map<String, ZeroMQPropertyState> properties;
@@ -58,8 +59,8 @@ public final class ZeroMQNodeStateDiffBuilder implements NodeStateDiff {
 
     public ZeroMQNodeState getNodeState() {
         if (dirty) {
-            final ZeroMQNodeState ret = new ZeroMQNodeState(this.ns, this.children, this.properties, null, reader, writer);
-            writer.accept(ret);
+            final ZeroMQNodeState ret = new ZeroMQNodeState(this.ns, this.children, this.properties, null);
+            writer.accept(before, ret);
             return ret;
         } else {
             return before;
