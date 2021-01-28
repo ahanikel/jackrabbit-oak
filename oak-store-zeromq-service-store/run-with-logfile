@@ -15,7 +15,8 @@ debug="-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=6006"
 logging="-Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=yyyy-MM-dd'T'HH:mm:ss.SSSZ"
 jar=~/Documents/git/jackrabbit-oak/oak-store-zeromq-service-store/target/oak-store-zeromq-service-store-1.30.0-jar-with-dependencies.jar
 #jarOpts="log golden /Users/axel/Documents/git/kafka-docker/quickstart-diff.log"
-jarOpts="server httpbackend.yaml"
+#jarOpts="server httpbackend.yaml"
+jarOpts="log golden quickstart-diff.log"
 
 ps auxww | grep java | grep oak-store-zeromq-service-store | awk '{print $2}' | xargs kill -9
 sleep 5

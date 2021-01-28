@@ -1,17 +1,5 @@
 #!/usr/bin/env bash
 
-thePid=$(ps auxww|grep java|grep quickstart|awk '{print $2}')
-
-if [[ -n $thePid ]]
-then
-    kill -9 $thePid
-fi
-
-while kill -0 $thePid
-do
-    sleep 1
-done 2>/dev/null
-
 #rm -rf /tmp/blobs
 
 #export initJournal=56c15a45-bdbc-9afa-f0b3-1d707b8a15ef
@@ -26,6 +14,8 @@ export blobendPrefix=localhost
 export journalPrefix=localhost
 export logNodeStates=false
 
-cp oak-store-zeromq/target/oak-store-zeromq-1.30.0.jar /Users/axel/Downloads/crx-quickstart/install/15/
+rm -rf ~/Downloads/crx-quickstart
+cp -pR ~/Downloads/crx-quickstart.quickstart ~/Downloads/crx-quickstart
+update-crx-quickstart
 
-(cd /Users/axel/Downloads && java -Xmx8g '-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:5005' -Doak.queryLimitReads=10000000 -jar cq-quickstart-6.6.0-1.30.0.nosegment.jar -nofork -nobrowser -r crx3,crx3tar-nofds) &
+(cd /Users/axel/Downloads && java -Xmx8g '-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005' -Doak.queryLimitReads=10000000 -jar cq-quickstart-6.6.0-1.30.0.nosegment.jar -nofork -nobrowser -r crx3,crx3tar-nofds) &
