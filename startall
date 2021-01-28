@@ -10,13 +10,10 @@ export backendPrefix=localhost
 export blobendPrefix=localhost
 export journalPrefix=localhost
 export initJournal=undefined
-export logNodeStates=true
+export logNodeStates=false
 
-ps auxww|grep java|grep quickstart|awk '{print $2}'|xargs kill -9
-#(cd /Users/axel/Documents/git/jackrabbit-oak/quickstart-remotesegment-docker && docker-compose down)
+./killaem
 cp oak-store-zeromq/target/oak-store-zeromq-1.30.0.jar /Users/axel/Downloads/install.zeromq/15/
 (cd /Users/axel/Downloads &&
     rm -rf crx-quickstart && rm -rf /tmp/blobs && rm -rf /Users/axel/Downloads/blobs && (rm -f /tmp/zmqBlob* || true) && mkdir crx-quickstart && cp -R install.zeromq crx-quickstart/install)
-#(cd /Users/axel/Documents/git/jackrabbit-oak/quickstart-remotesegment-docker && docker-compose up -d)
-./oak-store-zeromq-service-store/run &
-(cd /Users/axel/Downloads && echo admin | java -Xmx8g '-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005' -Doak.queryLimitReads=10000000 -jar cq-quickstart-6.6.0-1.30.0.nosegment.jar -nofork -nobrowser -r crx3,crx3tar-nofds & tail -n +0 -F crx-quickstart/logs/error.log | awk '/(ActivityLog|CHANGED to)/ { print nr++ "  " $0 }')
+(cd /Users/axel/Downloads && echo admin | java -Xmx8g '-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005' -Doak.queryLimitReads=10000000 -jar cq-quickstart-6.6.0-1.30.0.nosegment.jar -nofork -nobrowser -r crx3,crx3tar-nofds & )

@@ -19,6 +19,6 @@ jarOpts="log golden test-diff.log"
 #jarOpts="server httpbackend.yaml"
 
 ps auxww | grep java | grep oak-store-zeromq-service-store | awk '{print $2}' | xargs kill -9
-sleep 5
+sleep 1
 #java -Xmx16g $debug $logging -jar $jar $jarOpts 2>&1 | tee /tmp/zeromq-service-error.log
-java -Xmx16g -jar $jar $jarOpts
+java -Xmx16g $debug $logging -jar $jar $jarOpts
