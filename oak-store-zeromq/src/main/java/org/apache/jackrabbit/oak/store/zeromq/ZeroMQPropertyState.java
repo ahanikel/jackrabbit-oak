@@ -106,7 +106,6 @@ public class ZeroMQPropertyState implements PropertyState {
                 this.values.add(convertTo(v, this.type.isArray()
                         ? this.type.getBaseType()
                         : this.type)));
-        serialise();
     }
 
     <T> ZeroMQPropertyState(ZeroMQNodeStore ns, String name, Type<T> type, T value) {
@@ -124,7 +123,6 @@ public class ZeroMQPropertyState implements PropertyState {
             final String sVal = valueToString(type.isArray() ? type.getBaseType() : type, v);
             this.stringValues.add(sVal);
         });
-        serialise();
     }
 
     private ZeroMQPropertyState(ZeroMQNodeStore ns, PropertyState ps) {
@@ -173,16 +171,14 @@ public class ZeroMQPropertyState implements PropertyState {
                 values.add(ps.getValue(type));
             }
         }
-        serialise();
-    }
-
-    private void serialise() {
-        final StringBuilder sb = new StringBuilder();
-        serialise(sb);
-        serialised = sb.toString();
     }
 
     public String getSerialised() {
+        if (serialised == null) {
+            final StringBuilder sb = new StringBuilder();
+            serialise(sb);
+            serialised = sb.toString();
+        }
         return serialised;
     }
 

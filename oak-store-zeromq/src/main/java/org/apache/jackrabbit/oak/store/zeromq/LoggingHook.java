@@ -25,6 +25,7 @@ import org.apache.jackrabbit.oak.spi.commit.CommitInfo;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.apache.jackrabbit.oak.spi.state.NodeStateDiff;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -57,7 +58,6 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
     }
 
     public void leave(NodeState before, NodeState after) {
-        writer.accept("n!");
     }
 
     @Override
@@ -89,19 +89,13 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
     @Override
     public boolean childNodeAdded(String name, NodeState after) {
         writer.accept("n+ " + safeEncode(name) + " " + ((ZeroMQNodeState) after).getUuid());
-        this.enter(null, after);
-        boolean ret = after.compareAgainstBaseState(EmptyNodeState.EMPTY_NODE, this);
-        this.leave(null, after);
-        return ret;
+        return true;
     }
 
     @Override
     public boolean childNodeChanged(String name, NodeState before, NodeState after) {
         writer.accept("n^ " + safeEncode(name) + " " + ((ZeroMQNodeState) after).getUuid() + " " + ((ZeroMQNodeState) before).getUuid());
-        this.enter(before, after);
-        boolean ret = after.compareAgainstBaseState(before, this);
-        this.leave(before, after);
-        return ret;
+        return true;
     }
 
     @Override
@@ -195,14 +189,14 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
 
     @NotNull
     @Override
-    public NodeState processCommit(NodeState before, NodeState after, CommitInfo info) {
-        writer.accept("R: " + ((ZeroMQNodeState) after).getUuid() + " " + ((ZeroMQNodeState) before).getUuid());
+    public NodeState processCommit(NodeState before, NodeState after, @Nullable CommitInfo info) {
+        writer.accept("n: " + ((ZeroMQNodeState) after).getUuid() + " " + ((ZeroMQNodeState) before).getUuid());
         try {
             after.compareAgainstBaseState(before, this);
         } catch (Throwable t) {
             System.out.println(t.toString());
         }
-        writer.accept("R!");
+        writer.accept("n!");
         return after;
     }
 }

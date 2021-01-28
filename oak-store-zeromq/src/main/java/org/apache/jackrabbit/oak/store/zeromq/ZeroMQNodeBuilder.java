@@ -33,31 +33,14 @@ public class ZeroMQNodeBuilder extends MemoryNodeBuilder {
     @NotNull
     private final ZeroMQNodeStore ns;
 
-    @NotNull
-    private final Function<String, ZeroMQNodeState> reader;
-
-    private final Consumer<ZeroMQNodeState> writer;
-
-    ZeroMQNodeBuilder(
-            @NotNull ZeroMQNodeStore ns,
-            @NotNull ZeroMQNodeState base,
-            Function<String, ZeroMQNodeState> reader,
-            Consumer<ZeroMQNodeState> writer) {
+    ZeroMQNodeBuilder(@NotNull ZeroMQNodeStore ns, @NotNull ZeroMQNodeState base) {
         super(base);
         this.ns = ns;
-        this.reader = reader;
-        this.writer = writer;
     }
 
-    private ZeroMQNodeBuilder(
-            @NotNull ZeroMQNodeStore ns,
-            @NotNull ZeroMQNodeBuilder parent,
-            @NotNull String name
-    ) {
+    private ZeroMQNodeBuilder(@NotNull ZeroMQNodeStore ns, @NotNull ZeroMQNodeBuilder parent, @NotNull String name) {
         super(parent, name);
         this.ns = ns;
-        this.reader = parent.reader;
-        this.writer = parent.writer;
     }
 
     //-------------------------------------------------------< NodeBuilder >--
