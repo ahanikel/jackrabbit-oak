@@ -365,8 +365,10 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         final ZeroMQNodeStateDiffBuilder diff = new ZeroMQNodeStateDiffBuilder(this, emptyNode);
         newSuperRoot.compareAgainstBaseState(emptyNode, diff);
         final ZeroMQNodeState zmqNewSuperRoot = diff.getNodeState();
-        final LoggingHook loggingHook = LoggingHook.newLoggingHook(this::write, false);
-        loggingHook.processCommit(emptyNode, zmqNewSuperRoot, null);
+        if (writeBackNodes) {
+            final LoggingHook loggingHook = LoggingHook.newLoggingHook(this::write);
+            loggingHook.processCommit(emptyNode, zmqNewSuperRoot, null);
+        }
         setRoot(zmqNewSuperRoot.getUuid());
         setCheckpointRoot(emptyNode.getUuid());
     }
@@ -486,8 +488,10 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
             superRootBuilder.setChildNode(root, ns);
             final ZeroMQNodeState newSuperRoot = (ZeroMQNodeState) superRootBuilder.getNodeState();
             setRoot(newSuperRoot.getUuid());
-            final LoggingHook loggingHook = LoggingHook.newLoggingHook(this::write, false);
-            loggingHook.processCommit(superRoot, newSuperRoot, null);
+            if (writeBackNodes) {
+                final LoggingHook loggingHook = LoggingHook.newLoggingHook(this::write);
+                loggingHook.processCommit(superRoot, newSuperRoot, null);
+            }
             return newSuperRoot;
         }
     }
@@ -518,9 +522,11 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
             final NodeState newBase = getCheckpointRoot();
             rebase(builder, newBase);
             final ZeroMQNodeState after = (ZeroMQNodeState) builder.getNodeState();
-            final LoggingHook loggingHook = LoggingHook.newLoggingHook(this::write, false);
-            synchronized (mergeRootMonitor) {
-                loggingHook.processCommit(newBase, after, null);
+            if (writeBackNodes) {
+                synchronized (mergeRootMonitor) {
+                    final LoggingHook loggingHook = LoggingHook.newLoggingHook(this::write);
+                    loggingHook.processCommit(newBase, after, null);
+                }
             }
             setCheckpointRoot(after.getUuid());
             ((ZeroMQNodeBuilder) builder).reset(after);
