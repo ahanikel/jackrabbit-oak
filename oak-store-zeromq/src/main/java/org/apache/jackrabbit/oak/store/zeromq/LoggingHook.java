@@ -44,15 +44,13 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
     public static final String UUID_NULL = new UUID(0, 0).toString();
 
     private final Consumer<String> writer;
-    private final boolean appendBlobs;
 
-    private LoggingHook(final Consumer<String> writer, boolean appendBlobs) {
+    private LoggingHook(final Consumer<String> writer) {
         this.writer = writer;
-        this.appendBlobs = appendBlobs;
     }
 
-    static LoggingHook newLoggingHook(final Consumer<String> writer, boolean appendBlobs) {
-        return new LoggingHook(writer, appendBlobs);
+    static LoggingHook newLoggingHook(final Consumer<String> writer) {
+        return new LoggingHook(writer);
     }
 
     public void enter(NodeState before, NodeState after) {
