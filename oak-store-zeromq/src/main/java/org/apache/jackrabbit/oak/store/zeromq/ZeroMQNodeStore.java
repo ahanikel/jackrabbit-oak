@@ -451,8 +451,10 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
             superRootBuilder.setChildNode(root, ns);
             final ZeroMQNodeState newSuperRoot = (ZeroMQNodeState) superRootBuilder.getNodeState();
             setRoot(newSuperRoot.getUuid());
-            final LoggingHook loggingHook = LoggingHook.newLoggingHook(this::write, false);
-            loggingHook.processCommit(superRoot, newSuperRoot, null);
+            if (writeBackNodes) {
+                final LoggingHook loggingHook = LoggingHook.newLoggingHook(this::write, false);
+                loggingHook.processCommit(superRoot, newSuperRoot, null);
+            }
             return newSuperRoot;
         }
     }
