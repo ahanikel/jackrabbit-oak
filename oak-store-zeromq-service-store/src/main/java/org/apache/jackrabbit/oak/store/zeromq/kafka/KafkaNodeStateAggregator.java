@@ -36,7 +36,7 @@ import java.util.UUID;
 
 public class KafkaNodeStateAggregator extends AbstractNodeStateAggregator {
 
-    private static final String TOPIC = "nodestates";
+    private static final String TOPIC = System.getenv("KAFKA_TOPIC");
     private static final Logger log = LoggerFactory.getLogger(KafkaNodeStateAggregator.class);
 
     private final KafkaConsumer<String, String> consumer;
@@ -47,7 +47,7 @@ public class KafkaNodeStateAggregator extends AbstractNodeStateAggregator {
 
         // Kafka consumer
         final Properties props = new Properties();
-        props.setProperty("bootstrap.servers", "localhost:9092");
+        props.setProperty("bootstrap.servers", System.getenv("KAFKA_SERVERS"));
         props.setProperty("group.id", UUID.randomUUID().toString());
         props.setProperty("enable.auto.commit", "false");
         props.setProperty("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
