@@ -16,8 +16,9 @@
         <dkr.image.namespace>ahanikel</dkr.image.namespace>
         <dkr.image.name>${dkr.registry}/${dkr.image.namespace}/${project.artifactId}</dkr.image.name>
         <quickstartdir>${HOME}/Downloads</quickstartdir>
-        <quickstartfile>cq-quickstart-6.6.0-1.30.0.nosegment.jar</quickstartfile>
-        <zeromqarchivedir>${HOME}/src/jackrabbit-oak/oak-store-zeromq/target</zeromqarchivedir>
+        <quickstartfile>cq-quickstart-6.6.0-1.37.0.nosegment.jar</quickstartfile>
+        <!--zeromqarchivedir>${HOME}/Documents/git/jackrabbit-oak/oak-store-zeromq/target</zeromqarchivedir-->
+        <zeromqarchivedir>../oak-store-zeromq/target</zeromqarchivedir>
         <zeromqarchivefile>oak-store-zeromq-1.30.0.jar</zeromqarchivefile>
         <licensedir>${HOME}/Downloads</licensedir>
         <licensefile>license.properties</licensefile>
