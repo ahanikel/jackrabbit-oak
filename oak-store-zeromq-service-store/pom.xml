@@ -39,6 +39,8 @@
         <dkr.registry>${dockerRegistry-Host}</dkr.registry>
         <dkr.image.namespace>ahanikel</dkr.image.namespace>
         <dkr.image.name>${dkr.registry}/${dkr.image.namespace}/${project.artifactId}</dkr.image.name>
+        <jarfile>oak-store-zeromq-service-store-1.30.0-jar-with-dependencies.jar</jarfile>
+        <logfile>test-diff-1.37.0.log</logfile>
     </properties>
 
     <build>
@@ -56,13 +58,27 @@
                                 <goal>copy-resources</goal>
                             </goals>
                             <configuration>
-                                <outputDirectory>${project.basedir}/target/docker</outputDirectory>
+                                <outputDirectory>${project.basedir}/target</outputDirectory>
                                 <resources>
                                     <resource>
                                         <!-- source files can use Maven variables; check the delimiter below -->
                                         <directory>${project.basedir}/src/main/docker</directory>
                                         <filtering>true</filtering>
                                     </resource>
+                                    <resource>
+                                        <directory>${project.basedir}</directory>
+                                        <includes>
+                                            <include>${logfile}</include>
+                                        </includes>
+                                    </resource>
+                                    <!--
+                                    <resource>
+                                        <directory>${project.basedir}/target</directory>
+                                        <includes>
+                                            <include>${jarfile}</include>
+                                        </includes>
+                                    </resource>
+                                    -->
                                 </resources>
                                 <useDefaultDelimiters>false</useDefaultDelimiters>
                                 <delimiters>
@@ -77,6 +93,32 @@
         </pluginManagement>
 
         <plugins>
+            <plugin>
+                <groupId>com.spotify</groupId>
+                <artifactId>docker-maven-plugin</artifactId>
+                <version>1.0.0</version>
+                <executions>
+                    <execution>
+                        <id>build-image</id>
+                        <phase>install</phase>
+                        <goals>
+                            <goal>build</goal>
+                        </goals>
+                        <configuration>
+                            <imageName>${dkr.image.name}</imageName>
+                            <dockerDirectory>${project.basedir}/target</dockerDirectory>
+                            <imageTags>
+                                <imageTag>${project.version}</imageTag>
+                            </imageTags>
+                            <forceTags>true</forceTags>
+                        </configuration>
+                    </execution>
+                </executions>
+                <configuration>
+                    <serverId>${dockerRegistry-Id}</serverId>
+                    <registryUrl>${dockerRegistry-URL}</registryUrl>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-assembly-plugin</artifactId>
