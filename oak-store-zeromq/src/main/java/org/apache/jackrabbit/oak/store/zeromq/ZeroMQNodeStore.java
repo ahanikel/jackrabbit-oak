@@ -86,7 +86,6 @@ import static org.apache.jackrabbit.oak.spi.cluster.ClusterRepositoryInfo.getOrC
  * A store which dumps everything into a queue.
  */
 @Component(scope = ServiceScope.SINGLETON, immediate = true, configurationPolicy = ConfigurationPolicy.REQUIRE)
-@Service
 public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
 
     public static final String PARAM_CLUSTERINSTANCES = "clusterInstances";
