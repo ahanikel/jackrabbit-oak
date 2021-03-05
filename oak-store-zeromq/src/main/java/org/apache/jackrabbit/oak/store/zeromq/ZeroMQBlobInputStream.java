@@ -62,7 +62,7 @@ public class ZeroMQBlobInputStream extends InputStream {
     }
 
     @Override
-    public int read() {
+    public synchronized int read() {
         if (error) {
             return -1;
         }
