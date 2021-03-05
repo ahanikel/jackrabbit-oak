@@ -76,8 +76,8 @@ public class ZeroMQNodeState extends AbstractNodeState {
     // not private because ZeroMQEmptyNodeState needs it
     ZeroMQNodeState(ZeroMQNodeStore ns) {
         this.ns = ns;
-        this.children = new HashMap<>(1000);
-        this.properties = new HashMap<>(100);
+        this.children = new HashMap<>(10);
+        this.properties = new HashMap<>(10);
         this.uuid = ZeroMQEmptyNodeState.UUID_NULL.toString();
         serialised = runSerialise();
     }
@@ -224,8 +224,8 @@ public class ZeroMQNodeState extends AbstractNodeState {
     static ZeroMQNodeState deSerialise(ZeroMQNodeStore ns, String s) throws ParseFailure {
         final List<String> children = new ArrayList<>();
         final List<String> properties = new ArrayList<>();
-        final Map<String, String> childrenMap = new HashMap<>(1000);
-        final Map<String, ZeroMQPropertyState> propertiesMap = new HashMap<>(100);
+        final Map<String, String> childrenMap = new HashMap<>(10);
+        final Map<String, ZeroMQPropertyState> propertiesMap = new HashMap<>(10);
         final Parser parser = new Parser(s);
         parser
             .parseString("begin ZeroMQNodeState\n")
