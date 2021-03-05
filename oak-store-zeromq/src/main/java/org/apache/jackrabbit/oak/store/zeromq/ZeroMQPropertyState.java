@@ -60,9 +60,9 @@ public class ZeroMQPropertyState implements PropertyState {
 
     private final List<String> stringValues;
 
-    private List<Object> values;
+    private volatile List<Object> values;
 
-    private String serialised;
+    private volatile String serialised;
 
     private <T> T convertTo(String value, Type<T> type) {
         if (isStringBased(type)) {
@@ -119,6 +119,7 @@ public class ZeroMQPropertyState implements PropertyState {
         } else {
             this.values.add(value);
         }
+        // TODO: we shouldn't do that either
         this.values.forEach(v -> {
             final String sVal = valueToString(type.isArray() ? type.getBaseType() : type, v);
             this.stringValues.add(sVal);
@@ -175,9 +176,13 @@ public class ZeroMQPropertyState implements PropertyState {
 
     public String getSerialised() {
         if (serialised == null) {
-            final StringBuilder sb = new StringBuilder();
-            serialise(sb);
-            serialised = sb.toString();
+            synchronized (this) {
+                if (serialised == null) {
+                    final StringBuilder sb = new StringBuilder();
+                    serialise(sb);
+                    serialised = sb.toString();
+                }
+            }
         }
         return serialised;
     }
