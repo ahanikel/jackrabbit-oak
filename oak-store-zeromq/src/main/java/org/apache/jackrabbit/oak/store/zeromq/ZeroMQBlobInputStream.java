@@ -53,9 +53,7 @@ public class ZeroMQBlobInputStream extends InputStream {
                     log.warn("Blob reader is in wrong state, should not happen.");
                 }
                 reader.recv(buffer, 0, buffer.length, 0);
-                log.warn("Cleanedup {}", reference);
                 reader.send(reference);
-                log.warn("Sent {}", reference);
             } catch (Throwable t) {
                 log.error(t.getMessage());
                 error = true;
@@ -73,7 +71,6 @@ public class ZeroMQBlobInputStream extends InputStream {
             nextBunch();
         }
         if (max < 1) {
-            log.warn("Finished {}", reference);
             return -1;
         }
         return 0x000000ff & buffer[cur++];
@@ -82,10 +79,11 @@ public class ZeroMQBlobInputStream extends InputStream {
     private void nextBunch() {
         if (reader.hasReceiveMore()) {
             max = reader.recv(buffer, 0, buffer.length, 0);
-            log.warn("Received more {}", reference);
         } else {
             max = reader.recv(buffer, 0, buffer.length, 0);
-            log.warn("Received {}", reference);
+            if (max < 1) {
+                log.warn("Received {}", reference);
+            }
         }
         cur = 0;
     }
