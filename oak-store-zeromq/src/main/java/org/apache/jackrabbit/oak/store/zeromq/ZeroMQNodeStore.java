@@ -610,7 +610,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         if (!remoteReads) {
             return null;
         }
-        final InputStream ret = new ZeroMQBlobInputStream(nodeStateReader[0], reference);
+        final InputStream ret = new ZeroMQBlobInputStream(nodeStateReader[0], "blob " + reference);
         return ret;
     }
 
