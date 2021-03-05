@@ -16,10 +16,14 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq;
 
+import org.apache.jackrabbit.oak.api.Blob;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.zeromq.ZMQ;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Arrays;
 import java.util.function.Consumer;
 
 public abstract class ZeroMQBackendStore implements BackendStore {
@@ -112,6 +116,23 @@ public abstract class ZeroMQBackendStore implements BackendStore {
         } else if (msg.startsWith("checkpoints ")) {
             final String instance = msg.substring("checkpoints ".length());
             ret = nodeStateAggregator.getCheckpointHead(instance);
+        } else if (msg.startsWith("blob ")) {
+            final byte[] buffer = new byte[1024*1024];
+            final Blob blob = nodeStateAggregator.getBlob(msg.substring("blob ".length()));
+            final InputStream is = blob.getNewStream();
+            try {
+                for (int nBytes = is.read(buffer); nBytes > 0; nBytes = is.read(buffer)) {
+                    if (nBytes < buffer.length) {
+                        readerService.sendMore(Arrays.copyOf(buffer, nBytes));
+                    } else {
+                        readerService.sendMore(buffer);
+                    }
+                }
+                readerService.send(new byte[0]);
+            } catch (IOException ioe) {
+                readerService.send(new byte[0]);
+            }
+            return;
         } else {
             ret = nodeStateAggregator.readNodeState(msg);
         }
