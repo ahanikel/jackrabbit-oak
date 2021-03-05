@@ -50,33 +50,6 @@ public class ZeroMQBlob implements Blob {
     }
     */
 
-    static void appendInputStream(File f, InputStream is) {
-        try {
-            final BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(f, true));
-            for (int nRead = is.read(); nRead >= 0; nRead = is.read()) {
-                bos.write(nRead);
-            }
-            bos.flush();
-            bos.close();
-            is.close();
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
-        }
-    }
-
-    static void copyInto(byte[] src, byte[] dst) {
-        copyInto(src, dst, 0);
-    }
-
-    static void copyInto(byte[] src, byte[] dst, int ofs) {
-        if (src.length + ofs > dst.length) {
-            throw new IllegalArgumentException("src + ofs is bigger than dst");
-        }
-        for (int i = 0; i < src.length; ++i) {
-            dst[i + ofs] = src[i];
-        }
-    }
-
     static class InputStreamFileSupplier implements Supplier<File> {
         private final File file;
         private final InputStream is;
