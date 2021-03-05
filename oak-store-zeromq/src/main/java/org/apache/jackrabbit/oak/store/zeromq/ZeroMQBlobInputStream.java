@@ -35,7 +35,7 @@ public class ZeroMQBlobInputStream extends InputStream {
     private ZMQ.Socket reader;
     private final String reference;
 
-    private static final Logger log = LoggerFactory.getLogger(ZeroMQNodeStore.class.getName());
+    private static final Logger log = LoggerFactory.getLogger(ZeroMQBlobInputStream.class.getName());
 
     ZeroMQBlobInputStream(Supplier<ZMQ.Socket> blobReader, String reference) {
         this.blobReader = blobReader;
