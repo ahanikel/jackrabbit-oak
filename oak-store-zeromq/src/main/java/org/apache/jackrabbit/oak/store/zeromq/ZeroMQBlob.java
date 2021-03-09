@@ -55,7 +55,7 @@ public class ZeroMQBlob implements Blob {
         private final InputStream is;
         private static final ExecutorService readerThreads = Executors.newFixedThreadPool(5);
         private final CountDownLatch countDownLatch;
-        private final boolean exists;
+        private volatile boolean exists;
 
         InputStreamFileSupplier(File file, @NotNull InputStream is) {
             checkNotNull(is);
@@ -118,6 +118,7 @@ public class ZeroMQBlob implements Blob {
                 log.error(e.toString());
                 throw new IllegalStateException(e);
             }
+            exists = true;
             countDownLatch.countDown();
         }
     }
