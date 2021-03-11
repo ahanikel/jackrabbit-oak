@@ -86,6 +86,7 @@ import static org.apache.jackrabbit.oak.spi.cluster.ClusterRepositoryInfo.getOrC
  * A store which dumps everything into a queue.
  */
 @Component(scope = ServiceScope.SINGLETON, immediate = true, configurationPolicy = ConfigurationPolicy.REQUIRE)
+@Service
 public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
 
     public static final String PARAM_CLUSTERINSTANCES = "clusterInstances";
@@ -267,12 +268,12 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         init();
         OsgiWhiteboard whiteboard = new OsgiWhiteboard(ctx.getBundleContext());
         org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardUtils.registerMBean
-                ( whiteboard
-                , CheckpointMBean.class
-                , new ZeroMQCheckpointMBean(this)
-                , CheckpointMBean.TYPE
-                , "ZeroMQNodeStore checkpoint management"
-                , new HashMap<>()
+                (whiteboard
+                        , CheckpointMBean.class
+                        , new ZeroMQCheckpointMBean(this)
+                        , CheckpointMBean.TYPE
+                        , "ZeroMQNodeStore checkpoint management"
+                        , new HashMap<>()
                 );
         // ensure a clusterId is initialized
         // and expose it as 'oak.clusterid' repository descriptor
@@ -291,8 +292,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         //registerCloseable(executor);
         Map<String, Object> props = new HashMap<>();
         props.put(Constants.SERVICE_PID, ZeroMQNodeStore.class.getName());
-        props.put("oak.nodestore.description", new String[]{"nodeStoreType=segment"});
-        whiteboard.register(NodeStore.class, this, props);
+        props.put("oak.nodestore.description", new String[]{"nodeStoreType=zeromq"});
+        //whiteboard.register(NodeStore.class, this, props);
     }
 
     public int getClusterInstances() {
