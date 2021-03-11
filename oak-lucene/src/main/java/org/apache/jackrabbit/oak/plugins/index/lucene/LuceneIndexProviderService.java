@@ -318,12 +318,7 @@ public class LuceneIndexProviderService {
     @Reference
     private AsyncIndexInfoService asyncIndexInfoService;
 
-    @Reference(
-            cardinality = ReferenceCardinality.OPTIONAL_UNARY,
-            policy = ReferencePolicy.STATIC,
-            policyOption = ReferencePolicyOption.GREEDY,
-            target = ONLY_STANDALONE_TARGET
-    )
+    // TODO: expose GarbageCollectableBlobStore as a service
     private GarbageCollectableBlobStore blobStore;
 
     @Reference
@@ -356,6 +351,7 @@ public class LuceneIndexProviderService {
 
     @Activate
     private void activate(BundleContext bundleContext, Map<String, ?> config) throws IOException {
+        blobStore = ((ZeroMQNodeStore) nodeStore).getGarbageCollectableBlobStore();
         asyncIndexesSizeStatsUpdate = new AsyncIndexesSizeStatsUpdateImpl(
                 PropertiesUtil.toLong(config.get(LUCENE_INDEX_STATS_UPDATE_INTERVAL),
                         LUCENE_INDEX_STATS_UPDATE_INTERVAL_DEFAULT) * 1000); // convert seconds to millis
@@ -517,7 +513,7 @@ public class LuceneIndexProviderService {
             editorProvider = new LuceneIndexEditorProvider(null, tracker, extractedTextCache, augmentorFactory,
                     mountInfoProvider, activeDeletedBlobCollector, mBean, statisticsProvider);
         }
-        editorProvider.setBlobStore(((ZeroMQNodeStore) nodeStore).getGarbageCollectableBlobStore());
+        editorProvider.setBlobStore(blobStore);
         editorProvider.withAsyncIndexesSizeStatsUpdate(asyncIndexesSizeStatsUpdate);
 
         if (hybridIndex){
