@@ -334,28 +334,28 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
             }
 
             @Override
-            public synchronized String writeBlob(InputStream in) throws IOException {
+            public String writeBlob(InputStream in) throws IOException {
                 return createBlob(in).getReference();
             }
 
             @Override
-            public synchronized String writeBlob(InputStream in, BlobOptions options) throws IOException {
+            public String writeBlob(InputStream in, BlobOptions options) throws IOException {
                 return writeBlob(in);
             }
 
             @Override
-            public synchronized int readBlob(String blobId, long pos, byte[] buff, int off, int length) throws IOException {
+            public int readBlob(String blobId, long pos, byte[] buff, int off, int length) throws IOException {
                 final Blob blob = getBlob(blobId);
                 return blob.getNewStream().read(buff, off, length);
             }
 
             @Override
-            public synchronized long getBlobLength(String blobId) throws IOException {
+            public long getBlobLength(String blobId) throws IOException {
                 return getBlob(blobId).length();
             }
 
             @Override
-            public synchronized InputStream getInputStream(String blobId) throws IOException {
+            public InputStream getInputStream(String blobId) throws IOException {
                 return getBlob(blobId).getNewStream();
             }
 
