@@ -80,10 +80,6 @@ public class ZeroMQBlob implements Blob {
                 final File out = File.createTempFile("zmqBlob", ".dat");
                 final FileOutputStream fos = new FileOutputStream(out);
                 final BufferedOutputStream bos = new BufferedOutputStream(fos);
-                // The InflaterInputStream seems to take some time until it's ready
-                if (is.available() == 0) {
-                    Thread.sleep(500);
-                }
                 // The InputStream spec says that read reads at least one byte (if not eof),
                 // reads 0 bytes only if buffer.length == 0,
                 // and blocks if it's not available, but we're sending a 0-byte chunk to
