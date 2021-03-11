@@ -29,8 +29,8 @@ public class ZeroMQBlobInputStream extends InputStream {
     byte[] buffer;
     private int cur = 0;
     private int max = 0;
-    private boolean init = false;
-    private boolean error = false;
+    private volatile boolean init = false;
+    private volatile boolean error = false;
     private final Supplier<ZMQ.Socket> blobReader;
     private ZMQ.Socket reader;
     private final String reference;
@@ -77,13 +77,9 @@ public class ZeroMQBlobInputStream extends InputStream {
     }
 
     private void nextBunch() {
-        if (reader.hasReceiveMore()) {
-            max = reader.recv(buffer, 0, buffer.length, 0);
-        } else {
-            max = reader.recv(buffer, 0, buffer.length, 0);
-            if (max < 1) {
-                log.warn("Received {}", reference);
-            }
+        max = reader.recv(buffer, 0, buffer.length, 0);
+        if (max < 1) {
+            log.warn("Received {}", reference);
         }
         cur = 0;
     }
