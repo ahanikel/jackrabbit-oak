@@ -179,8 +179,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
 
         if ("localhost".equals(backendPrefix)) {
             for (int i = 0; i < clusterInstances; ++i) {
-                nodeStateReader[i] = new ZeroMQSocketProvider("tcp://localhost:" + (8000 + 2*i), context, ZMQ.REQ);
-                nodeStateWriter[i] = new ZeroMQSocketProvider("tcp://localhost:" + (8001 + 2*i), context, ZMQ.REQ);
+                nodeStateReader[i] = new ZeroMQSocketProvider("tcp://localhost:" + (8000 + 2 * i), context, ZMQ.REQ);
+                nodeStateWriter[i] = new ZeroMQSocketProvider("tcp://localhost:" + (8001 + 2 * i), context, ZMQ.REQ);
             }
         } else {
             for (int i = 0; i < clusterInstances; ++i) {
@@ -665,7 +665,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
                 socket.send(uuid);
                 do {
                     msg.append(socket.recvStr());
-                } while(socket.hasReceiveMore());
+                } while (socket.hasReceiveMore());
                 log.debug("{} read.", uuid);
                 break;
             } catch (Throwable t) {
