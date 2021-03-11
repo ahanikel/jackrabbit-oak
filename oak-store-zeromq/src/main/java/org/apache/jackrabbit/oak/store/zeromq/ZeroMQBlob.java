@@ -51,37 +51,29 @@ public class ZeroMQBlob implements Blob {
     */
 
     static class InputStreamFileSupplier implements Supplier<File> {
-        private final File file;
+        private volatile File file;
+        private volatile String reference;
         private final InputStream is;
         private static final ExecutorService readerThreads = Executors.newFixedThreadPool(5);
         private final CountDownLatch countDownLatch;
-        private volatile boolean exists;
 
-        InputStreamFileSupplier(File file, @NotNull InputStream is) {
+        InputStreamFileSupplier(@NotNull InputStream is) {
             checkNotNull(is);
-            this.file = file;
             this.is = is;
-            this.exists = file.exists();
-            if (exists) {
-                countDownLatch = null;
-            } else {
-                countDownLatch = new CountDownLatch(1);
-                readerThreads.execute(this::getInternal);
-            }
+            countDownLatch = new CountDownLatch(1);
+            readerThreads.execute(this::getInternal);
         }
 
         @Override
         public File get() {
-            if (!exists) {
-                try {
-                    countDownLatch.await();
-                } catch (InterruptedException e) {
-                }
+            try {
+                countDownLatch.await();
+            } catch (InterruptedException e) {
             }
             return file;
         }
 
-        public void getInternal() {
+        private void getInternal() {
             final byte[] readBuffer = new byte[1024 * 1024];
             try {
                 final MessageDigest md = MessageDigest.getInstance("MD5");
@@ -105,64 +97,28 @@ public class ZeroMQBlob implements Blob {
                 fos.flush();
                 fos.close();
                 is.close();
-                final String reference = bytesToString(new ByteArrayInputStream(md.digest()));
-                File destFile = new File("/tmp/blobs/", reference);
+                reference = bytesToString(new ByteArrayInputStream(md.digest()));
+                file = new File("/tmp/blobs/", reference);
                 synchronized (ZeroMQBlob.class) {
-                    if (destFile.exists()) {
+                    if (file.exists()) {
                         out.delete();
                     } else {
-                        out.renameTo(destFile);
+                        out.renameTo(file);
                     }
                 }
             } catch (Exception e) {
                 log.error(e.toString());
                 throw new IllegalStateException(e);
             }
-            exists = true;
             countDownLatch.countDown();
         }
-    }
 
-    static ZeroMQBlob newInstance(InputStream is) {
-        if (is == null) {
-            throw new IllegalArgumentException();
-        }
-        final byte[] readBuffer = new byte[1024*1024];
-        try {
-            final MessageDigest md = MessageDigest.getInstance("MD5");
-            final File out = File.createTempFile("zmqBlob", ".dat");
-            final FileOutputStream fos = new FileOutputStream(out);
-            final BufferedOutputStream bos = new BufferedOutputStream(fos);
-            // The InflaterInputStream seems to take some time until it's ready
-            if (is.available() == 0) {
-                Thread.sleep(500);
+        public String getReference() {
+            try {
+                countDownLatch.await();
+            } catch (InterruptedException e) {
             }
-            // The InputStream spec says that read reads at least one byte (if not eof),
-            // reads 0 bytes only if buffer.length == 0,
-            // and blocks if it's not available, but we're sending a 0-byte chunk to
-            // terminate the "sendMore" sequence.
-            for (int nRead = is.read(readBuffer); nRead >= 0; nRead = is.read(readBuffer)) {
-                bos.write(readBuffer, 0, nRead);
-                md.update(readBuffer, 0, nRead);
-            }
-            bos.flush();
-            bos.close();
-            fos.flush();
-            fos.close();
-            is.close();
-            final String reference = bytesToString(new ByteArrayInputStream(md.digest()));
-            File destFile = new File("/tmp/blobs/", reference);
-            synchronized (ZeroMQBlob.class) {
-                if (destFile.exists()) {
-                    out.delete();
-                } else {
-                    out.renameTo(destFile);
-                }
-            }
-            return new ZeroMQBlob(reference, () -> destFile);
-        } catch (Exception e) {
-            log.error(e.toString());
-            throw new IllegalStateException(e);
+            return reference;
         }
     }
 
@@ -198,7 +154,17 @@ public class ZeroMQBlob implements Blob {
 
     static ZeroMQBlob newInstance(String reference, @NotNull InputStream is) {
         checkNotNull(is);
-        return new ZeroMQBlob(reference, new InputStreamFileSupplier(new File(blobCacheDir, reference), is));
+        InputStreamFileSupplier fileSupplier = new InputStreamFileSupplier(is);
+        if (!reference.equals(fileSupplier.getReference())) {
+            throw new IllegalStateException("Expected reference does not match the one from the stream");
+        }
+        return new ZeroMQBlob(reference, fileSupplier);
+    }
+
+    static ZeroMQBlob newInstance(@NotNull InputStream is) {
+        checkNotNull(is);
+        InputStreamFileSupplier fileSupplier = new InputStreamFileSupplier(is);
+        return new ZeroMQBlob(fileSupplier.getReference(), fileSupplier);
     }
 
     @Override
@@ -268,6 +234,7 @@ public class ZeroMQBlob implements Blob {
             final char[] hex = "0123456789ABCDEF".toCharArray();
             volatile boolean isHiByte = true;
             volatile int b;
+
             @Override
             public int read() throws IOException {
                 if (isHiByte) {
@@ -281,6 +248,7 @@ public class ZeroMQBlob implements Blob {
                     return hex[b & 0x0f];
                 }
             }
+
             @Override
             public int available() throws IOException {
                 return is.available() * 2;
@@ -289,7 +257,7 @@ public class ZeroMQBlob implements Blob {
     }
 
     static File bytesFromInputStream(InputStream is) {
-        final byte[] readBuffer = new byte[1024*1024*100]; // 100 MB
+        final byte[] readBuffer = new byte[1024 * 1024 * 100]; // 100 MB
         try {
             final File out = File.createTempFile("zmqBlob", "dat");
             final BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(out));
