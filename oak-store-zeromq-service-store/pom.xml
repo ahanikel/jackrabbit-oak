@@ -40,7 +40,7 @@
         <dkr.image.namespace>ahanikel</dkr.image.namespace>
         <dkr.image.name>${dkr.registry}/${dkr.image.namespace}/${project.artifactId}</dkr.image.name>
         <jarfile>oak-store-zeromq-service-store-1.38.0-jar-with-dependencies.jar</jarfile>
-        <logfile>test-diff-1.37.0.log</logfile>
+        <logfile>test-diff-1.38.0.log</logfile>
     </properties>
 
     <build>
@@ -150,7 +150,7 @@
         <dependency>
             <groupId>org.zeromq</groupId>
             <artifactId>jeromq</artifactId>
-            <version>0.4.3</version>
+            <version>0.5.2</version>
         </dependency>
         <dependency>
             <groupId>org.apache.kafka</groupId>
@@ -170,7 +170,7 @@
         <dependency>
             <groupId>org.apache.jackrabbit</groupId>
             <artifactId>oak-store-zeromq</artifactId>
-            <version>1.30.0</version>
+            <version>1.38.0-zeromq</version>
             <scope>compile</scope>
         </dependency>
         <dependency>
