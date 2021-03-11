@@ -166,10 +166,25 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
 
         try {
             clusterInstances = Integer.parseInt(System.getenv(PARAM_CLUSTERINSTANCES));
+        } catch (Exception e) {
+        }
+        try {
             writeBackJournal = Boolean.parseBoolean(System.getenv(PARAM_WRITEBACKJOURNAL));
+        } catch (Exception e) {
+        }
+        try {
             writeBackNodes = Boolean.parseBoolean(System.getenv(PARAM_WRITEBACKNODES));
+        } catch (Exception e) {
+        }
+        try {
             remoteReads = Boolean.parseBoolean(System.getenv(PARAM_REMOTEREADS));
+        } catch (Exception e) {
+        }
+        try {
             initJournal = System.getenv(PARAM_INITJOURNAL);
+        } catch (Exception e) {
+        }
+        try {
             logNodeStates = Boolean.parseBoolean(System.getenv(PARAM_LOG_NODE_STATES));
         } catch (Exception e) {
         }
