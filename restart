@@ -33,7 +33,8 @@ cp -pR ~/Downloads/crx-quickstart.test-1.38.0 ~/Downloads/crx-quickstart
 
 #update-crx-quickstart
 
-(cd /Users/axel/Downloads && java -Xmx8g '-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005' -Doak.queryLimitReads=10000000 -Dorg.apache.sling.launchpad.startupmode=restart -jar cq-quickstart-6.6.0-1.38.0.nosegment.jar -nofork -nobrowser -r author,crx3,crx3tar-nofds) &
+(cd /Users/axel/Downloads && java -Xmx16g '-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005' -Doak.queryLimitReads=10000000 -Dorg.apache.sling.launchpad.startupmode=restart -jar cq-quickstart-6.6.0-1.38.0.nosegment.jar -nofork -nobrowser -r author,crx3,crx3tar-nofds) &
 
 # -DdeletedBlobsCollectionEnabled=false 
+
 
