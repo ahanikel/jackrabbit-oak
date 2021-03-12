@@ -73,7 +73,7 @@ public abstract class ZeroMQBackendStore implements BackendStore {
         } catch (NumberFormatException e) {
             writerPort = 8001;
         }
-        context = ZMQ.context(20);
+        context = ZMQ.context(50);
         readerService = context.socket(ZMQ.REP);
         writerService = context.socket(ZMQ.REP);
         pollerItems = context.poller(2);

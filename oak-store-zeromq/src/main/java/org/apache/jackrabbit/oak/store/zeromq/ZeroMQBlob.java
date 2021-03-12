@@ -54,7 +54,7 @@ public class ZeroMQBlob implements Blob {
         private volatile File file;
         private volatile String reference;
         private final InputStream is;
-        private static final ExecutorService readerThreads = Executors.newFixedThreadPool(5);
+        private static final ExecutorService readerThreads = Executors.newFixedThreadPool(50);
         private final CountDownLatch countDownLatch;
 
         InputStreamFileSupplier(@NotNull InputStream is) {

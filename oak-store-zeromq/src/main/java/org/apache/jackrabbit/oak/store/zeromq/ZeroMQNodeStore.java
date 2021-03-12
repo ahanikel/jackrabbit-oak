@@ -159,9 +159,9 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
 
         initialised = false;
 
-        context = ZMQ.context(20);
+        context = ZMQ.context(50);
 
-        nodeWriterThread = Executors.newFixedThreadPool(5);
+        nodeWriterThread = Executors.newFixedThreadPool(50);
         blobWriterThread = Executors.newFixedThreadPool(50); // each thread consumes 1 MB
 
         try {
