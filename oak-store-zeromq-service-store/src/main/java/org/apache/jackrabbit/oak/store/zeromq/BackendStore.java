@@ -18,10 +18,12 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq;
 
-public interface BackendStore {
-    void handleReaderService(String msg);
+import org.zeromq.ZMQ;
 
-    void handleWriterService(String msg);
+public interface BackendStore {
+    void handleReaderService(ZMQ.Socket socket);
+
+    void handleWriterService(ZMQ.Socket socket);
 
     void open();
 

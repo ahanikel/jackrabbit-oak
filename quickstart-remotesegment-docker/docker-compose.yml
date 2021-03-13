@@ -5,14 +5,18 @@ services:
     ports:
             - "8000-8001:8000-8001"
             - "6006:6006"
-              #  quickstart:
-              #    #image: docker2-granite-release-local.dr-uw2.adobeitc.com/ahanikel/quickstart-remotesegment-docker
-              #    image: d2261a5fad21
-              #    ports:
-              #      - "4502:4502"
-              #      - "5005:5005"
-              #    environment:
-              #      - backendPrefix=backend
-              #      - javaargs=-Xmx8g -Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=*:5005
-              #      - jarargs=-nofork -nobrowser -r author,crx3,crx3tar-nofds
+    environment:
+        - ZEROMQ_NTHREADS=12
+#- debug=-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*:6006
+
+#  quickstart:
+#    #image: docker2-granite-release-local.dr-uw2.adobeitc.com/ahanikel/quickstart-remotesegment-docker
+#    image: d2261a5fad21
+#    ports:
+#      - "4502:4502"
+#      - "5005:5005"
+#    environment:
+#      - backendPrefix=backend
+#      - javaargs=-Xmx8g -Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=*:5005
+#      - jarargs=-nofork -nobrowser -r author,crx3,crx3tar-nofds
 

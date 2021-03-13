@@ -679,7 +679,9 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
                 do {
                     msg.append(socket.recvStr());
                 } while (socket.hasReceiveMore());
-                log.debug("{} read.", uuid);
+                if (log.isDebugEnabled()) {
+                    log.debug("{} read.", uuid);
+                }
                 break;
             } catch (Throwable t) {
                 log.warn(t.toString());

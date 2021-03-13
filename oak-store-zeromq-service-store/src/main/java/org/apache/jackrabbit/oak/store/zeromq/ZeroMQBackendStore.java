@@ -19,11 +19,13 @@ package org.apache.jackrabbit.oak.store.zeromq;
 import org.apache.jackrabbit.oak.api.Blob;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.zeromq.SocketType;
+import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
 
-import java.io.IOException;
 import java.io.InputStream;
-import java.util.Arrays;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 
 public abstract class ZeroMQBackendStore implements BackendStore {
@@ -31,33 +33,29 @@ public abstract class ZeroMQBackendStore implements BackendStore {
     public static final Logger log = LoggerFactory.getLogger(ZeroMQBackendStore.class);
     public static final String ZEROMQ_READER_PORT = "ZEROMQ_READER_PORT";
     public static final String ZEROMQ_WRITER_PORT = "ZEROMQ_WRITER_PORT";
+    public static final String ZEROMQ_NTHREADS    = "ZEROMQ_NTHREADS";
 
     protected Thread nodeDiffHandler;
     protected NodeStateAggregator nodeStateAggregator;
     protected Consumer<String> eventWriter;
 
-    final ZMQ.Context context;
-
-    final ZMQ.Poller pollerItems;
-
-    /**
-     * read segments to be persisted from this socket
-     */
-    protected final ZMQ.Socket writerService;
-
-    /**
-     * the segment reader service serves segments by id
-     */
-    protected final ZMQ.Socket readerService;
-
-    /**
-     * the thread which listens on the sockets and processes messages
-     */
-    private final Thread socketHandler;
+    final ZContext context;
 
     private int readerPort;
 
     private int writerPort;
+
+    private int nThreads;
+
+    private final Executor threadPool;
+
+    private final ZMQ.Socket readerFrontend;
+
+    private final ZMQ.Socket readerBackend;
+
+    private final ZMQ.Socket writerFrontend;
+
+    private final ZMQ.Socket writerBackend;
 
     public ZeroMQBackendStore(NodeStateAggregator nodeStateAggregator) {
         this.eventWriter = null;
@@ -73,33 +71,48 @@ public abstract class ZeroMQBackendStore implements BackendStore {
         } catch (NumberFormatException e) {
             writerPort = 8001;
         }
-        context = ZMQ.context(50);
-        readerService = context.socket(ZMQ.REP);
-        writerService = context.socket(ZMQ.REP);
-        pollerItems = context.poller(2);
-        socketHandler = new Thread("ZeroMQBackendStore Socket Handler") {
-            @Override
-            public void run() {
-                while (!isInterrupted()) {
+        try {
+            nThreads = Integer.parseInt(System.getenv(ZEROMQ_NTHREADS));
+        } catch (NumberFormatException e) {
+            nThreads = 4;
+        }
+        context = new ZContext();
+        threadPool = Executors.newFixedThreadPool(2 * nThreads + 2);
+        readerFrontend = context.createSocket(SocketType.ROUTER);
+        readerBackend  = context.createSocket(SocketType.DEALER);
+        writerFrontend = context.createSocket(SocketType.ROUTER);
+        writerBackend  = context.createSocket(SocketType.DEALER);
+        readerFrontend.bind("tcp://*:" + readerPort);
+        readerBackend.bind("inproc://readerBackend");
+        writerFrontend.bind("tcp://*:" + writerPort);
+        writerBackend.bind("inproc://writerBackend");
+        threadPool.execute(() -> ZMQ.proxy(readerFrontend, readerBackend, null));
+        threadPool.execute(() -> ZMQ.proxy(writerFrontend, writerBackend, null));
+        for (int nThread = 0; nThread < nThreads; ++nThread) {
+            threadPool.execute(() -> {
+                final ZMQ.Socket socket = context.createSocket(SocketType.REP);
+                socket.connect("inproc://readerBackend");
+                while (!Thread.currentThread().isInterrupted()) {
                     try {
-                        while (readerService.hasReceiveMore()) {
-                            readerService.recv();
-                        }
-                        while (writerService.hasReceiveMore()) {
-                            writerService.recv();
-                        }
-                        pollerItems.poll();
-                        if (pollerItems.pollin(0)) {
-                            handleReaderService(readerService.recvStr());
-                        }
-                        if (pollerItems.pollin(1)) {
-                            handleWriterService(writerService.recvStr());
-                        }
+                        handleReaderService(socket);
                     } catch (Throwable t) {
                         log.error(t.toString());
                     }
                 }
-            }
+            });
+        };
+        for (int nThread = 0; nThread < nThreads; ++nThread) {
+            threadPool.execute(() -> {
+                final ZMQ.Socket socket = context.createSocket(SocketType.REP);
+                socket.connect("inproc://writerBackend");
+                while (!Thread.currentThread().isInterrupted()) {
+                    try {
+                        handleWriterService(socket);
+                    } catch (Throwable t) {
+                        log.error(t.toString());
+                    }
+                }
+            });
         };
     }
 
@@ -108,7 +121,8 @@ public abstract class ZeroMQBackendStore implements BackendStore {
     }
 
     @Override
-    public void handleReaderService(String msg) {
+    public void handleReaderService(ZMQ.Socket socket) {
+        final String msg = socket.recvStr();
         String ret = null;
         if (msg.startsWith("journal ")) {
             final String instance = msg.substring("journal ".length());
@@ -125,31 +139,32 @@ public abstract class ZeroMQBackendStore implements BackendStore {
                 }
                 final InputStream is = blob.getNewStream();
                 for (int nBytes = is.read(buffer); nBytes > 0; nBytes = is.read(buffer)) {
-                    readerService.send(buffer, 0, nBytes, ZMQ.SNDMORE);
+                    socket.send(buffer, 0, nBytes, ZMQ.SNDMORE);
                 }
             } catch (IllegalArgumentException iae) {
                 log.info(iae.getMessage());
             } catch (Exception ioe) {
                 log.error(ioe.getMessage());
             } finally {
-                readerService.send(new byte[0]);
+                socket.send(new byte[0]);
             }
             return;
         } else {
             ret = nodeStateAggregator.readNodeState(msg);
         }
         if (ret != null) {
-            readerService.send(ret);
+            socket.send(ret);
         } else {
-            readerService.send("Node not found");
+            socket.send("Node not found");
             log.error("Requested node not found: {}", msg);
         }
     }
 
     @Override
-    public void handleWriterService(String msg) {
+    public void handleWriterService(ZMQ.Socket socket) {
+        final String msg = socket.recvStr();
         eventWriter.accept(msg);
-        writerService.send("confirmed");
+        socket.send("confirmed");
     }
 
     private void startBackgroundThreads() {
@@ -163,15 +178,9 @@ public abstract class ZeroMQBackendStore implements BackendStore {
                 }
             }
         }
-        if (socketHandler != null) {
-            socketHandler.start();
-        }
     }
 
     private void stopBackgroundThreads() {
-        if (socketHandler != null) {
-            socketHandler.interrupt();
-        }
         if (nodeDiffHandler != null) {
             nodeDiffHandler.interrupt();
         }
@@ -179,19 +188,12 @@ public abstract class ZeroMQBackendStore implements BackendStore {
 
     @Override
     public void open() {
-        readerService.bind("tcp://*:" + (readerPort));
-        writerService.bind("tcp://*:" + (writerPort));
-        pollerItems.register(readerService, ZMQ.Poller.POLLIN);
-        pollerItems.register(writerService, ZMQ.Poller.POLLIN);
         startBackgroundThreads();
     }
 
     @Override
     public void close() {
         stopBackgroundThreads();
-        pollerItems.close();
-        writerService.close();
-        readerService.close();
         context.close();
     }
 }
