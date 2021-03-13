@@ -152,7 +152,11 @@ public class ZeroMQBlob implements Blob {
         checkNotNull(is);
         InputStreamFileSupplier fileSupplier = new InputStreamFileSupplier(is);
         if (!reference.equals(fileSupplier.getReference())) {
-            throw new IllegalStateException("Expected reference does not match the one from the stream");
+            if ("D41D8CD98F00B204E9800998ECF8427E".equals(fileSupplier.getReference())) {
+                throw new IllegalArgumentException("Blob " + reference + " not found");
+            } else {
+                throw new IllegalStateException("Expected reference does not match the one from the stream");
+            }
         }
         return new ZeroMQBlob(reference, fileSupplier);
     }

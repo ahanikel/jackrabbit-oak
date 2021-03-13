@@ -118,13 +118,18 @@ public abstract class ZeroMQBackendStore implements BackendStore {
             ret = nodeStateAggregator.getCheckpointHead(instance);
         } else if (msg.startsWith("blob ")) {
             byte[] buffer = new byte[1024*1024];
-            final Blob blob = nodeStateAggregator.getBlob(msg.substring("blob ".length()));
-            final InputStream is = blob.getNewStream();
             try {
+                final Blob blob = nodeStateAggregator.getBlob(msg.substring("blob ".length()));
+                if (blob == null) {
+                    throw new IllegalArgumentException(msg + " not found");
+                }
+                final InputStream is = blob.getNewStream();
                 for (int nBytes = is.read(buffer); nBytes > 0; nBytes = is.read(buffer)) {
                     readerService.send(buffer, 0, nBytes, ZMQ.SNDMORE);
                 }
-            } catch (IOException ioe) {
+            } catch (IllegalArgumentException iae) {
+                log.info(iae.getMessage());
+            } catch (Exception ioe) {
                 log.error(ioe.getMessage());
             } finally {
                 readerService.send(new byte[0]);
