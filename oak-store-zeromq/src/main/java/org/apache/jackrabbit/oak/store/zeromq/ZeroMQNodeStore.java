@@ -53,9 +53,10 @@ import org.osgi.service.component.annotations.ConfigurationPolicy;
 import org.osgi.service.component.annotations.ServiceScope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.zeromq.SocketType;
+import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
 
-import java.io.ByteArrayInputStream;
 import java.io.Closeable;
 import java.io.File;
 import java.io.FileInputStream;
@@ -102,7 +103,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
     private static final Logger log = LoggerFactory.getLogger(ZeroMQNodeStore.class.getName());
 
     @NotNull
-    final ZMQ.Context context;
+    final ZContext context;
     private final String instance;
 
     private boolean initialised;
@@ -159,7 +160,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
 
         initialised = false;
 
-        context = ZMQ.context(50);
+        context = new ZContext(50);
 
         nodeWriterThread = Executors.newFixedThreadPool(50);
         blobWriterThread = Executors.newFixedThreadPool(50); // each thread consumes 1 MB
@@ -194,13 +195,13 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
 
         if ("localhost".equals(backendPrefix)) {
             for (int i = 0; i < clusterInstances; ++i) {
-                nodeStateReader[i] = new ZeroMQSocketProvider("tcp://localhost:" + (8000 + 2 * i), context, ZMQ.REQ);
-                nodeStateWriter[i] = new ZeroMQSocketProvider("tcp://localhost:" + (8001 + 2 * i), context, ZMQ.REQ);
+                nodeStateReader[i] = new ZeroMQSocketProvider("tcp://localhost:" + (8000 + 2 * i), context, SocketType.REQ);
+                nodeStateWriter[i] = new ZeroMQSocketProvider("tcp://localhost:" + (8001 + 2 * i), context, SocketType.REQ);
             }
         } else {
             for (int i = 0; i < clusterInstances; ++i) {
-                nodeStateReader[i] = new ZeroMQSocketProvider(String.format("tcp://%s%d:8000", backendPrefix, i), context, ZMQ.REQ);
-                nodeStateWriter[i] = new ZeroMQSocketProvider(String.format("tcp://%s%d:8001", backendPrefix, i), context, ZMQ.REQ);
+                nodeStateReader[i] = new ZeroMQSocketProvider(String.format("tcp://%s%d:8000", backendPrefix, i), context, SocketType.REQ);
+                nodeStateWriter[i] = new ZeroMQSocketProvider(String.format("tcp://%s%d:8001", backendPrefix, i), context, SocketType.REQ);
             }
         }
 
