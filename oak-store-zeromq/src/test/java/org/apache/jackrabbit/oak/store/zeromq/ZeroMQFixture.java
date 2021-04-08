@@ -27,8 +27,7 @@ public class ZeroMQFixture extends NodeStoreFixture {
     private volatile ZeroMQNodeStore store = null;
 
     public ZeroMQFixture() {
-        store = new ZeroMQNodeStore("test");
-        store.init();
+        store = new ZeroMQNodeStoreBuilder().setInstance("test").build();
     }
 
     @Override

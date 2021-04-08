@@ -90,28 +90,18 @@ import static org.apache.jackrabbit.oak.spi.cluster.ClusterRepositoryInfo.getOrC
 @Service
 public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
 
-    public static final String PARAM_CLUSTERINSTANCES = "clusterInstances";
-    public static final String PARAM_BACKEND_PREFIX = "backendPrefix";
-    public static final String PARAM_WRITEBACKJOURNAL = "writeBackJournal";
-    public static final String PARAM_WRITEBACKNODES = "writeBackNodes";
-    public static final String PARAM_INITJOURNAL = "initJournal";
-    public static final String PARAM_REMOTEREADS = "remoteReads";
-    private static final String PARAM_LOG_NODE_STATES = "logNodeStates";
-
-    public static String backendPrefix = System.getenv(PARAM_BACKEND_PREFIX);
-
     private static final Logger log = LoggerFactory.getLogger(ZeroMQNodeStore.class.getName());
 
     @NotNull
     final ZContext context;
     private final String instance;
 
-    private boolean initialised;
     private int clusterInstances = 1;
     private boolean writeBackJournal = false;
     private boolean writeBackNodes = false;
     private boolean remoteReads = false;
-    private boolean logNodeStates = true;
+    private boolean logNodeStates = false;
+    private String backendPrefix = "localhost";
 
     @NotNull
     final ZeroMQSocketProvider nodeStateReader[];
@@ -150,45 +140,30 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
 
     private final GarbageCollectableBlobStore blobStore;
 
-    public ZeroMQNodeStore() {
-        this("golden");
-    }
-
-    public ZeroMQNodeStore(String instance) {
+    ZeroMQNodeStore(
+            String instance,
+            int clusterInstances,
+            boolean writeBackJournal,
+            boolean writeBackNodes,
+            boolean remoteReads,
+            String initJournal,
+            String backendPrefix,
+            boolean logNodeStates) {
 
         this.instance = instance;
-
-        initialised = false;
 
         context = new ZContext(50);
 
         nodeWriterThread = Executors.newFixedThreadPool(50);
         blobWriterThread = Executors.newFixedThreadPool(50); // each thread consumes 1 MB
 
-        try {
-            clusterInstances = Integer.parseInt(System.getenv(PARAM_CLUSTERINSTANCES));
-        } catch (Exception e) {
-        }
-        try {
-            writeBackJournal = Boolean.parseBoolean(System.getenv(PARAM_WRITEBACKJOURNAL));
-        } catch (Exception e) {
-        }
-        try {
-            writeBackNodes = Boolean.parseBoolean(System.getenv(PARAM_WRITEBACKNODES));
-        } catch (Exception e) {
-        }
-        try {
-            remoteReads = Boolean.parseBoolean(System.getenv(PARAM_REMOTEREADS));
-        } catch (Exception e) {
-        }
-        try {
-            initJournal = System.getenv(PARAM_INITJOURNAL);
-        } catch (Exception e) {
-        }
-        try {
-            logNodeStates = Boolean.parseBoolean(System.getenv(PARAM_LOG_NODE_STATES));
-        } catch (Exception e) {
-        }
+        this.clusterInstances = clusterInstances;
+        this.writeBackJournal = writeBackJournal;
+        this.writeBackNodes = writeBackNodes;
+        this.remoteReads = remoteReads;
+        this.initJournal = initJournal;
+        this.logNodeStates = logNodeStates;
+        this.backendPrefix = backendPrefix;
 
         nodeStateReader = new ZeroMQSocketProvider[clusterInstances];
         nodeStateWriter = new ZeroMQSocketProvider[clusterInstances];
@@ -429,52 +404,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         //whiteboard.register(NodeStore.class, this, props);
     }
 
-    public int getClusterInstances() {
-        return clusterInstances;
-    }
-
-    public void setClusterInstances(int clusterInstances) {
-        if (initialised) {
-            throw new IllegalAccessError("Cannot be changed after init");
-        }
-        this.clusterInstances = clusterInstances;
-    }
-
-    public boolean doesWriteBackJournal() {
-        return writeBackJournal;
-    }
-
-    public void setWriteBackJournal(boolean writeBackJournal) {
-        if (initialised) {
-            throw new IllegalAccessError("Cannot be changed after init");
-        }
-        this.writeBackJournal = writeBackJournal;
-    }
-
-    public boolean doesWriteBackNodes() {
-        return writeBackNodes;
-    }
-
-    public void setWriteBackNodes(boolean writeBackNodes) {
-        if (initialised) {
-            throw new IllegalAccessError("Cannot be changed after init");
-        }
-        this.writeBackNodes = writeBackNodes;
-    }
-
-    public boolean doesRemoteReads() {
-        return remoteReads;
-    }
-
-    public void setRemoteReads(boolean remoteReads) {
-        if (initialised) {
-            throw new IllegalAccessError("Cannot be changed after init");
-        }
-        this.remoteReads = remoteReads;
-    }
-
-    public void init() {
-        initialised = true;
+    void init() {
         final String uuid = readRootRemote();
         checkpointRoot = readCPRootRemote();
         log.info("Journal root initialised with {}", uuid);

@@ -1,0 +1,188 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+package org.apache.jackrabbit.oak.store.zeromq;
+
+import java.net.MalformedURLException;
+import java.net.URI;
+import java.net.URL;
+
+public class ZeroMQNodeStoreBuilder {
+
+    public static final String PARAM_CLUSTERINSTANCES = "clusterInstances";
+    public static final String PARAM_BACKEND_PREFIX = "backendPrefix";
+    public static final String PARAM_WRITEBACKJOURNAL = "writeBackJournal";
+    public static final String PARAM_WRITEBACKNODES = "writeBackNodes";
+    public static final String PARAM_INITJOURNAL = "initJournal";
+    public static final String PARAM_REMOTEREADS = "remoteReads";
+    private static final String PARAM_LOG_NODE_STATES = "logNodeStates";
+
+    private String instance;
+    private int clusterInstances;
+    private boolean writeBackJournal;
+    private boolean writeBackNodes;
+    private boolean remoteReads;
+    private String initJournal;
+    private String backendPrefix;
+    private boolean logNodeStates;
+
+   public ZeroMQNodeStoreBuilder() {
+       instance = "golden";
+       clusterInstances = 1;
+       writeBackJournal = false;
+       writeBackNodes = false;
+       remoteReads = true;
+       initJournal = null;
+       backendPrefix = "localhost";
+       logNodeStates = false;
+    }
+
+    public ZeroMQNodeStoreBuilder initFromEnvironment() {
+        try {
+            clusterInstances = Integer.parseInt(System.getenv(PARAM_CLUSTERINSTANCES));
+        } catch (Exception e) {
+            // ignore
+        }
+        try {
+            writeBackJournal = Boolean.parseBoolean(System.getenv(PARAM_WRITEBACKJOURNAL));
+        } catch (Exception e) {
+            // ignore
+        }
+        try {
+            writeBackNodes = Boolean.parseBoolean(System.getenv(PARAM_WRITEBACKNODES));
+        } catch (Exception e) {
+            // ignore
+        }
+        try {
+            remoteReads = Boolean.parseBoolean(System.getenv(PARAM_REMOTEREADS));
+        } catch (Exception e) {
+            // ignore
+        }
+        try {
+            initJournal = System.getenv(PARAM_INITJOURNAL);
+        } catch (Exception e) {
+            // ignore
+        }
+        try {
+            backendPrefix = System.getenv(PARAM_BACKEND_PREFIX);
+        } catch (Exception e) {
+            // ignore
+        }
+        try {
+            logNodeStates = Boolean.parseBoolean(System.getenv(PARAM_LOG_NODE_STATES));
+        } catch (Exception e) {
+            // ignore
+        }
+        return this;
+    }
+
+    public ZeroMQNodeStoreBuilder initFromURL(URL url) {
+        throw new UnsupportedOperationException("Not yet implemented");
+    }
+
+    public ZeroMQNodeStoreBuilder initFromURL(String url) throws MalformedURLException {
+       return initFromURL(URI.create(url).toURL());
+    }
+
+    public String getInstance() {
+       return instance;
+    }
+
+    public ZeroMQNodeStoreBuilder setInstance(String instance) {
+       this.instance = instance;
+       return this;
+    }
+
+    public int getClusterInstances() {
+        return clusterInstances;
+    }
+
+    public ZeroMQNodeStoreBuilder setClusterInstances(int clusterInstances) {
+        this.clusterInstances = clusterInstances;
+        return this;
+    }
+
+    public boolean isWriteBackJournal() {
+        return writeBackJournal;
+    }
+
+    public ZeroMQNodeStoreBuilder setWriteBackJournal(boolean writeBackJournal) {
+        this.writeBackJournal = writeBackJournal;
+        return this;
+    }
+
+    public boolean isWriteBackNodes() {
+        return writeBackNodes;
+    }
+
+    public ZeroMQNodeStoreBuilder setWriteBackNodes(boolean writeBackNodes) {
+        this.writeBackNodes = writeBackNodes;
+        return this;
+    }
+
+    public boolean isRemoteReads() {
+        return remoteReads;
+    }
+
+    public ZeroMQNodeStoreBuilder setRemoteReads(boolean remoteReads) {
+        this.remoteReads = remoteReads;
+        return this;
+    }
+
+    public String getInitJournal() {
+        return initJournal;
+    }
+
+    public ZeroMQNodeStoreBuilder setInitJournal(String initJournal) {
+        this.initJournal = initJournal;
+        return this;
+    }
+
+    public String getBackendPrefix() {
+        return backendPrefix;
+    }
+
+    public ZeroMQNodeStoreBuilder setBackendPrefix(String backendPrefix) {
+        this.backendPrefix = backendPrefix;
+        return this;
+    }
+
+    public boolean isLogNodeStates() {
+        return logNodeStates;
+    }
+
+    public ZeroMQNodeStoreBuilder setLogNodeStates(boolean logNodeStates) {
+        this.logNodeStates = logNodeStates;
+        return this;
+    }
+
+    public ZeroMQNodeStore build() {
+       final ZeroMQNodeStore ret = new ZeroMQNodeStore(
+               getInstance(),
+               getClusterInstances(),
+               isWriteBackJournal(),
+               isWriteBackNodes(),
+               isRemoteReads(),
+               getInitJournal(),
+               getBackendPrefix(),
+               isLogNodeStates()
+       );
+       ret.init();
+       return ret;
+    }
+}
