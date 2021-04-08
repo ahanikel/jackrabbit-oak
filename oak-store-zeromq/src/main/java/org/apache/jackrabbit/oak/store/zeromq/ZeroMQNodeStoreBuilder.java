@@ -18,9 +18,13 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq;
 
+import java.io.UnsupportedEncodingException;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
+import java.net.URLDecoder;
+import java.util.HashMap;
+import java.util.Map;
 
 public class ZeroMQNodeStoreBuilder {
 
@@ -92,7 +96,72 @@ public class ZeroMQNodeStoreBuilder {
     }
 
     public ZeroMQNodeStoreBuilder initFromURL(URL url) {
-        throw new UnsupportedOperationException("Not yet implemented");
+        if ("zeromq".equals(url.getProtocol())) {
+            throw new IllegalArgumentException("Expected protocol is 'zeromq' but I got " + url.getProtocol());
+        }
+        if (url.getPort() != -1) {
+            throw new IllegalArgumentException("Unexpected port setting in zeromq URL");
+        }
+        setInstance(url.getHost());
+        final Map<String, String> params = new HashMap<>();
+        try {
+            for (String kv : url.getQuery().split("&")) {
+                String[] aKV = kv.split("=");
+                params.put(URLDecoder.decode(aKV[0], "UTF-8"), URLDecoder.decode(aKV[1], "UTF-8"));
+            }
+        } catch (UnsupportedEncodingException e) {
+            throw new RuntimeException(e);
+        }
+        if (params.containsKey(PARAM_CLUSTERINSTANCES)) {
+            try {
+                setClusterInstances(Integer.parseInt(params.get(PARAM_CLUSTERINSTANCES)));
+            } catch (Exception e) {
+                // ignore
+            }
+        }
+        if (params.containsKey(PARAM_WRITEBACKJOURNAL)) {
+            try {
+                setWriteBackJournal(Boolean.parseBoolean(params.get(PARAM_WRITEBACKJOURNAL)));
+            } catch (Exception e) {
+                // ignore
+            }
+        }
+        if (params.containsKey(PARAM_WRITEBACKNODES)) {
+            try {
+                setWriteBackNodes(Boolean.parseBoolean(params.get(PARAM_WRITEBACKNODES)));
+            } catch (Exception e) {
+                // ignore
+            }
+        }
+        if (params.containsKey(PARAM_REMOTEREADS)) {
+            try {
+                setRemoteReads(Boolean.parseBoolean(params.get(PARAM_REMOTEREADS)));
+            } catch (Exception e) {
+                // ignore
+            }
+        }
+        if (params.containsKey(PARAM_INITJOURNAL)) {
+            try {
+                setInitJournal(params.get(PARAM_INITJOURNAL));
+            } catch (Exception e) {
+                // ignore
+            }
+        }
+        if (params.containsKey(PARAM_BACKEND_PREFIX)) {
+            try {
+                setBackendPrefix(params.get(PARAM_BACKEND_PREFIX));
+            } catch (Exception e) {
+                // ignore
+            }
+        }
+        if (params.containsKey(PARAM_LOG_NODE_STATES)) {
+            try {
+                setLogNodeStates(Boolean.parseBoolean(params.get(PARAM_LOG_NODE_STATES)));
+            } catch (Exception e) {
+                // ignore
+            }
+        }
+        return this;
     }
 
     public ZeroMQNodeStoreBuilder initFromURL(String url) throws MalformedURLException {
@@ -166,7 +235,7 @@ public class ZeroMQNodeStoreBuilder {
         return logNodeStates;
     }
 
-    public ZeroMQNodeStoreBuilder setLogNodeStates(boolean logNodeStates) {
+    ZeroMQNodeStoreBuilder setLogNodeStates(boolean logNodeStates) {
         this.logNodeStates = logNodeStates;
         return this;
     }
