@@ -18,6 +18,9 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.UnsupportedEncodingException;
 import java.net.MalformedURLException;
 import java.net.URI;
@@ -27,6 +30,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class ZeroMQNodeStoreBuilder {
+
+    private static final Logger log = LoggerFactory.getLogger(ZeroMQNodeStoreBuilder.class.getName());
 
     public static final String PARAM_CLUSTERINSTANCES = "clusterInstances";
     public static final String PARAM_BACKEND_PREFIX = "backendPrefix";
@@ -95,17 +100,17 @@ public class ZeroMQNodeStoreBuilder {
         return this;
     }
 
-    public ZeroMQNodeStoreBuilder initFromURL(URL url) {
-        if ("zeromq".equals(url.getProtocol())) {
-            throw new IllegalArgumentException("Expected protocol is 'zeromq' but I got " + url.getProtocol());
+    public ZeroMQNodeStoreBuilder initFromURI(URI uri) {
+        if (!"zeromq".equals(uri.getScheme())) {
+            throw new IllegalArgumentException("Expected protocol is 'zeromq' but I got " + uri.getScheme());
         }
-        if (url.getPort() != -1) {
+        if (uri.getPort() != -1) {
             throw new IllegalArgumentException("Unexpected port setting in zeromq URL");
         }
-        setInstance(url.getHost());
+        setInstance(uri.getHost());
         final Map<String, String> params = new HashMap<>();
         try {
-            for (String kv : url.getQuery().split("&")) {
+            for (String kv : uri.getQuery().split("&")) {
                 String[] aKV = kv.split("=");
                 params.put(URLDecoder.decode(aKV[0], "UTF-8"), URLDecoder.decode(aKV[1], "UTF-8"));
             }
@@ -116,56 +121,63 @@ public class ZeroMQNodeStoreBuilder {
             try {
                 setClusterInstances(Integer.parseInt(params.get(PARAM_CLUSTERINSTANCES)));
             } catch (Exception e) {
-                // ignore
+                log.warn(e.getMessage());
+                throw new IllegalArgumentException(e);
             }
         }
         if (params.containsKey(PARAM_WRITEBACKJOURNAL)) {
             try {
                 setWriteBackJournal(Boolean.parseBoolean(params.get(PARAM_WRITEBACKJOURNAL)));
             } catch (Exception e) {
-                // ignore
+                log.warn(e.getMessage());
+                throw new IllegalArgumentException(e);
             }
         }
         if (params.containsKey(PARAM_WRITEBACKNODES)) {
             try {
                 setWriteBackNodes(Boolean.parseBoolean(params.get(PARAM_WRITEBACKNODES)));
             } catch (Exception e) {
-                // ignore
+                log.warn(e.getMessage());
+                throw new IllegalArgumentException(e);
             }
         }
         if (params.containsKey(PARAM_REMOTEREADS)) {
             try {
                 setRemoteReads(Boolean.parseBoolean(params.get(PARAM_REMOTEREADS)));
             } catch (Exception e) {
-                // ignore
+                log.warn(e.getMessage());
+                throw new IllegalArgumentException(e);
             }
         }
         if (params.containsKey(PARAM_INITJOURNAL)) {
             try {
                 setInitJournal(params.get(PARAM_INITJOURNAL));
             } catch (Exception e) {
-                // ignore
+                log.warn(e.getMessage());
+                throw new IllegalArgumentException(e);
             }
         }
         if (params.containsKey(PARAM_BACKEND_PREFIX)) {
             try {
                 setBackendPrefix(params.get(PARAM_BACKEND_PREFIX));
             } catch (Exception e) {
-                // ignore
+                log.warn(e.getMessage());
+                throw new IllegalArgumentException(e);
             }
         }
         if (params.containsKey(PARAM_LOG_NODE_STATES)) {
             try {
                 setLogNodeStates(Boolean.parseBoolean(params.get(PARAM_LOG_NODE_STATES)));
             } catch (Exception e) {
-                // ignore
+                log.warn(e.getMessage());
+                throw new IllegalArgumentException(e);
             }
         }
         return this;
     }
 
-    public ZeroMQNodeStoreBuilder initFromURL(String url) throws MalformedURLException {
-       return initFromURL(URI.create(url).toURL());
+    public ZeroMQNodeStoreBuilder initFromURL(String uri) throws MalformedURLException {
+       return initFromURI(URI.create(uri));
     }
 
     public String getInstance() {
