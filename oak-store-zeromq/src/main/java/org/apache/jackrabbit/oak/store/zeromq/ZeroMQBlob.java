@@ -20,7 +20,7 @@ public class ZeroMQBlob implements Blob {
 
     private final Supplier<File> fileSupplier;
     private String reference;
-    private static final File blobCacheDir = new File("/tmp/blobs");
+    static File blobCacheDir = new File("/tmp/blobs");
 
     private static final Logger log = LoggerFactory.getLogger(ZeroMQBlob.class);
     private static MessageDigest md;
@@ -94,7 +94,7 @@ public class ZeroMQBlob implements Blob {
                 fos.close();
                 is.close();
                 reference = bytesToString(new ByteArrayInputStream(md.digest()));
-                file = new File("/tmp/blobs/", reference);
+                file = new File(blobCacheDir, reference);
                 synchronized (ZeroMQBlob.class) {
                     if (file.exists()) {
                         out.delete();
@@ -124,7 +124,7 @@ public class ZeroMQBlob implements Blob {
     */
     @Nullable
     public static ZeroMQBlob newInstance(String reference) {
-        File destFile = new File("/tmp/blobs/", reference);
+        File destFile = new File(blobCacheDir, reference);
         if (destFile.exists()) {
             return new ZeroMQBlob(reference, () -> destFile);
         }
@@ -133,7 +133,7 @@ public class ZeroMQBlob implements Blob {
 
     public static ZeroMQBlob newInstance(String reference, File f) {
         try {
-            File destFile = new File("/tmp/blobs/", reference);
+            File destFile = new File(blobCacheDir, reference);
             synchronized (ZeroMQBlob.class) {
                 if (destFile.exists()) {
                     f.delete();
@@ -152,13 +152,9 @@ public class ZeroMQBlob implements Blob {
         checkNotNull(is);
         InputStreamFileSupplier fileSupplier = new InputStreamFileSupplier(is);
         if (!reference.equals(fileSupplier.getReference())) {
-            if ("D41D8CD98F00B204E9800998ECF8427E".equals(fileSupplier.getReference())) {
-                throw new IllegalArgumentException("Blob " + reference + " not found");
-            } else {
-                throw new IllegalStateException("Expected reference does not match the one from the stream");
-            }
+            //log.warn("Requested reference {} does not match calculated reference {}.", reference, fileSupplier.getReference());
         }
-        return new ZeroMQBlob(reference, fileSupplier);
+        return new ZeroMQBlob(fileSupplier.getReference(), fileSupplier);
     }
 
     static ZeroMQBlob newInstance(@NotNull InputStream is) {

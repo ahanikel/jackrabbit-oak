@@ -40,6 +40,7 @@ public class ZeroMQNodeStoreBuilder {
     public static final String PARAM_INITJOURNAL = "initJournal";
     public static final String PARAM_REMOTEREADS = "remoteReads";
     private static final String PARAM_LOG_NODE_STATES = "logNodeStates";
+    private static final String PARAM_BLOBCACHE_DIR = "blobCacheDir";
 
     private String instance;
     private int clusterInstances;
@@ -49,6 +50,7 @@ public class ZeroMQNodeStoreBuilder {
     private String initJournal;
     private String backendPrefix;
     private boolean logNodeStates;
+    private String blobCacheDir;
 
    public ZeroMQNodeStoreBuilder() {
        instance = "golden";
@@ -59,6 +61,7 @@ public class ZeroMQNodeStoreBuilder {
        initJournal = null;
        backendPrefix = "localhost";
        logNodeStates = false;
+       blobCacheDir = "/tmp/blobs";
     }
 
     public ZeroMQNodeStoreBuilder initFromEnvironment() {
@@ -110,9 +113,12 @@ public class ZeroMQNodeStoreBuilder {
         setInstance(uri.getHost());
         final Map<String, String> params = new HashMap<>();
         try {
-            for (String kv : uri.getQuery().split("&")) {
-                String[] aKV = kv.split("=");
-                params.put(URLDecoder.decode(aKV[0], "UTF-8"), URLDecoder.decode(aKV[1], "UTF-8"));
+            String query = uri.getQuery();
+            if (query != null) {
+                for (String kv : query.split("&")) {
+                    String[] aKV = kv.split("=");
+                    params.put(URLDecoder.decode(aKV[0], "UTF-8"), URLDecoder.decode(aKV[1], "UTF-8"));
+                }
             }
         } catch (UnsupportedEncodingException e) {
             throw new RuntimeException(e);
@@ -173,10 +179,18 @@ public class ZeroMQNodeStoreBuilder {
                 throw new IllegalArgumentException(e);
             }
         }
+        if (params.containsKey(PARAM_BLOBCACHE_DIR)) {
+            try {
+                setBlobCacheDir(params.get(PARAM_BLOBCACHE_DIR));
+            } catch (Exception e) {
+                log.warn(e.getMessage());
+                throw new IllegalArgumentException(e);
+            }
+        }
         return this;
     }
 
-    public ZeroMQNodeStoreBuilder initFromURL(String uri) throws MalformedURLException {
+    public ZeroMQNodeStoreBuilder initFromURIString(String uri) throws MalformedURLException {
        return initFromURI(URI.create(uri));
     }
 
@@ -252,6 +266,15 @@ public class ZeroMQNodeStoreBuilder {
         return this;
     }
 
+    public String getBlobCacheDir() {
+       return blobCacheDir;
+    }
+
+    ZeroMQNodeStoreBuilder setBlobCacheDir(String blobCacheDir) {
+       this.blobCacheDir = blobCacheDir;
+       return this;
+    }
+
     public ZeroMQNodeStore build() {
        final ZeroMQNodeStore ret = new ZeroMQNodeStore(
                getInstance(),
@@ -261,7 +284,8 @@ public class ZeroMQNodeStoreBuilder {
                isRemoteReads(),
                getInitJournal(),
                getBackendPrefix(),
-               isLogNodeStates()
+               isLogNodeStates(),
+               getBlobCacheDir()
        );
        ret.init();
        return ret;

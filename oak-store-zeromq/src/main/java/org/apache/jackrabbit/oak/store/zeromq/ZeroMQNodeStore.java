@@ -148,7 +148,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
             boolean remoteReads,
             String initJournal,
             String backendPrefix,
-            boolean logNodeStates) {
+            boolean logNodeStates,
+            String blobCacheDir) {
 
         this.instance = instance;
 
@@ -164,6 +165,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         this.initJournal = initJournal;
         this.logNodeStates = logNodeStates;
         this.backendPrefix = backendPrefix;
+        ZeroMQBlob.blobCacheDir = new File(blobCacheDir);
 
         nodeStateReader = new ZeroMQSocketProvider[clusterInstances];
         nodeStateWriter = new ZeroMQSocketProvider[clusterInstances];
@@ -216,8 +218,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
                     }
                     return ret;
                 } catch (Throwable t) {
-                    log.error("Could not load blob: " + t.toString());
-                    throw t;
+                    log.warn("Could not load blob: " + t.toString());
+                    return null;
                 }
             });
         } else {
@@ -509,8 +511,13 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
     private void setRoot(String uuid) {
         journalRoot = uuid;
         if (writeBackJournal) {
+            setRootRemote("journal", uuid);
+        }
+        /*
+        if (writeBackJournal) {
             nodeWriterThread.execute(() -> setRootRemote("journal", uuid));
         }
+        */
     }
 
     private void setCheckpointRoot(String uuid) {
@@ -729,6 +736,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         Blob ret = ref == null ? null : getBlob(ref);
         if (ret == null || ret.getReference() == null) {
             ret = createBlob(blob.getNewStream());
+            writeBlob((ZeroMQBlob) ret);
         }
         return ret;
     }
@@ -741,8 +749,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         final Blob ret = blobCache.get(reference);
         if (ret == null) {
             final String msg = "Blob " + reference + " not found";
-            log.error(msg);
-            throw new IllegalArgumentException(msg);
+            log.warn(msg);
         }
         return ret;
     }

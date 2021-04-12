@@ -69,7 +69,7 @@ public class ZeroMQNodeStoreBuilderTest {
                 .append(PARAM_INITJOURNAL).append("=12345-0")
                 .append('&')
                 .append(PARAM_WRITEBACKJOURNAL).append("=true");
-        builder.initFromURL(sb.toString());
+        builder.initFromURIString(sb.toString());
 
         assertEquals("instance", "someinstance", builder.getInstance());
         assertEquals(PARAM_CLUSTERINSTANCES, 2, builder.getClusterInstances());

@@ -142,7 +142,7 @@ public abstract class ZeroMQBackendStore implements BackendStore {
                     socket.send(buffer, 0, nBytes, ZMQ.SNDMORE);
                 }
             } catch (IllegalArgumentException iae) {
-                log.info(iae.getMessage());
+                log.trace(iae.getMessage());
             } catch (Exception ioe) {
                 log.error(ioe.getMessage());
             } finally {

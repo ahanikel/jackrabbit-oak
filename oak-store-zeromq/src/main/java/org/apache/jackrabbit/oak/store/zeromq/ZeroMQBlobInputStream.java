@@ -79,7 +79,7 @@ public class ZeroMQBlobInputStream extends InputStream {
     private void nextBunch() {
         max = reader.recv(buffer, 0, buffer.length, 0);
         if (max < 1) {
-            log.warn("Received {}", reference);
+            log.trace("Received {}", reference);
         }
         cur = 0;
     }

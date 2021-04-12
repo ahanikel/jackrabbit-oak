@@ -156,8 +156,8 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
             final byte[] buffer = new byte[chunkSize];
             final Base64.Encoder b64 = Base64.getEncoder();
             String encoded;
+            writer.accept("b64+ " + b.getReference());
             try (final InputStream is = b.getNewStream()) {
-                writer.accept("b64+ " + b.getReference());
                 int nBytes;
                 while ((nBytes = is.read(buffer)) >= 0) {
                     if (nBytes < chunkSize) {
@@ -177,10 +177,9 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
                         writer.accept("b64d " + encoded);
                     }
                 }
-            } catch (IOException ioe) {
-                writer.accept("b64x " + safeEncode(ioe.getMessage()));
-                throw ioe;
             } catch (InterruptedException e) {
+            } catch (Exception ioe) {
+                writer.accept("b64x " + safeEncode(ioe.getMessage()));
             } finally {
                 writer.accept("b64!");
             }
