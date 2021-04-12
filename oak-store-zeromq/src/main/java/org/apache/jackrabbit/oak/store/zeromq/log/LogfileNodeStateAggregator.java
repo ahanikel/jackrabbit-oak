@@ -61,13 +61,15 @@ public class LogfileNodeStateAggregator extends AbstractNodeStateAggregator {
         while (true) {
             final String line = nextRecord();
             if (line == null) {
-                log.info("We have caught up!");
-                caughtup = true;
+                if (!caughtup) {
+                    log.info("We have caught up!");
+                    caughtup = true;
+                }
                 try {
                     Thread.sleep(100);
                 } catch (InterruptedException e) {
                 }
-                break;
+                continue;
             }
             final int afterKey = line.indexOf(' ');
             if (afterKey >= 0) {
