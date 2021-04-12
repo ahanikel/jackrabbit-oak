@@ -20,6 +20,7 @@
 package org.apache.jackrabbit.oak.run;
 
 import com.google.common.collect.ImmutableMap;
+import org.apache.jackrabbit.oak.copy.CopyCommand;
 import org.apache.jackrabbit.oak.exporter.NodeStateExportCommand;
 import org.apache.jackrabbit.oak.index.IndexCommand;
 import org.apache.jackrabbit.oak.run.commons.Command;
@@ -36,6 +37,7 @@ public final class AvailableModes {
             .put("compact", new CompactCommand())
             .put("composite-prepare", new CompositePrepareCommand())
             .put("console", new ConsoleCommand())
+            .put("copy", new CopyCommand())
             .put(DataStoreCommand.NAME, new DataStoreCommand())
             .put("datastorecacheupgrade", new DataStoreCacheUpgradeCommand())
             .put("datastorecheck", new DataStoreCheckCommand())
