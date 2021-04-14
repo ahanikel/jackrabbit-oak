@@ -26,10 +26,8 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.StringTokenizer;
 import java.util.concurrent.ConcurrentHashMap;
@@ -38,10 +36,47 @@ public class SimpleRecordHandler implements RecordHandler {
 
     private static final Logger log = LoggerFactory.getLogger(SimpleRecordHandler.class);
 
-    private String currentBlobRef = null;
-    private File currentBlobFile = null;
-    private Blob currentBlobFound = null;
-    private FileOutputStream currentBlobFos = null;
+    private static class CurrentBlob {
+        private String ref;
+        private File file;
+        private Blob found;
+        private FileOutputStream fos;
+
+        public CurrentBlob() {}
+
+        public String getRef() {
+            return ref;
+        }
+
+        public void setRef(String ref) {
+            this.ref = ref;
+        }
+
+        public File getFile() {
+            return file;
+        }
+
+        public void setFile(File file) {
+            this.file = file;
+        }
+
+        public Blob getFound() {
+            return found;
+        }
+
+        public void setFound(Blob found) {
+            this.found = found;
+        }
+
+        public FileOutputStream getFos() {
+            return fos;
+        }
+
+        public void setFos(FileOutputStream fos) {
+            this.fos = fos;
+        }
+    }
+
     private final Base64.Decoder b64 = Base64.getDecoder();
     private Runnable onCommit;
     private Runnable onNode;
@@ -49,13 +84,15 @@ public class SimpleRecordHandler implements RecordHandler {
     private final Map<String, String> heads;
     private final Map<String, String> checkpoints;
     private final SimpleNodeStore store;
-    private final List<SimpleNodeState> nodeStates;
+    private final Map<String, SimpleNodeState> nodeStates;
+    private final Map<String, CurrentBlob> currentBlobMap;
 
     public SimpleRecordHandler() {
         this.heads = new ConcurrentHashMap<>();
         this.checkpoints = new ConcurrentHashMap<>();
         store = new SimpleNodeStore();
-        nodeStates = new ArrayList<>();
+        nodeStates = new HashMap<>();
+        currentBlobMap = new HashMap<>();
     }
 
     public void setOnCommit(Runnable onCommit) {
@@ -73,6 +110,7 @@ public class SimpleRecordHandler implements RecordHandler {
         if (line % 100000 == 0) {
             log.info("We're at line {}, nodes so far: {}", line, store.nodeStore.size());
         }
+
         StringTokenizer tokens = new StringTokenizer(value);
 
         if (op == null) {
@@ -90,16 +128,16 @@ public class SimpleRecordHandler implements RecordHandler {
                     final SimpleNodeState oldNode = store.getNodeState(oldid);
                     newNode = oldNode.clone(newUuid);
                 }
-                nodeStates.clear();
-                nodeStates.add(newNode);
+                nodeStates.put(uuThreadId, newNode);
                 break;
             }
 
             case "n!": {
-                if (nodeStates.size() != 1) {
-                    log.error("There should only be one nodestate left");
+                final SimpleNodeState ns = nodeStates.get(uuThreadId);
+                if (ns == null) {
+                    log.error("Current nodestate not present");
+                    break;
                 }
-                final SimpleNodeState ns = nodeStates.remove(0);
                 if (!ns.skip) {
                     store.putNodeState(ns);
                 }
@@ -113,7 +151,11 @@ public class SimpleRecordHandler implements RecordHandler {
             case "n^": {
                 final String name = tokens.nextToken();
                 final String uuid = tokens.nextToken();
-                final SimpleNodeState parent = nodeStates.get(nodeStates.size()-1);
+                final SimpleNodeState parent = nodeStates.get(uuThreadId);
+                if (parent == null) {
+                    log.error("Current nodestate not present");
+                    break;
+                }
                 if (!parent.skip) {
                     parent.setChild(name, uuid);
                 }
@@ -122,7 +164,11 @@ public class SimpleRecordHandler implements RecordHandler {
 
             case "n-": {
                 final String name = tokens.nextToken();
-                final SimpleNodeState parent = nodeStates.get(nodeStates.size()-1);
+                final SimpleNodeState parent = nodeStates.get(uuThreadId);
+                if (parent == null) {
+                    log.error("Current nodestate not present");
+                    break;
+                }
                 if (!parent.skip) {
                     parent.removeChild(name);
                 }
@@ -131,7 +177,11 @@ public class SimpleRecordHandler implements RecordHandler {
 
             case "p+":
             case "p^": {
-                final SimpleNodeState ns = nodeStates.get(nodeStates.size()-1);
+                final SimpleNodeState ns = nodeStates.get(uuThreadId);
+                if (ns == null) {
+                    log.error("Current nodestate not present");
+                    break;
+                }
                 if (!ns.skip) {
                     ns.setProperty(tokens.nextToken(), value);
                 }
@@ -140,7 +190,11 @@ public class SimpleRecordHandler implements RecordHandler {
 
             case "p-": {
                 final String name = tokens.nextToken();
-                final SimpleNodeState ns = nodeStates.get(nodeStates.size()-1);
+                final SimpleNodeState ns = nodeStates.get(uuThreadId);
+                if (ns == null) {
+                    log.error("Current nodestate not present");
+                    break;
+                }
                 if (!ns.skip) {
                     ns.removeProperty(name);
                 }
@@ -149,29 +203,35 @@ public class SimpleRecordHandler implements RecordHandler {
 
             case "b64+": {
                 final String ref = tokens.nextToken();
+                CurrentBlob currentBlob = currentBlobMap.get(uuThreadId);
+                if (currentBlob == null) {
+                    currentBlob = new CurrentBlob();
+                    currentBlobMap.put(uuThreadId, currentBlob);
+                }
+                final String currentBlobRef = currentBlob.getRef();
                 if (currentBlobRef != null) {
                     final String msg = "Blob " + currentBlobRef + " still open when starting with new blob " + ref;
                     log.error(msg);
                     throw new IllegalStateException(msg);
                 }
-                if (currentBlobFound != null) {
+                if (currentBlob.getFound() != null) {
                     final String msg = "currentBlobFound is not null";
                     log.error(msg);
                     throw new IllegalStateException(msg);
                 }
-                currentBlobFound = ZeroMQBlob.newInstance(ref);
-                if (currentBlobFound != null) {
+                currentBlob.setFound(ZeroMQBlob.newInstance(ref));
+                if (currentBlob.getFound() != null) {
                     break;
                 }
-                currentBlobRef = ref;
+                currentBlob.setRef(ref);
                 for (int i = 0; ; ++i) {
                     try {
-                        File blobDir = new File("/tmp/blobs");
+                        File blobDir = new File("/tmp/blobs"); // TODO: Make configurable
                         if (!blobDir.exists()) {
                             blobDir.mkdirs();
                         }
-                        currentBlobFile = File.createTempFile("b64temp", ".dat", blobDir);
-                        currentBlobFos = new FileOutputStream(currentBlobFile);
+                        currentBlob.setFile(File.createTempFile("b64temp", ".dat", blobDir));
+                        currentBlob.setFos(new FileOutputStream(currentBlob.getFile()));
                         break;
                     } catch (IOException e) {
                         if (i % 600 == 0) {
@@ -189,29 +249,34 @@ public class SimpleRecordHandler implements RecordHandler {
             }
 
             case "b64x": {
-                if (currentBlobFound != null) {
-                    currentBlobFound = null;
+                final CurrentBlob currentBlob = currentBlobMap.get(uuThreadId);
+                if (currentBlob.getFound() != null) {
+                    currentBlob.setFound(null);
                 }
+                final OutputStream currentBlobFos = currentBlob.getFos();
                 if (currentBlobFos != null) {
                     try {
                         currentBlobFos.close();
                     } catch (IOException e) {
                         log.warn(e.getMessage());
                     }
-                    currentBlobFos = null;
+                    currentBlob.setFos(null);
                 }
+                final File currentBlobFile = currentBlob.getFile();
                 if (currentBlobFile != null) {
                     currentBlobFile.delete();
-                    currentBlobFile = null;
+                    currentBlob.setFile(null);
                 }
-                currentBlobRef = null;
+                currentBlob.setRef(null);
                 break;
             }
 
             case "b64d": {
-                if (currentBlobFound != null) {
+                final CurrentBlob currentBlob = currentBlobMap.get(uuThreadId);
+                if (currentBlob.getFound() != null) {
                     break;
                 }
+                final OutputStream currentBlobFos = currentBlob.getFos();
                 if (currentBlobFos == null) {
                     final String msg = "{}: Blob is not open";
                     log.error(msg, line);
@@ -220,7 +285,7 @@ public class SimpleRecordHandler implements RecordHandler {
                 try {
                     currentBlobFos.write(b64.decode(tokens.nextToken()));
                 } catch (IOException e) {
-                    final String msg = "Unable to write blob " + currentBlobRef;
+                    final String msg = "Unable to write blob " + currentBlob.getRef();
                     log.error(msg);
                     throw new IllegalStateException(msg);
                 }
@@ -228,10 +293,12 @@ public class SimpleRecordHandler implements RecordHandler {
             }
 
             case "b64!": {
-                if (currentBlobFound != null) {
-                    currentBlobFound = null;
+                final CurrentBlob currentBlob = currentBlobMap.get(uuThreadId);
+                if (currentBlob.getFound() != null) {
+                    currentBlobMap.remove(uuThreadId);
                     break;
                 }
+                final OutputStream currentBlobFos = currentBlob.getFos();
                 if (currentBlobFos == null) {
                     final String msg = "Blob is not open";
                     log.error(msg);
@@ -239,15 +306,11 @@ public class SimpleRecordHandler implements RecordHandler {
                 }
                 try {
                     currentBlobFos.close();
-                    currentBlobFos = null;
-                    Blob blob = ZeroMQBlob.newInstance(currentBlobRef, currentBlobFile);
+                    Blob blob = ZeroMQBlob.newInstance(currentBlob.getRef(), currentBlob.getFile());
                     log.trace("Created new blob {}", blob.getReference());
-                    currentBlobFile = null;
-                    currentBlobRef = null;
+                    currentBlobMap.remove(uuThreadId);
                 } catch (IOException e) {
-                    currentBlobFos = null;
-                    currentBlobFile = null;
-                    currentBlobRef = null;
+                    currentBlobMap.remove(uuThreadId);
                     log.error(e.getMessage());
                     throw new IllegalStateException(e);
                 }
@@ -268,6 +331,11 @@ public class SimpleRecordHandler implements RecordHandler {
                 final String journalId = tokens.nextToken();
                 final String head = tokens.nextToken();
                 checkpoints.put(journalId, head);
+                break;
+            }
+
+            case "prepare": {
+                // ignore
                 break;
             }
 
