@@ -48,7 +48,7 @@ public class ZeroMQNodeStoreBuilderTest {
 
     @Test
     public void initFromURI() throws MalformedURLException {
-        assertEquals("instance", "golden", builder.getInstance());
+        assertEquals("journalId", "golden", builder.getJournalId());
         assertEquals(PARAM_CLUSTERINSTANCES, 1, builder.getClusterInstances());
         assertTrue(PARAM_REMOTEREADS, builder.isRemoteReads());
         assertFalse(PARAM_WRITEBACKNODES, builder.isWriteBackNodes());
@@ -56,7 +56,7 @@ public class ZeroMQNodeStoreBuilderTest {
         assertNull(PARAM_INITJOURNAL, builder.getInitJournal());
         assertFalse(PARAM_WRITEBACKJOURNAL, builder.isWriteBackJournal());
 
-        final StringBuilder sb = new StringBuilder("zeromq://someinstance?");
+        final StringBuilder sb = new StringBuilder("zeromq://someJournalId?");
         sb
                 .append(PARAM_CLUSTERINSTANCES).append("=2")
                 .append('&')
@@ -71,7 +71,7 @@ public class ZeroMQNodeStoreBuilderTest {
                 .append(PARAM_WRITEBACKJOURNAL).append("=true");
         builder.initFromURIString(sb.toString());
 
-        assertEquals("instance", "someinstance", builder.getInstance());
+        assertEquals("journalId", "someJournalId", builder.getJournalId());
         assertEquals(PARAM_CLUSTERINSTANCES, 2, builder.getClusterInstances());
         assertFalse(PARAM_REMOTEREADS, builder.isRemoteReads());
         assertTrue(PARAM_WRITEBACKNODES, builder.isWriteBackNodes());

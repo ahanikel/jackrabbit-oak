@@ -21,7 +21,7 @@ package org.apache.jackrabbit.oak.store.zeromq;
 import org.apache.jackrabbit.oak.api.Blob;
 
 public interface RecordHandler {
-    void handleRecord(String key, String value);
+    void handleRecord(String uuThreadId, String op, String value);
     String getJournalHead(String journalName);
 
     String getCheckpointHead(String instanceName);

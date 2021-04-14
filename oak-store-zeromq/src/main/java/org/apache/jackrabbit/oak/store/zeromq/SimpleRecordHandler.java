@@ -43,7 +43,6 @@ public class SimpleRecordHandler implements RecordHandler {
     private Blob currentBlobFound = null;
     private FileOutputStream currentBlobFos = null;
     private final Base64.Decoder b64 = Base64.getDecoder();
-    private final String instance;
     private Runnable onCommit;
     private Runnable onNode;
     private int line = 0;
@@ -52,8 +51,7 @@ public class SimpleRecordHandler implements RecordHandler {
     private final SimpleNodeStore store;
     private final List<SimpleNodeState> nodeStates;
 
-    public SimpleRecordHandler(String instance) {
-        this.instance = instance;
+    public SimpleRecordHandler() {
         this.heads = new ConcurrentHashMap<>();
         this.checkpoints = new ConcurrentHashMap<>();
         store = new SimpleNodeStore();
@@ -69,7 +67,7 @@ public class SimpleRecordHandler implements RecordHandler {
     }
 
     @Override
-    public void handleRecord(String key, String value) {
+    public void handleRecord(String uuThreadId, String op, String value) {
 
         ++line;
         if (line % 100000 == 0) {
@@ -77,11 +75,11 @@ public class SimpleRecordHandler implements RecordHandler {
         }
         StringTokenizer tokens = new StringTokenizer(value);
 
-        if (key == null) {
+        if (op == null) {
             return;
         }
 
-        switch (key) {
+        switch (op) {
             case "n:": {
                 final String newUuid = tokens.nextToken();
                 SimpleNodeState newNode;
@@ -257,9 +255,9 @@ public class SimpleRecordHandler implements RecordHandler {
             }
 
             case "journal": {
-                final String instance = tokens.nextToken();
+                final String journalId = tokens.nextToken();
                 final String head = tokens.nextToken();
-                heads.put(instance, head);
+                heads.put(journalId, head);
                 if (onCommit != null) {
                     onCommit.run();
                 }
@@ -267,26 +265,26 @@ public class SimpleRecordHandler implements RecordHandler {
             }
 
             case "checkpoints": {
-                final String instance = tokens.nextToken();
+                final String journalId = tokens.nextToken();
                 final String head = tokens.nextToken();
-                checkpoints.put(instance, head);
+                checkpoints.put(journalId, head);
                 break;
             }
 
             default: {
-                log.warn("Unrecognised key at line {}: {}", key, value);
+                log.warn("Unrecognised op at line {}: {}", op, value);
             }
         }
     }
 
     @Override
-    public String getJournalHead(String instanceName) {
-        return heads.get(instanceName);
+    public String getJournalHead(String journalId) {
+        return heads.get(journalId);
     }
 
     @Override
-    public String getCheckpointHead(String instanceName) {
-        return checkpoints.get(instanceName);
+    public String getCheckpointHead(String journalId) {
+        return checkpoints.get(journalId);
     }
 
     @Override

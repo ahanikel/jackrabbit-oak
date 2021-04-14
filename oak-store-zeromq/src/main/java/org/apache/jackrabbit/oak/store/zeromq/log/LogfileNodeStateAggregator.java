@@ -35,9 +35,9 @@ public class LogfileNodeStateAggregator extends AbstractNodeStateAggregator {
 
     private final LineReader reader;
 
-    public LogfileNodeStateAggregator(String instance, String filePath) throws FileNotFoundException {
+    public LogfileNodeStateAggregator(String filePath) throws FileNotFoundException {
         caughtup = false;
-        recordHandler = new SimpleRecordHandler(instance);
+        recordHandler = new SimpleRecordHandler();
         final InputStreamReader inputStreamReader = new InputStreamReader(new FileInputStream(filePath));
         reader = new LineReader(inputStreamReader);
     }
@@ -59,7 +59,7 @@ public class LogfileNodeStateAggregator extends AbstractNodeStateAggregator {
     @Override
     public void run() {
         while (true) {
-            final String line = nextRecord();
+            String line = nextRecord();
             if (line == null) {
                 if (!caughtup) {
                     log.info("We have caught up!");
@@ -71,11 +71,17 @@ public class LogfileNodeStateAggregator extends AbstractNodeStateAggregator {
                 }
                 continue;
             }
-            final int afterKey = line.indexOf(' ');
-            if (afterKey >= 0) {
-                recordHandler.handleRecord(line.substring(0, afterKey), line.substring(afterKey + 1));
-            } else {
-                recordHandler.handleRecord(line, "");
+            final String uuThreadId = line.substring(0, line.indexOf(" "));
+            final String strippedLine = line.substring(line.indexOf(" ") + 1);
+            try {
+                final int afterKey = strippedLine.indexOf(' ');
+                if (afterKey >= 0) {
+                    recordHandler.handleRecord(uuThreadId, strippedLine.substring(0, afterKey), strippedLine.substring(afterKey + 1));
+                } else {
+                    recordHandler.handleRecord(uuThreadId, strippedLine, "");
+                }
+            } catch(RuntimeException e) {
+                throw e;
             }
         }
     }

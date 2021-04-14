@@ -34,8 +34,8 @@ public class KafkaBackendStore extends ZeroMQBackendStore {
     private String kafkaTopic;
     private KafkaProducer<String, String> producer;
 
-    public KafkaBackendStore(String instance) {
-        super(new KafkaNodeStateAggregator(instance));
+    public KafkaBackendStore() {
+        super(new KafkaNodeStateAggregator());
         setEventWriter(this::writeEvent);
         initKafka();
         open();

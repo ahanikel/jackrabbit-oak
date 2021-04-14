@@ -24,7 +24,6 @@ import org.slf4j.LoggerFactory;
 import java.io.UnsupportedEncodingException;
 import java.net.MalformedURLException;
 import java.net.URI;
-import java.net.URL;
 import java.net.URLDecoder;
 import java.util.HashMap;
 import java.util.Map;
@@ -42,7 +41,7 @@ public class ZeroMQNodeStoreBuilder {
     private static final String PARAM_LOG_NODE_STATES = "logNodeStates";
     private static final String PARAM_BLOBCACHE_DIR = "blobCacheDir";
 
-    private String instance;
+    private String journalId;
     private int clusterInstances;
     private boolean writeBackJournal;
     private boolean writeBackNodes;
@@ -53,7 +52,7 @@ public class ZeroMQNodeStoreBuilder {
     private String blobCacheDir;
 
    public ZeroMQNodeStoreBuilder() {
-       instance = "golden";
+       journalId = "golden";
        clusterInstances = 1;
        writeBackJournal = false;
        writeBackNodes = false;
@@ -110,7 +109,7 @@ public class ZeroMQNodeStoreBuilder {
         if (uri.getPort() != -1) {
             throw new IllegalArgumentException("Unexpected port setting in zeromq URL");
         }
-        setInstance(uri.getHost());
+        setJournalId(uri.getHost());
         final Map<String, String> params = new HashMap<>();
         try {
             String query = uri.getQuery();
@@ -194,12 +193,12 @@ public class ZeroMQNodeStoreBuilder {
        return initFromURI(URI.create(uri));
     }
 
-    public String getInstance() {
-       return instance;
+    public String getJournalId() {
+       return journalId;
     }
 
-    public ZeroMQNodeStoreBuilder setInstance(String instance) {
-       this.instance = instance;
+    public ZeroMQNodeStoreBuilder setJournalId(String journalId) {
+       this.journalId = journalId;
        return this;
     }
 
@@ -277,7 +276,7 @@ public class ZeroMQNodeStoreBuilder {
 
     public ZeroMQNodeStore build() {
        final ZeroMQNodeStore ret = new ZeroMQNodeStore(
-               getInstance(),
+               getJournalId(),
                getClusterInstances(),
                isWriteBackJournal(),
                isWriteBackNodes(),

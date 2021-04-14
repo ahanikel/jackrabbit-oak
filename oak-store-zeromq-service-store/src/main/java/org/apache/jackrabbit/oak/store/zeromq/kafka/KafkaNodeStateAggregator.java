@@ -42,7 +42,7 @@ public class KafkaNodeStateAggregator extends AbstractNodeStateAggregator {
     private final KafkaConsumer<String, String> consumer;
     private Iterator<ConsumerRecord<String, String>> records;
 
-    public KafkaNodeStateAggregator(String instance) {
+    public KafkaNodeStateAggregator() {
         caughtup = false;
 
         // Kafka consumer
@@ -57,7 +57,7 @@ public class KafkaNodeStateAggregator extends AbstractNodeStateAggregator {
         consumer = new KafkaConsumer<>(props);
         consumer.subscribe(Collections.singletonList(TOPIC), new HandleRebalance());
         records = null;
-        recordHandler = new SimpleRecordHandler(instance);
+        recordHandler = new SimpleRecordHandler();
         recordHandler.setOnCommit(() -> {
             try {
                 // TODO: this is quite expensive, perhaps we can commit every second or so instead of
@@ -91,8 +91,11 @@ public class KafkaNodeStateAggregator extends AbstractNodeStateAggregator {
     @Override
     public void run() {
         while (true) {
-            ConsumerRecord<String, String> rec = nextRecord();
-            recordHandler.handleRecord(rec.key(), rec.value());
+            final ConsumerRecord<String, String> rec = nextRecord();
+            final String uuThreadId = rec.key();
+            final String op = rec.value().substring(0, rec.value().indexOf(" "));
+            final String args = rec.value().substring(rec.value().indexOf(" ") + 1);
+            recordHandler.handleRecord(uuThreadId, op, args);
         }
     }
 
