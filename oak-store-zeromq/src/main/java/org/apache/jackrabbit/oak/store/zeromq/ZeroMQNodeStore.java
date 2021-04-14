@@ -93,25 +93,25 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
     private static final Logger log = LoggerFactory.getLogger(ZeroMQNodeStore.class.getName());
 
     @NotNull
-    final ZContext context;
-    private final String journalId;
+    ZContext context;
+    private String journalId;
 
-    private final int clusterInstances;
-    private final boolean writeBackJournal;
-    private final boolean writeBackNodes;
-    private final boolean remoteReads;
-
-    @NotNull
-    final ZeroMQSocketProvider nodeStateReader[];
+    private int clusterInstances;
+    private boolean writeBackJournal;
+    private boolean writeBackNodes;
+    private boolean remoteReads;
 
     @NotNull
-    final ZeroMQSocketProvider nodeStateWriter[];
+    ZeroMQSocketProvider nodeStateReader[];
 
     @NotNull
-    final KVStore<String, ZeroMQNodeState> nodeStateCache;
+    ZeroMQSocketProvider nodeStateWriter[];
 
     @NotNull
-    final KVStore<String, ZeroMQBlob> blobCache;
+    KVStore<String, ZeroMQNodeState> nodeStateCache;
+
+    @NotNull
+    KVStore<String, ZeroMQBlob> blobCache;
 
     private volatile ComponentContext ctx;
 
@@ -132,21 +132,34 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
 
     private String initJournal;
     private FileOutputStream nodeStateOutput; // this is only meant for debugging
-    private final LoggingHook loggingHook;
+    private LoggingHook loggingHook;
 
-    private final GarbageCollectableBlobStore blobStore;
+    private GarbageCollectableBlobStore blobStore;
+    private volatile boolean configured;
 
-    ZeroMQNodeStore(
-            String journalId,
-            int clusterInstances,
-            boolean writeBackJournal,
-            boolean writeBackNodes,
-            boolean remoteReads,
-            String initJournal,
-            String backendPrefix,
-            boolean logNodeStates,
-            String blobCacheDir) {
+    public ZeroMQNodeStore() {
+    }
 
+    ZeroMQNodeStore(ZeroMQNodeStoreBuilder builder) {
+        configure(builder.getJournalId(), builder.getClusterInstances(), builder.isWriteBackJournal(), builder.isWriteBackNodes(), builder.isRemoteReads(), builder.getInitJournal(), builder.getBackendPrefix(), builder.isLogNodeStates(), builder.getBlobCacheDir());
+    }
+
+    private void configure(
+                String journalId,
+        int clusterInstances,
+        boolean writeBackJournal,
+        boolean writeBackNodes,
+        boolean remoteReads,
+        String initJournal,
+        String backendPrefix,
+        boolean logNodeStates,
+        String blobCacheDir) {
+
+        if (configured) {
+            return;
+        }
+
+        configured = true;
         this.journalId = journalId;
 
         context = new ZContext(50);
@@ -376,6 +389,12 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
     @Activate
     public void activate(ComponentContext ctx) {
         this.ctx = ctx;
+
+        // TODO: configure using OSGi config
+        final ZeroMQNodeStoreBuilder builder = new ZeroMQNodeStoreBuilder();
+        builder.initFromEnvironment();
+        configure(builder.getJournalId(), builder.getClusterInstances(), builder.isWriteBackJournal(), builder.isWriteBackNodes(), builder.isRemoteReads(), builder.getInitJournal(), builder.getBackendPrefix(), builder.isLogNodeStates(), builder.getBlobCacheDir());
+
         init();
         OsgiWhiteboard whiteboard = new OsgiWhiteboard(ctx.getBundleContext());
         org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardUtils.registerMBean
