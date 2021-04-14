@@ -275,17 +275,7 @@ public class ZeroMQNodeStoreBuilder {
     }
 
     public ZeroMQNodeStore build() {
-       final ZeroMQNodeStore ret = new ZeroMQNodeStore(
-               getJournalId(),
-               getClusterInstances(),
-               isWriteBackJournal(),
-               isWriteBackNodes(),
-               isRemoteReads(),
-               getInitJournal(),
-               getBackendPrefix(),
-               isLogNodeStates(),
-               getBlobCacheDir()
-       );
+       final ZeroMQNodeStore ret = new ZeroMQNodeStore(this);
        ret.init();
        return ret;
     }
