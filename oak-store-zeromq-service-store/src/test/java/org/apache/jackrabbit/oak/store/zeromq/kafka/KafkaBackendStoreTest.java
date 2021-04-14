@@ -37,7 +37,7 @@ public class KafkaBackendStoreTest {
 
     @Before
     public void testInit() {
-        store = new KafkaBackendStore("golden");
+        store = new KafkaBackendStore();
         try {
             readerPort = Integer.parseInt(System.getenv(ZEROMQ_READER_PORT));
         } catch (NumberFormatException e) {

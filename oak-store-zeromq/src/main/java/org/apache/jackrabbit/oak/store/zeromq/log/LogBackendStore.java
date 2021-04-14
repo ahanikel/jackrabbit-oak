@@ -35,8 +35,8 @@ public class LogBackendStore extends ZeroMQBackendStore {
     private static final Logger log = LoggerFactory.getLogger(LogBackendStore.class);
     private final OutputStream logOut;
 
-    public LogBackendStore(String instance, String logFile) throws FileNotFoundException {
-        super(new LogfileNodeStateAggregator(instance, logFile));
+    public LogBackendStore(String logFile) throws FileNotFoundException {
+        super(new LogfileNodeStateAggregator(logFile));
         logOut = new FileOutputStream(logFile, true);
         setEventWriter(this::writeEvent);
         open();

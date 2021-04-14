@@ -63,6 +63,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UnsupportedEncodingException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -73,7 +74,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -94,14 +94,12 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
 
     @NotNull
     final ZContext context;
-    private final String instance;
+    private final String journalId;
 
-    private int clusterInstances = 1;
-    private boolean writeBackJournal = false;
-    private boolean writeBackNodes = false;
-    private boolean remoteReads = false;
-    private boolean logNodeStates = false;
-    private String backendPrefix = "localhost";
+    private final int clusterInstances;
+    private final boolean writeBackJournal;
+    private final boolean writeBackNodes;
+    private final boolean remoteReads;
 
     @NotNull
     final ZeroMQSocketProvider nodeStateReader[];
@@ -133,15 +131,13 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
     private volatile String checkpointRoot;
 
     private String initJournal;
-    private volatile boolean skip;
-    private AtomicLong line = new AtomicLong(0);
     private FileOutputStream nodeStateOutput; // this is only meant for debugging
     private final LoggingHook loggingHook;
 
     private final GarbageCollectableBlobStore blobStore;
 
     ZeroMQNodeStore(
-            String instance,
+            String journalId,
             int clusterInstances,
             boolean writeBackJournal,
             boolean writeBackNodes,
@@ -151,7 +147,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
             boolean logNodeStates,
             String blobCacheDir) {
 
-        this.instance = instance;
+        this.journalId = journalId;
 
         context = new ZContext(50);
 
@@ -163,8 +159,6 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         this.writeBackNodes = writeBackNodes;
         this.remoteReads = remoteReads;
         this.initJournal = initJournal;
-        this.logNodeStates = logNodeStates;
-        this.backendPrefix = backendPrefix;
         ZeroMQBlob.blobCacheDir = new File(blobCacheDir);
 
         nodeStateReader = new ZeroMQSocketProvider[clusterInstances];
@@ -354,6 +348,13 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         };
     }
 
+    public String getUUThreadId() {
+        try {
+            return SafeEncode.safeEncode(System.getenv("HOST")) + "-" + Thread.currentThread().getId();
+        } catch (UnsupportedEncodingException e) {
+            throw new IllegalStateException(e);
+        }
+    }
 
     @Override
     public void close() {
@@ -448,7 +449,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         String msg;
         while (true) {
             try {
-                nodeStateReader[0].get().send("journal " + instance);
+                nodeStateReader[0].get().send("journal " + journalId);
                 msg = nodeStateReader[0].get().recvStr();
                 break;
             } catch (Throwable t) {
@@ -470,7 +471,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         String msg;
         while (true) {
             try {
-                nodeStateReader[0].get().send("checkpoints " + instance);
+                nodeStateReader[0].get().send("checkpoints " + journalId);
                 msg = nodeStateReader[0].get().recvStr();
                 break;
             } catch (Throwable t) {
@@ -513,11 +514,6 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         if (writeBackJournal) {
             setRootRemote("journal", uuid);
         }
-        /*
-        if (writeBackJournal) {
-            nodeWriterThread.execute(() -> setRootRemote("journal", uuid));
-        }
-        */
     }
 
     private void setCheckpointRoot(String uuid) {
@@ -532,11 +528,11 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
             synchronized (mergeRootMonitor) {
                 try {
                     final ZMQ.Socket socket = nodeStateWriter[0].get();
-                    socket.send(type + " " + instance + " " + uuid);
+                    socket.send(getUUThreadId() + " " + type + " " + journalId + " " + uuid);
                     socket.recvStr(); // ignore
                     break;
                 } catch (Throwable t) {
-                    log.warn(t.toString() + " at line " + line.get());
+                    log.warn(t.toString());
                     try {
                         Thread.sleep(100);
                     } catch (InterruptedException e) {
@@ -635,13 +631,12 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
 
     private void write(String event) {
         if (writeBackNodes) {
-            long currentLine = line.incrementAndGet();
             try {
                 final ZMQ.Socket writer = nodeStateWriter[0].get();
-                writer.send(event);
+                writer.send(getUUThreadId() + " " + event);
                 log.trace(writer.recvStr()); // ignore
             } catch (Throwable t) {
-                log.error(t.getMessage() + " at line " + currentLine);
+                log.error(t.getMessage());
             }
         }
     }
@@ -666,7 +661,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         }
     }
 
-    private void writeBlob(ZeroMQBlob blob) throws IOException {
+    private void writeBlob(ZeroMQBlob blob) {
         if (!writeBackNodes) {
             return;
         }
@@ -674,7 +669,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
             try {
                 LoggingHook.writeBlob(blob, this::write);
             } catch (Throwable t) {
-                log.error(t.getMessage() + " at line " + line.get());
+                log.error(t.getMessage());
             }
         }
     }

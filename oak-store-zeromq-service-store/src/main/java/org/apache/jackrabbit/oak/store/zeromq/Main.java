@@ -34,20 +34,18 @@ public class Main {
         }
         switch (args[0]) {
             case "kafka": {
-                if (args.length != 2) {
+                if (args.length != 1) {
                     usage();
                 }
-                final String instance = args[1];
-                final BackendStore backendStore = new KafkaBackendStore(instance);
+                final BackendStore backendStore = new KafkaBackendStore();
                 break;
             }
             case "log": {
-                if (args.length != 3) {
+                if (args.length != 2) {
                     usage();
                 }
-                final String instance = args[1];
-                final String logFile = args[2];
-                final BackendStore backendStore = new LogBackendStore(instance, logFile);
+                final String logFile = args[1];
+                final BackendStore backendStore = new LogBackendStore(logFile);
                 break;
             }
             case "server": {
