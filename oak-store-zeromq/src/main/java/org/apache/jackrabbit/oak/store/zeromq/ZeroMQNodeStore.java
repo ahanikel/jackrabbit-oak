@@ -255,11 +255,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
     }
 
     public String getUUThreadId() {
-        try {
-            return SafeEncode.safeEncode(System.getenv("HOST")) + "-" + Thread.currentThread().getId();
-        } catch (UnsupportedEncodingException e) {
-            throw new IllegalStateException(e);
-        }
+        return storeId + "-" + Thread.currentThread().getId();
     }
 
     @Override
