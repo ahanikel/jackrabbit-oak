@@ -136,6 +136,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
 
     private GarbageCollectableBlobStore blobStore;
     private volatile boolean configured;
+    private String storeId = UUID.randomUUID().toString();
 
     public ZeroMQNodeStore() {
     }
@@ -362,11 +363,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
     }
 
     public String getUUThreadId() {
-        try {
-            return SafeEncode.safeEncode(System.getenv("HOST")) + "-" + Thread.currentThread().getId();
-        } catch (UnsupportedEncodingException e) {
-            throw new IllegalStateException(e);
-        }
+        return storeId + "-" + Thread.currentThread().getId();
     }
 
     @Override
