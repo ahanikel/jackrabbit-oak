@@ -340,7 +340,7 @@ public class SimpleRecordHandler implements RecordHandler {
             }
 
             default: {
-                log.warn("Unrecognised op at line {}: {}", op, value);
+                log.warn("Unrecognised op at line {}: {}/{}/{}", line, uuThreadId, op, value);
             }
         }
     }
