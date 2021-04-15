@@ -19,11 +19,31 @@
 
 package org.apache.jackrabbit.oak.plugins.index.lucene;
 
+import java.io.File;
+import java.io.IOException;
+import java.util.Dictionary;
+import java.util.Hashtable;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import org.apache.commons.io.FilenameUtils;
-import org.apache.felix.scr.annotations.*;
+import org.apache.felix.scr.annotations.Activate;
+import org.apache.felix.scr.annotations.Component;
+import org.apache.felix.scr.annotations.Deactivate;
+import org.apache.felix.scr.annotations.Property;
+import org.apache.felix.scr.annotations.Reference;
+import org.apache.felix.scr.annotations.ReferenceCardinality;
+import org.apache.felix.scr.annotations.ReferencePolicy;
+import org.apache.felix.scr.annotations.ReferencePolicyOption;
 import org.apache.jackrabbit.oak.api.jmx.CacheStatsMBean;
 import org.apache.jackrabbit.oak.api.jmx.CheckpointMBean;
 import org.apache.jackrabbit.oak.cache.CacheStats;
@@ -40,7 +60,11 @@ import org.apache.jackrabbit.oak.plugins.index.lucene.directory.ActiveDeletedBlo
 import org.apache.jackrabbit.oak.plugins.index.lucene.directory.BufferedOakDirectory;
 import org.apache.jackrabbit.oak.plugins.index.lucene.directory.LuceneIndexFileSystemStatistics;
 import org.apache.jackrabbit.oak.plugins.index.lucene.directory.LuceneIndexImporter;
-import org.apache.jackrabbit.oak.plugins.index.lucene.hybrid.*;
+import org.apache.jackrabbit.oak.plugins.index.lucene.hybrid.DocumentQueue;
+import org.apache.jackrabbit.oak.plugins.index.lucene.hybrid.ExternalObserverBuilder;
+import org.apache.jackrabbit.oak.plugins.index.lucene.hybrid.LocalIndexObserver;
+import org.apache.jackrabbit.oak.plugins.index.lucene.hybrid.LuceneJournalPropertyService;
+import org.apache.jackrabbit.oak.plugins.index.lucene.hybrid.NRTIndexFactory;
 import org.apache.jackrabbit.oak.plugins.index.lucene.property.PropertyIndexCleaner;
 import org.apache.jackrabbit.oak.plugins.index.lucene.reader.DefaultIndexReaderFactory;
 import org.apache.jackrabbit.oak.plugins.index.search.ExtractedTextCache;
@@ -60,7 +84,6 @@ import org.apache.jackrabbit.oak.spi.whiteboard.Registration;
 import org.apache.jackrabbit.oak.spi.whiteboard.Whiteboard;
 import org.apache.jackrabbit.oak.stats.Clock;
 import org.apache.jackrabbit.oak.stats.StatisticsProvider;
-import org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeStore;
 import org.apache.lucene.analysis.util.CharFilterFactory;
 import org.apache.lucene.analysis.util.TokenFilterFactory;
 import org.apache.lucene.analysis.util.TokenizerFactory;
@@ -71,15 +94,6 @@ import org.osgi.framework.BundleContext;
 import org.osgi.framework.ServiceRegistration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.io.File;
-import java.io.IOException;
-import java.util.Dictionary;
-import java.util.Hashtable;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static java.util.Collections.emptyMap;
@@ -517,7 +531,7 @@ public class LuceneIndexProviderService {
             editorProvider = new LuceneIndexEditorProvider(null, tracker, extractedTextCache, augmentorFactory,
                     mountInfoProvider, activeDeletedBlobCollector, mBean, statisticsProvider);
         }
-        editorProvider.setBlobStore(((ZeroMQNodeStore) nodeStore).getGarbageCollectableBlobStore());
+        editorProvider.setBlobStore(blobStore);
         editorProvider.withAsyncIndexesSizeStatsUpdate(asyncIndexesSizeStatsUpdate);
 
         if (hybridIndex){
