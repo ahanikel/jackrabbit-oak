@@ -71,9 +71,12 @@ public class LogfileNodeStateAggregator extends AbstractNodeStateAggregator {
                 }
                 continue;
             }
-            final String uuThreadId = line.substring(0, line.indexOf(" "));
-            final String strippedLine = line.substring(line.indexOf(" ") + 1);
+            if ("".equals(line)) {
+                continue;
+            }
             try {
+                final String uuThreadId = line.substring(0, line.indexOf(" "));
+                final String strippedLine = line.substring(line.indexOf(" ") + 1);
                 final int afterKey = strippedLine.indexOf(' ');
                 if (afterKey >= 0) {
                     recordHandler.handleRecord(uuThreadId, strippedLine.substring(0, afterKey), strippedLine.substring(afterKey + 1));
