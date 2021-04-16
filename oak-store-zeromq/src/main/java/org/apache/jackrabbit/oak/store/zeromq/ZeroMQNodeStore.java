@@ -88,7 +88,7 @@ import static org.apache.jackrabbit.oak.spi.cluster.ClusterRepositoryInfo.getOrC
  */
 @Component(scope = ServiceScope.SINGLETON, immediate = true, configurationPolicy = ConfigurationPolicy.REQUIRE)
 @Service
-public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
+public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, GarbageCollectableBlobStore {
 
     private static final Logger log = LoggerFactory.getLogger(ZeroMQNodeStore.class.getName());
 
@@ -235,123 +235,6 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
             }
         }
         loggingHook = LoggingHook.newLoggingHook(this::write);
-        blobStore = new GarbageCollectableBlobStore() {
-            @Override
-            public void setBlockSize(int x) {
-
-            }
-
-            @Override
-            public String writeBlob(String tempFileName) throws IOException {
-                return createBlob(new FileInputStream(tempFileName)).getReference();
-            }
-
-            @Override
-            public int sweep() throws IOException {
-                return 0;
-            }
-
-            @Override
-            public void startMark() throws IOException {
-
-            }
-
-            @Override
-            public void clearInUse() {
-
-            }
-
-            @Override
-            public void clearCache() {
-
-            }
-
-            @Override
-            public long getBlockSizeMin() {
-                return 0;
-            }
-
-            @Override
-            public Iterator<String> getAllChunkIds(long maxLastModifiedTime) throws Exception {
-                return new Iterator<String>() {
-                    @Override
-                    public boolean hasNext() {
-                        return false;
-                    }
-
-                    @Override
-                    public String next() {
-                        return null;
-                    }
-                };
-            }
-
-            @Override
-            public boolean deleteChunks(List<String> chunkIds, long maxLastModifiedTime) {
-                return false;
-            }
-
-            @Override
-            public long countDeleteChunks(List<String> chunkIds, long maxLastModifiedTime) {
-                return 0;
-            }
-
-            @Override
-            public Iterator<String> resolveChunks(String blobId) {
-                return new Iterator<String>() {
-                    @Override
-                    public boolean hasNext() {
-                        return false;
-                    }
-
-                    @Override
-                    public String next() {
-                        return null;
-                    }
-                };
-            }
-
-            @Override
-            public String writeBlob(InputStream in) throws IOException {
-                return createBlob(in).getReference();
-            }
-
-            @Override
-            public String writeBlob(InputStream in, BlobOptions options) throws IOException {
-                return writeBlob(in);
-            }
-
-            @Override
-            public int readBlob(String blobId, long pos, byte[] buff, int off, int length) throws IOException {
-                final Blob blob = getBlob(blobId);
-                return blob.getNewStream().read(buff, off, length);
-            }
-
-            @Override
-            public long getBlobLength(String blobId) throws IOException {
-                return getBlob(blobId).length();
-            }
-
-            @Override
-            public InputStream getInputStream(String blobId) throws IOException {
-                return getBlob(blobId).getNewStream();
-            }
-
-            @Override
-            public @Nullable String getBlobId(@NotNull String reference) {
-                return reference;
-            }
-
-            @Override
-            public @Nullable String getReference(@NotNull String blobId) {
-                return blobId;
-            }
-
-            @Override
-            public void close() throws Exception {
-
-            }
-        };
     }
 
 
@@ -844,10 +727,6 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         return changeDispatcher.addObserver(observer);
     }
 
-    public GarbageCollectableBlobStore getGarbageCollectableBlobStore() {
-        return blobStore;
-    }
-
     private static interface KVStore<K, V> {
         @Nullable
         public V get(K key);
@@ -907,5 +786,119 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable {
         public boolean isCached(K key) {
             return cache.getIfPresent(key) != null;
         }
+    }
+
+    /*
+     * GarbageCollectableBlobStore
+     */
+    @Override
+    public void setBlockSize(int x) {
+
+    }
+
+    @Override
+    public String writeBlob(String tempFileName) throws IOException {
+        return createBlob(new FileInputStream(tempFileName)).getReference();
+    }
+
+    @Override
+    public int sweep() throws IOException {
+        return 0;
+    }
+
+    @Override
+    public void startMark() throws IOException {
+
+    }
+
+    @Override
+    public void clearInUse() {
+
+    }
+
+    @Override
+    public void clearCache() {
+
+    }
+
+    @Override
+    public long getBlockSizeMin() {
+        return 0;
+    }
+
+    @Override
+    public Iterator<String> getAllChunkIds(long maxLastModifiedTime) throws Exception {
+        return new Iterator<String>() {
+            @Override
+            public boolean hasNext() {
+                return false;
+            }
+
+            @Override
+            public String next() {
+                return null;
+            }
+        };
+    }
+
+    @Override
+    public boolean deleteChunks(List<String> chunkIds, long maxLastModifiedTime) {
+        return false;
+    }
+
+    @Override
+    public long countDeleteChunks(List<String> chunkIds, long maxLastModifiedTime) {
+        return 0;
+    }
+
+    @Override
+    public Iterator<String> resolveChunks(String blobId) {
+        return new Iterator<String>() {
+            @Override
+            public boolean hasNext() {
+                return false;
+            }
+
+            @Override
+            public String next() {
+                return null;
+            }
+        };
+    }
+
+    @Override
+    public String writeBlob(InputStream in) throws IOException {
+        return createBlob(in).getReference();
+    }
+
+    @Override
+    public String writeBlob(InputStream in, BlobOptions options) throws IOException {
+        return writeBlob(in);
+    }
+
+    @Override
+    public int readBlob(String blobId, long pos, byte[] buff, int off, int length) throws IOException {
+        final Blob blob = getBlob(blobId);
+        return blob.getNewStream().read(buff, off, length);
+    }
+
+    @Override
+    public long getBlobLength(String blobId) throws IOException {
+        return getBlob(blobId).length();
+    }
+
+    @Override
+    public InputStream getInputStream(String blobId) throws IOException {
+        return getBlob(blobId).getNewStream();
+    }
+
+    @Override
+    public @Nullable String getBlobId(@NotNull String reference) {
+        return reference;
+    }
+
+    @Override
+    public @Nullable String getReference(@NotNull String blobId) {
+        return blobId;
     }
 }
