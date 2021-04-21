@@ -20,6 +20,7 @@ package org.apache.jackrabbit.oak.store.zeromq;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
+import com.google.common.io.Closer;
 import org.apache.felix.scr.annotations.Service;
 import org.apache.jackrabbit.commons.SimpleValueFactory;
 import org.apache.jackrabbit.oak.api.Blob;
@@ -37,6 +38,7 @@ import org.apache.jackrabbit.oak.spi.commit.CommitHook;
 import org.apache.jackrabbit.oak.spi.commit.CommitInfo;
 import org.apache.jackrabbit.oak.spi.commit.Observable;
 import org.apache.jackrabbit.oak.spi.commit.Observer;
+import org.apache.jackrabbit.oak.spi.commit.ObserverTracker;
 import org.apache.jackrabbit.oak.spi.descriptors.GenericDescriptors;
 import org.apache.jackrabbit.oak.spi.state.ConflictAnnotatingRebaseDiff;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
@@ -86,7 +88,12 @@ import static org.apache.jackrabbit.oak.spi.cluster.ClusterRepositoryInfo.getOrC
 /**
  * A store which dumps everything into a queue.
  */
-@Component(scope = ServiceScope.SINGLETON, immediate = true, configurationPolicy = ConfigurationPolicy.REQUIRE)
+@Component(
+        scope = ServiceScope.SINGLETON,
+        immediate = true,
+        configurationPolicy = ConfigurationPolicy.REQUIRE,
+        property = "oak.nodestore.description=nodeStoreType=zeromq"
+)
 @Service
 public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, GarbageCollectableBlobStore {
 
@@ -138,7 +145,11 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
     private FileOutputStream nodeStateOutput; // this is only meant for debugging
     private final LoggingHook loggingHook;
 
-    private final GarbageCollectableBlobStore blobStore;
+    private volatile boolean configured;
+    private String storeId = UUID.randomUUID().toString();
+    private OsgiWhiteboard whiteboard;
+    private WhiteboardExecutor executor;
+    private ObserverTracker observerTracker;
 
     ZeroMQNodeStore(
             String instance,
@@ -259,7 +270,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
     public void activate(ComponentContext ctx) {
         this.ctx = ctx;
         init();
-        OsgiWhiteboard whiteboard = new OsgiWhiteboard(ctx.getBundleContext());
+        whiteboard = new OsgiWhiteboard(ctx.getBundleContext());
         org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardUtils.registerMBean
                 (whiteboard
                         , CheckpointMBean.class
@@ -280,13 +291,12 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         whiteboard.register(Descriptors.class, clusterIdDesc, new HashMap<>());
         // Register "discovery lite" descriptors
         whiteboard.register(Descriptors.class, new ZeroMQDiscoveryLiteDescriptors(this), new HashMap<>());
-        WhiteboardExecutor executor = new WhiteboardExecutor();
+        executor = new WhiteboardExecutor();
         executor.start(whiteboard);
         //registerCloseable(executor);
-        Map<String, Object> props = new HashMap<>();
-        props.put(Constants.SERVICE_PID, ZeroMQNodeStore.class.getName());
-        props.put("oak.nodestore.description", new String[]{"nodeStoreType=zeromq"});
-        //whiteboard.register(NodeStore.class, this, props);
+        observerTracker = new ObserverTracker(this);
+        observerTracker.start(ctx.getBundleContext());
+        //registerCloseable(observerTracker);
     }
 
     void init() {
