@@ -426,7 +426,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
     private void setCheckpointRoot(String uuid) {
         checkpointRoot = uuid;
         if (writeBackJournal) {
-            nodeWriterThread.execute(() -> setRootRemote("checkpoints", uuid));
+            setRootRemote("checkpoints", uuid);
         }
     }
 
