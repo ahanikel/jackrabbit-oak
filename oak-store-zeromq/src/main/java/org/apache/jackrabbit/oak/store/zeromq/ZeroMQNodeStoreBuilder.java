@@ -99,6 +99,11 @@ public class ZeroMQNodeStoreBuilder {
         } catch (Exception e) {
             // ignore
         }
+        try {
+            blobCacheDir = System.getenv(PARAM_BLOBCACHE_DIR);
+        } catch (Exception e) {
+            // ignore
+        }
         return this;
     }
 
