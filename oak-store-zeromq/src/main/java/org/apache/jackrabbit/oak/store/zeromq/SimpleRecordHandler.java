@@ -320,22 +320,19 @@ public class SimpleRecordHandler implements RecordHandler {
             case "journal": {
                 final String journalId = tokens.nextToken();
                 final String head = tokens.nextToken();
-                heads.put(journalId, head);
-                if (onCommit != null) {
-                    onCommit.run();
+                final String oldHead = tokens.nextToken();
+                String expected = heads.get(journalId);
+                if (expected == null) {
+                    expected = ZeroMQEmptyNodeState.UUID_NULL.toString();
                 }
-                break;
-            }
-
-            case "checkpoints": {
-                final String journalId = tokens.nextToken();
-                final String head = tokens.nextToken();
-                checkpoints.put(journalId, head);
-                break;
-            }
-
-            case "prepare": {
-                // ignore
+                if (oldHead.equals(expected)) {
+                    heads.put(journalId, head);
+                    if (onCommit != null) {
+                        onCommit.run();
+                    }
+                } else {
+                    log.info("Skipping new head for journal {} because expected previous head {} does not match the current head {}", journalId, expected, oldHead);
+                }
                 break;
             }
 
@@ -348,11 +345,6 @@ public class SimpleRecordHandler implements RecordHandler {
     @Override
     public String getJournalHead(String journalId) {
         return heads.get(journalId);
-    }
-
-    @Override
-    public String getCheckpointHead(String journalId) {
-        return checkpoints.get(journalId);
     }
 
     @Override

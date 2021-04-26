@@ -5,7 +5,6 @@ import org.apache.jackrabbit.oak.api.Blob;
 public interface NodeStateAggregator extends Runnable {
     boolean hasCaughtUp();
     String getJournalHead(String instanceName);
-    String getCheckpointHead(String instanceName);
     String readNodeState(String msg);
     Blob getBlob(String reference);
 }

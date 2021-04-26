@@ -337,7 +337,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         builder.setChildNode("blobs");
         final NodeState newSuperRoot = builder.getNodeState();
         final ZeroMQNodeState zmqNewSuperRoot = (ZeroMQNodeState) newSuperRoot;
-        setRoot(zmqNewSuperRoot.getUuid());
+        setRoot(zmqNewSuperRoot.getUuid(), emptyNode.getUuid());
         setCheckpointRoot(emptyNode.getUuid());
     }
 
@@ -372,13 +372,13 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     private String readCPRootRemote() {
         if (!remoteReads) {
-            return "undefined";
+            return ZeroMQEmptyNodeState.UUID_NULL.toString();
         }
 
         String msg;
         while (true) {
             try {
-                nodeStateReader[0].get().send("checkpoints " + journalId);
+                nodeStateReader[0].get().send("journal " + journalId + "-checkpoints");
                 msg = nodeStateReader[0].get().recvStr();
                 break;
             } catch (Throwable t) {
@@ -416,26 +416,31 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         return readNodeState(checkpointRoot);
     }
 
-    private void setRoot(String uuid) {
+    private void setRoot(String uuid, String olduuid) {
         journalRoot = uuid;
         if (writeBackJournal) {
-            setRootRemote("journal", uuid);
+            setRootRemote(null, uuid, olduuid);
         }
     }
 
-    private void setCheckpointRoot(String uuid) {
+    private synchronized void setCheckpointRoot(String uuid) {
+        final String olduuid = checkpointRoot;
         checkpointRoot = uuid;
         if (writeBackJournal) {
-            setRootRemote("checkpoints", uuid);
+            setRootRemote("checkpoints", uuid, olduuid);
         }
     }
 
-    private void setRootRemote(String type, String uuid) {
+    private void setRootRemote(String type, String uuid, String olduuid) {
         while (true) {
             synchronized (mergeRootMonitor) {
                 try {
                     final ZMQ.Socket socket = nodeStateWriter[0].get();
-                    socket.send(getUUThreadId() + " " + type + " " + journalId + " " + uuid);
+                    socket.send(getUUThreadId() + " "
+                                    + "journal" + " " + journalId + (type == null ? "" : "-" + type) + " "
+                                    + uuid + " "
+                                    + olduuid
+                    );
                     socket.recvStr(); // ignore
                     break;
                 } catch (Throwable t) {
@@ -454,7 +459,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         final NodeBuilder superRootBuilder = superRoot.builder();
         superRootBuilder.setChildNode(root, ns);
         final ZeroMQNodeState newSuperRoot = (ZeroMQNodeState) superRootBuilder.getNodeState();
-        setRoot(newSuperRoot.getUuid());
+        setRoot(newSuperRoot.getUuid(), superRoot.getUuid());
         return newSuperRoot;
     }
 
