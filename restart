@@ -29,12 +29,7 @@ export backendPrefix=localhost
 export logNodeStates=false
 
 rm -rf ~/Downloads/crx-quickstart
-cp -pR ~/Downloads/crx-quickstart.test-1.38.0 ~/Downloads/crx-quickstart
 
-#update-crx-quickstart
-
-(cd /Users/axel/Downloads && java -Xmx16g $DEBUG -Doak.queryLimitReads=10000000 -Dorg.apache.sling.launchpad.startupmode=restart -jar cq-quickstart-6.6.0-1.38.0.nosegment.jar -nofork -nobrowser -r author,crx3,crx3tar-nofds) &
-
-# -DdeletedBlobsCollectionEnabled=false 
-
+#(cd /Users/axel/Downloads && java -Xmx16g $DEBUG -Doak.queryLimitReads=10000000 -Dorg.apache.sling.launchpad.startupmode=restart -jar cq-quickstart-6.6.0-1.38.0.nosegment.jar -nofork -nobrowser -r author,crx3,crx3tar-nofds) &
+(cd /Users/axel/Downloads && java -Xmx16g $DEBUG -Doak.queryLimitReads=10000000 -jar cq-quickstart-6.6.0-1.38.0.nosegment.jar -nofork -nobrowser -r author,crx3,crx3tar-nofds) &
 
