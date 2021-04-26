@@ -183,6 +183,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         this.remoteReads = remoteReads;
         this.initJournal = initJournal;
         ZeroMQBlob.blobCacheDir = new File(blobCacheDir);
+        ZeroMQBlob.blobCacheDir.mkdir();
 
         nodeStateReader = new ZeroMQSocketProvider[clusterInstances];
         nodeStateWriter = new ZeroMQSocketProvider[clusterInstances];

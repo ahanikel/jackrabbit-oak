@@ -28,7 +28,6 @@ public class ZeroMQBlob implements Blob {
     static {
         try {
             md = MessageDigest.getInstance("MD5");
-            blobCacheDir.mkdir();
         } catch (NoSuchAlgorithmException e) {
             md = null;
         }

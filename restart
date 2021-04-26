@@ -27,6 +27,7 @@ export remoteReads=true
 export customBlobStore=false
 export backendPrefix=localhost
 export logNodeStates=false
+export blobCacheDir=/tmp/blobCacheDir
 
 rm -rf ~/Downloads/crx-quickstart
 
