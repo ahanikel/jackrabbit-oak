@@ -128,7 +128,7 @@ public abstract class ZeroMQBackendStore implements BackendStore {
             final String instance = msg.substring("journal ".length());
             ret = nodeStateAggregator.getJournalHead(instance);
         } else if (msg.startsWith("blob ")) {
-            byte[] buffer = new byte[1024*1024];
+            byte[] buffer = new byte[1024 * 1024]; // not final because of fear it's not being GC'd
             try {
                 final Blob blob = nodeStateAggregator.getBlob(msg.substring("blob ".length()));
                 if (blob == null) {

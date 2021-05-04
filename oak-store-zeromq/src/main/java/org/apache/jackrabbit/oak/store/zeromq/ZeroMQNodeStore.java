@@ -20,7 +20,6 @@ package org.apache.jackrabbit.oak.store.zeromq;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
-import com.google.common.io.Closer;
 import org.apache.felix.scr.annotations.Service;
 import org.apache.jackrabbit.commons.SimpleValueFactory;
 import org.apache.jackrabbit.oak.api.Blob;
@@ -47,7 +46,6 @@ import org.apache.jackrabbit.oak.spi.state.NodeStore;
 import org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardExecutor;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.osgi.framework.Constants;
 import org.osgi.service.component.ComponentContext;
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
@@ -65,7 +63,6 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.UnsupportedEncodingException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -74,8 +71,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.function.Function;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -131,9 +126,6 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
     final Object checkpointMonitor = new Object();
     final Object writeMonitor = new Object();
 
-    ExecutorService nodeWriterThread;
-    ExecutorService blobWriterThread;
-
     private volatile String journalRoot;
     private volatile String checkpointRoot;
 
@@ -173,9 +165,6 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         this.journalId = journalId;
 
         context = new ZContext(50);
-
-        nodeWriterThread = Executors.newFixedThreadPool(50);
-        blobWriterThread = Executors.newFixedThreadPool(50); // each thread consumes 1 MB
 
         this.clusterInstances = clusterInstances;
         this.writeBackJournal = writeBackJournal;
@@ -261,8 +250,6 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     @Override
     public void close() {
-        nodeWriterThread.shutdown();
-        blobWriterThread.shutdown();
         for (int i = 0; i < clusterInstances; ++i) {
             nodeStateReader[i].close();
             nodeStateWriter[i].close();

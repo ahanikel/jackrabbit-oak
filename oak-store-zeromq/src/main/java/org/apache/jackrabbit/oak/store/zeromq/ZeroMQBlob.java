@@ -23,31 +23,11 @@ public class ZeroMQBlob implements Blob {
     static File blobCacheDir = new File("/tmp/blobs");
 
     private static final Logger log = LoggerFactory.getLogger(ZeroMQBlob.class);
-    private static MessageDigest md;
-
-    static {
-        try {
-            md = MessageDigest.getInstance("MD5");
-        } catch (NoSuchAlgorithmException e) {
-            md = null;
-        }
-    }
 
     private ZeroMQBlob(String reference, Supplier<File> fileSupplier) {
         this.fileSupplier = fileSupplier;
         this.reference = reference;
     }
-
-    // Looks like we can't do that because there seem to be several ZeroMQBlob
-    // instances per reference
-    /*
-    @Override
-    protected void finalize() {
-        synchronized (this.getClass()) {
-            file.delete();
-        }
-    }
-    */
 
     static class InputStreamFileSupplier implements Supplier<File> {
         private volatile File file;
@@ -73,7 +53,7 @@ public class ZeroMQBlob implements Blob {
         }
 
         private void getInternal() {
-            final byte[] readBuffer = new byte[1024 * 1024];
+            byte[] readBuffer = new byte[1024 * 1024]; // not final because of fear it's not being GC'd
             try {
                 final MessageDigest md = MessageDigest.getInstance("MD5");
                 final File out = File.createTempFile("zmqBlob", ".dat");
@@ -193,18 +173,6 @@ public class ZeroMQBlob implements Blob {
         return this.reference;
     }
 
-    public String serialise() {
-        try {
-            return bytesToString(new FileInputStream(this.fileSupplier.get()));
-        } catch (FileNotFoundException e) {
-            throw new IllegalStateException(e);
-        }
-    }
-
-    public InputStream getStringStream() {
-        return bytesToStringStream(getNewStream());
-    }
-
     private static void appendInputStream(StringBuilder sb, InputStream is) {
         final char[] hex = "0123456789ABCDEF".toCharArray();
         int b;
@@ -222,131 +190,5 @@ public class ZeroMQBlob implements Blob {
         final StringBuilder sb = new StringBuilder();
         appendInputStream(sb, is);
         return sb.toString();
-    }
-
-    private static InputStream bytesToStringStream(InputStream is) {
-        return new InputStream() {
-            final char[] hex = "0123456789ABCDEF".toCharArray();
-            volatile boolean isHiByte = true;
-            volatile int b;
-
-            @Override
-            public int read() throws IOException {
-                if (isHiByte) {
-                    if ((b = is.read()) < 0) {
-                        return -1;
-                    }
-                    isHiByte = false;
-                    return hex[b >> 4];
-                } else {
-                    isHiByte = true;
-                    return hex[b & 0x0f];
-                }
-            }
-
-            @Override
-            public int available() throws IOException {
-                return is.available() * 2;
-            }
-        };
-    }
-
-    static File bytesFromInputStream(InputStream is) {
-        final byte[] readBuffer = new byte[1024 * 1024 * 100]; // 100 MB
-        try {
-            final File out = File.createTempFile("zmqBlob", "dat");
-            final BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(out));
-            // The InflaterInputStream seems to take some time until it's ready
-            if (is.available() == 0) {
-                Thread.sleep(500);
-            }
-            for (int nRead = is.read(readBuffer); nRead > 0; nRead = is.read(readBuffer)) {
-                bos.write(readBuffer, 0, nRead);
-            }
-            bos.flush();
-            bos.close();
-            is.close();
-            return out;
-        } catch (IOException | InterruptedException e) {
-            throw new IllegalStateException(e);
-        }
-    }
-
-    static File bytesFromString(String s) {
-        final InputStream is = new InputStream() {
-            char[] chars = s.toCharArray();
-            volatile int cur = 0;
-
-            private int hexCharToInt(char c) {
-                return Character.isDigit(c) ? c - '0' : c - 'A' + 10;
-            }
-
-            private int next() {
-                return hexCharToInt(chars[cur++]);
-            }
-
-            @Override
-            public int read() throws IOException {
-                if (cur >= chars.length - 1) {
-                    return -1;
-                }
-                final int c = next();
-                final int d = next();
-                final int ret = c << 4 | d;
-                return ret;
-            }
-
-            @Override
-            public int available() {
-                return (chars.length - cur) / 2;
-            }
-        };
-        return bytesFromInputStream(is);
-    }
-
-    static InputStream bytesFromStringStream(InputStream is) {
-        return new InputStream() {
-            volatile int cur = 0;
-
-            private int hexCharToInt(char c) {
-                return Character.isDigit(c) ? c - '0' : c - 'A' + 10;
-            }
-
-            private int next() throws IOException {
-                int n = is.read();
-                if (n < 0) {
-                    throw new EOFException();
-                }
-                return hexCharToInt((char) n);
-            }
-
-            @Override
-            public int read() throws IOException {
-                try {
-                    final int c = next();
-                    final int d = next();
-                    final int ret = c << 4 | d;
-                    return ret;
-                } catch (EOFException e) {
-                    return -1;
-                }
-            }
-
-            @Override
-            public int available() throws IOException {
-                return is.available();
-            }
-        };
-    }
-
-    public static void streamCopy(InputStream is, OutputStream os) {
-        try {
-            for (int b = is.read(); b >= 0; b = is.read()) {
-                os.write(b);
-            }
-            os.flush();
-        } catch (Throwable e) {
-            throw new IllegalStateException(e);
-        }
     }
 }

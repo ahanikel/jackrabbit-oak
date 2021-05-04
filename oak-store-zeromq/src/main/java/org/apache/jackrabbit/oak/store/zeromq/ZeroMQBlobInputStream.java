@@ -47,7 +47,7 @@ public class ZeroMQBlobInputStream extends InputStream {
             reader = blobReader.get();
             try {
                 init = true;
-                buffer = new byte[1024 * 1024]; // 1 MB
+                buffer = new byte[1024 * 1024]; // not final because of fear it's not being GC'd
                 while (reader.hasReceiveMore()) {
                     reader.recv(buffer, 0, buffer.length, 0);
                     log.warn("Blob reader is in wrong state, should not happen.");

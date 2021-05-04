@@ -153,7 +153,7 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
     public static void writeBlob(Blob b, Consumer<String> writer) throws IOException {
         synchronized (writer) {
             final int chunkSize = 256 * 1024;
-            final byte[] buffer = new byte[chunkSize];
+            byte[] buffer = new byte[chunkSize]; // not final because of fear it's not being GC'd
             final Base64.Encoder b64 = Base64.getEncoder();
             String encoded;
             writer.accept("b64+ " + b.getReference());
