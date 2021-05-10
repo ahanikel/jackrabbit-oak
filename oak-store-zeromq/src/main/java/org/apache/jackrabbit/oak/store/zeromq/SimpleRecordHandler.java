@@ -388,7 +388,9 @@ public class SimpleRecordHandler implements RecordHandler {
             if (writeNodeStates) {
                 writeNodeState(ns);
             }
-            log.trace("Stored {}, size {}", uuid, nodeStore.size());
+            if (log.isTraceEnabled()) {
+                log.trace("Stored {}, size {}", uuid, nodeStore.size());
+            }
         }
 
         public boolean hasNodeState(String uuid) {
@@ -443,7 +445,11 @@ public class SimpleRecordHandler implements RecordHandler {
 
         private String serialise() {
             if (serialised == null) {
-                serialised = ZeroMQNodeState.serialise2(children, properties);
+                synchronized (this) {
+                    if (serialised == null) {
+                        serialised = ZeroMQNodeState.serialise2(children, properties);
+                    }
+                }
             }
             return serialised;
         }
@@ -474,7 +480,7 @@ public class SimpleRecordHandler implements RecordHandler {
 
         private void makeImmutable() {
             checkImmutable();
-            serialised = serialise();
+            serialise();
         }
 
         private void checkImmutable() {
