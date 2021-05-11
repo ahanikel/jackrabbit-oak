@@ -25,11 +25,16 @@ public class ZeroMQSocketProvider implements Supplier<ZMQ.Socket>, Closeable {
     @Override
     public ZMQ.Socket get() {
         long threadId = Thread.currentThread().getId();
-        ZMQ.Socket socket = sockets.getOrDefault(threadId, null);
+        ZMQ.Socket socket = sockets.get(threadId);
         if (socket == null) {
-            socket = context.createSocket(socketType);
-            socket.connect(url);
-            sockets.put(threadId, socket);
+            synchronized (sockets) {
+                socket = sockets.get(threadId);
+                if (socket == null) {
+                    socket = context.createSocket(socketType);
+                    socket.connect(url);
+                    sockets.put(threadId, socket);
+                }
+            }
         }
         return socket;
     }
