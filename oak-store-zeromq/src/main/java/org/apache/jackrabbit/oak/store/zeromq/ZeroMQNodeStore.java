@@ -71,6 +71,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -138,6 +139,11 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
     private OsgiWhiteboard whiteboard;
     private WhiteboardExecutor executor;
     private ObserverTracker observerTracker;
+
+    private AtomicLong remoteReadNodeCounter = new AtomicLong();
+    private AtomicLong remoteWriteNodeCounter = new AtomicLong();
+    private AtomicLong remoteReadBlobCounter = new AtomicLong();
+    private AtomicLong remoteWriteBlobCounter = new AtomicLong();
 
     public ZeroMQNodeStore() {
     }
@@ -504,6 +510,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         if (!remoteReads) {
             throw new IllegalStateException("read(uuid) called with remoteReads == false");
         }
+        countNodeRead();
         StringBuilder msg;
         final ZMQ.Socket socket = nodeStateReader[0].get();
         while (true) {
@@ -529,6 +536,13 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         return msg.toString();
     }
 
+    private void countNodeRead() {
+        final long c = remoteReadNodeCounter.incrementAndGet();
+        if (c % 1000 == 0) {
+            log.info("Remote nodes read: {}", c);
+        }
+    }
+
     private void write(String event) {
         if (writeBackNodes) {
             try {
@@ -548,6 +562,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         }
         nodeStateCache.put(newUuid, after);
         if (writeBackNodes) {
+            countNodeWritten();
             synchronized (writeMonitor) {
                 loggingHook.processCommit(before, after, null);
             }
@@ -561,10 +576,18 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         }
     }
 
+    private void countNodeWritten() {
+        final long c = remoteWriteNodeCounter.incrementAndGet();
+        if (c % 1000 == 0) {
+            log.info("Remote nodes written: {}", c);
+        }
+    }
+
     private void writeBlob(ZeroMQBlob blob) {
         if (!writeBackNodes) {
             return;
         }
+        countBlobWritten();
         synchronized (writeMonitor) {
             try {
                 LoggingHook.writeBlob(blob, this::write);
@@ -574,12 +597,27 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         }
     }
 
+    private void countBlobWritten() {
+        final long c = remoteWriteBlobCounter.incrementAndGet();
+        if (c % 1000 == 0) {
+            log.info("Remote blobs written: {}", c);
+        }
+    }
+
     private InputStream readBlob(String reference) {
         if (!remoteReads) {
             return null;
         }
+        countBlobRead();
         final InputStream ret = new ZeroMQBlobInputStream(nodeStateReader[0], "blob " + reference);
         return ret;
+    }
+
+    private void countBlobRead() {
+        final long c = remoteReadBlobCounter.incrementAndGet();
+        if (c % 1000 == 0) {
+            log.info("Remote blobs read: {}", c);
+        }
     }
 
     @Override
