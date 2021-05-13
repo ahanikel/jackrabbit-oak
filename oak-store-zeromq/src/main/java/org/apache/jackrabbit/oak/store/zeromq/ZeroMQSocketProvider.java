@@ -1,6 +1,5 @@
 package org.apache.jackrabbit.oak.store.zeromq;
 
-import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
 
@@ -13,10 +12,10 @@ public class ZeroMQSocketProvider implements Supplier<ZMQ.Socket>, Closeable {
 
     private final String url;
     private final ZContext context;
-    private final SocketType socketType;
+    private final int socketType;
     private final Map<Long, ZMQ.Socket> sockets = new ConcurrentHashMap<Long, ZMQ.Socket>();
 
-    public ZeroMQSocketProvider(String url, ZContext context, SocketType socketType) {
+    public ZeroMQSocketProvider(String url, ZContext context, int socketType) {
         this.url = url;
         this.context = context;
         this.socketType = socketType;

@@ -19,7 +19,6 @@ package org.apache.jackrabbit.oak.store.zeromq;
 import org.apache.jackrabbit.oak.api.Blob;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
 
@@ -27,6 +26,10 @@ import java.io.InputStream;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
+
+import static org.zeromq.ZMQ.DEALER;
+import static org.zeromq.ZMQ.REP;
+import static org.zeromq.ZMQ.ROUTER;
 
 public abstract class ZeroMQBackendStore implements BackendStore {
 
@@ -49,13 +52,13 @@ public abstract class ZeroMQBackendStore implements BackendStore {
 
     private final Executor threadPool;
 
-    private final ZMQ.Socket readerFrontend;
+    private ZMQ.Socket readerFrontend;
 
-    private final ZMQ.Socket readerBackend;
+    private ZMQ.Socket readerBackend;
 
-    private final ZMQ.Socket writerFrontend;
+    private ZMQ.Socket writerFrontend;
 
-    private final ZMQ.Socket writerBackend;
+    private ZMQ.Socket writerBackend;
 
     public ZeroMQBackendStore(NodeStateAggregator nodeStateAggregator) {
         this.eventWriter = null;
@@ -78,19 +81,23 @@ public abstract class ZeroMQBackendStore implements BackendStore {
         }
         context = new ZContext();
         threadPool = Executors.newFixedThreadPool(2 * nThreads + 2);
-        readerFrontend = context.createSocket(SocketType.ROUTER);
-        readerBackend  = context.createSocket(SocketType.DEALER);
-        writerFrontend = context.createSocket(SocketType.ROUTER);
-        writerBackend  = context.createSocket(SocketType.DEALER);
-        readerFrontend.bind("tcp://*:" + readerPort);
-        readerBackend.bind("inproc://readerBackend");
-        writerFrontend.bind("tcp://*:" + writerPort);
-        writerBackend.bind("inproc://writerBackend");
-        threadPool.execute(() -> ZMQ.proxy(readerFrontend, readerBackend, null));
-        threadPool.execute(() -> ZMQ.proxy(writerFrontend, writerBackend, null));
+        threadPool.execute(() -> {
+            readerFrontend = context.createSocket(ROUTER);
+            readerBackend  = context.createSocket(DEALER);
+            readerFrontend.bind("tcp://*:" + readerPort);
+            readerBackend.bind("inproc://readerBackend");
+            ZMQ.proxy(readerFrontend, readerBackend, null);
+        });
+        threadPool.execute(() -> {
+            writerFrontend = context.createSocket(ROUTER);
+            writerBackend  = context.createSocket(DEALER);
+            writerFrontend.bind("tcp://*:" + writerPort);
+            writerBackend.bind("inproc://writerBackend");
+            ZMQ.proxy(writerFrontend, writerBackend, null);
+        });
         for (int nThread = 0; nThread < nThreads; ++nThread) {
             threadPool.execute(() -> {
-                final ZMQ.Socket socket = context.createSocket(SocketType.REP);
+                final ZMQ.Socket socket = context.createSocket(REP);
                 socket.connect("inproc://readerBackend");
                 while (!Thread.currentThread().isInterrupted()) {
                     try {
@@ -103,7 +110,7 @@ public abstract class ZeroMQBackendStore implements BackendStore {
         };
         for (int nThread = 0; nThread < nThreads; ++nThread) {
             threadPool.execute(() -> {
-                final ZMQ.Socket socket = context.createSocket(SocketType.REP);
+                final ZMQ.Socket socket = context.createSocket(REP);
                 socket.connect("inproc://writerBackend");
                 while (!Thread.currentThread().isInterrupted()) {
                     try {
@@ -123,7 +130,7 @@ public abstract class ZeroMQBackendStore implements BackendStore {
     @Override
     public void handleReaderService(ZMQ.Socket socket) {
         final String msg = socket.recvStr();
-        String ret = null;
+        String ret;
         if (msg.startsWith("journal ")) {
             final String instance = msg.substring("journal ".length());
             ret = nodeStateAggregator.getJournalHead(instance);

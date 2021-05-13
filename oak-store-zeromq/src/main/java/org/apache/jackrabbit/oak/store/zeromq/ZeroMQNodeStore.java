@@ -53,7 +53,6 @@ import org.osgi.service.component.annotations.ConfigurationPolicy;
 import org.osgi.service.component.annotations.ServiceScope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
 
@@ -80,6 +79,7 @@ import static com.google.common.collect.Maps.newHashMap;
 import static org.apache.jackrabbit.oak.api.Type.LONG;
 import static org.apache.jackrabbit.oak.api.Type.STRING;
 import static org.apache.jackrabbit.oak.spi.cluster.ClusterRepositoryInfo.getOrCreateId;
+import static org.zeromq.ZMQ.REQ;
 
 /**
  * A store which dumps everything into a queue.
@@ -185,13 +185,13 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
 
         if ("localhost".equals(backendPrefix)) {
             for (int i = 0; i < clusterInstances; ++i) {
-                nodeStateReader[i] = new ZeroMQSocketProvider("tcp://localhost:" + (8000 + 2 * i), context, SocketType.REQ);
-                nodeStateWriter[i] = new ZeroMQSocketProvider("tcp://localhost:" + (8001 + 2 * i), context, SocketType.REQ);
+                nodeStateReader[i] = new ZeroMQSocketProvider("tcp://localhost:" + (8000 + 2 * i), context, REQ);
+                nodeStateWriter[i] = new ZeroMQSocketProvider("tcp://localhost:" + (8001 + 2 * i), context, REQ);
             }
         } else {
             for (int i = 0; i < clusterInstances; ++i) {
-                nodeStateReader[i] = new ZeroMQSocketProvider(String.format("tcp://%s%d:8000", backendPrefix, i), context, SocketType.REQ);
-                nodeStateWriter[i] = new ZeroMQSocketProvider(String.format("tcp://%s%d:8001", backendPrefix, i), context, SocketType.REQ);
+                nodeStateReader[i] = new ZeroMQSocketProvider(String.format("tcp://%s%d:8000", backendPrefix, i), context, REQ);
+                nodeStateWriter[i] = new ZeroMQSocketProvider(String.format("tcp://%s%d:8001", backendPrefix, i), context, REQ);
             }
         }
 
