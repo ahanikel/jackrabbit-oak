@@ -77,6 +77,9 @@ public class ZeroMQBlobInputStream extends InputStream {
     }
 
     private void nextBunch() {
+        if (reader != blobReader.get()) {
+            throw new IllegalStateException("*** Reading thread has changed! ***");
+        }
         max = reader.recv(buffer, 0, buffer.length, 0);
         if (max < 1) {
             log.trace("Received {}", reference);
