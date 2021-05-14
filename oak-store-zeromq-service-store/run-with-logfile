@@ -17,8 +17,9 @@ logging="-Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dat
 jar=~/Documents/git/jackrabbit-oak/oak-store-zeromq-service-store/target/oak-store-zeromq-service-store-1.38.0-zeromq-jar-with-dependencies.jar
 jarOpts="log test-diff-1.38.0.log"
 #jarOpts="server httpbackend.yaml"
+native="-Djava.library.path=/usr/local/lib" # for libjzmq
 
 ps auxww | grep java | grep oak-store-zeromq-service-store | awk '{print $2}' | xargs kill -9
 sleep 1
 touch test-diff-1.38.0.log
-java -Xmx16g $debug $logging -jar $jar $jarOpts
+java -Xmx16g $debug $logging $native -jar $jar $jarOpts

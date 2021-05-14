@@ -44,7 +44,7 @@
               *
             </Import-Package>
             <Embed-Dependency>
-                jeromq
+                jzmq
             </Embed-Dependency>
           </instructions>
         </configuration>
@@ -65,8 +65,8 @@
     <!-- ZeroMQ pure java implementation -->
     <dependency>
       <groupId>org.zeromq</groupId>
-      <artifactId>jeromq</artifactId>
-      <version>0.3.6</version>
+      <artifactId>jzmq</artifactId>
+      <version>3.1.0</version>
       <scope>compile</scope>
     </dependency>
 

@@ -19,6 +19,7 @@ done 2>/dev/null
 YJP_ARGS="-Dorg.apache.sling.launcher.bootdelegation=com.yourkit.api,com.yourkit.runtime,com.yourkit.util -Xbootclasspath/a:/Users/axel/Downloads/YourKit-Java-Profiler-2016.02.app/Contents/Resources/lib/yjp-controller-api-redist.jar -agentpath:/Users/axel/Downloads/YourKit-Java-Profiler-2016.02.app/Contents/Resources/bin/mac/libyjpagent.jnilib"
 
 DEBUG='-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005'
+NATIVE='-Djava.library.path=/usr/local/lib'
 
 export clusterInstances=1
 export writeBackJournal=false
@@ -33,5 +34,5 @@ rm -rf ~/Downloads/crx-quickstart
 rm -rf /tmp/blobCacheDir
 
 #(cd /Users/axel/Downloads && java -Xmx16g $DEBUG -Doak.queryLimitReads=10000000 -Dorg.apache.sling.launchpad.startupmode=restart -jar cq-quickstart-6.6.0-1.38.0.nosegment.jar -nofork -nobrowser -r author,crx3,crx3tar-nofds) &
-(cd /Users/axel/Downloads && java -Xmx16g $DEBUG -Doak.queryLimitReads=10000000 -jar cq-quickstart-6.6.0-1.38.0.nosegment.jar -nofork -nobrowser -r author,crx3,crx3tar-nofds) &
+(cd /Users/axel/Downloads && java -Xmx16g $DEBUG $NATIVE -Doak.queryLimitReads=10000000 -jar cq-quickstart-6.6.0-1.38.0.nosegment.jar -nofork -nobrowser -r author,crx3,crx3tar-nofds) &
 

@@ -4,10 +4,12 @@ WORKDIR /root
 COPY test-diff-1.38.0.log ./
 
 ENV debug="-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*:6006"
-ENV javaOpts="-Xmx16g -Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=yyyy-MM-dd'T'HH:mm:ss.SSSZ"
+ENV javaOpts="-Xmx16g -Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=yyyy-MM-dd'T'HH:mm:ss.SSSZ -Djava.library.path=/usr/lib/x86_64-linux-gnu/jni"
 ENV jarOpts="log test-diff-1.38.0.log"
 ENV KAFKA_TOPIC=nodestates
 ENV KAFKA_SERVERS=localhost:9092
+
+RUN apt update && apt install -y libzmq-jni && apt clean
 
 ENTRYPOINT java ${debug} ${javaOpts} -jar oak-store-zeromq-service-store-1.38.0-zeromq-jar-with-dependencies.jar ${jarOpts}
 

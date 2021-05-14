@@ -80,6 +80,7 @@ public abstract class ZeroMQBackendStore implements BackendStore {
             nThreads = 4;
         }
         context = new ZContext();
+        context.setIoThreads(50);
         threadPool = Executors.newFixedThreadPool(2 * nThreads + 2);
         threadPool.execute(() -> {
             readerFrontend = context.createSocket(ROUTER);
@@ -150,7 +151,7 @@ public abstract class ZeroMQBackendStore implements BackendStore {
             } catch (Exception ioe) {
                 log.error(ioe.getMessage());
             } finally {
-                socket.send(new byte[0]);
+                socket.send(new byte[0], 0);
             }
             return;
         } else {

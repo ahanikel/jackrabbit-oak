@@ -16,9 +16,10 @@ EXPOSE 4502
 EXPOSE 5005
 WORKDIR /root
 #RUN mkdir -p crx-quickstart/install/15
-COPY ${slingarchive} ./
-#COPY ${zeromqarchive} crx-quickstart/install/15/
-#COPY ${configfile} crx-quickstart/install/
+RUN apt update && apt install -y libzmq-jni && apt clean
 COPY ${license} ./
 ENV delay=0
 ENTRYPOINT sleep $delay && echo admin | java ${javaargs} -jar ${slingarchive} ${jarargs}
+COPY ${slingarchive} ./
+#COPY ${zeromqarchive} crx-quickstart/install/15/
+#COPY ${configfile} crx-quickstart/install/

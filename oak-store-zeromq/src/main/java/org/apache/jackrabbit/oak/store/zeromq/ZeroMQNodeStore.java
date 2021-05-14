@@ -62,6 +62,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.Charset;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -170,7 +171,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         configured = true;
         this.journalId = journalId;
 
-        context = new ZContext(50);
+        context = new ZContext();
+        context.setIoThreads(50);
 
         this.clusterInstances = clusterInstances;
         this.writeBackJournal = writeBackJournal;
@@ -351,7 +353,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         while (true) {
             try {
                 nodeStateReader[0].get().send("journal " + journalId);
-                msg = nodeStateReader[0].get().recvStr();
+                msg = nodeStateReader[0].get().recvStr(Charset.defaultCharset());
                 break;
             } catch (Throwable t) {
                 log.warn(t.toString());
