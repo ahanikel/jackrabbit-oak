@@ -18,11 +18,15 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq;
 
+import org.apache.jackrabbit.oak.commons.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.zeromq.ZMQ;
 
+import java.io.EOFException;
+import java.io.IOException;
 import java.io.InputStream;
+import java.net.Socket;
 import java.util.function.Supplier;
 
 public class ZeroMQBlobInputStream extends InputStream {
@@ -31,13 +35,14 @@ public class ZeroMQBlobInputStream extends InputStream {
     private int max = 0;
     private volatile boolean init = false;
     private volatile boolean error = false;
-    private final Supplier<ZMQ.Socket> blobReader;
-    private ZMQ.Socket reader;
+    private final Supplier<Socket> blobReader;
+    private Socket reader;
+    private InputStream inputStream;
     private final String reference;
 
     private static final Logger log = LoggerFactory.getLogger(ZeroMQBlobInputStream.class.getName());
 
-    ZeroMQBlobInputStream(Supplier<ZMQ.Socket> blobReader, String reference) {
+    ZeroMQBlobInputStream(Supplier<Socket> blobReader, String reference) {
         this.blobReader = blobReader;
         this.reference = reference;
     }
@@ -47,13 +52,9 @@ public class ZeroMQBlobInputStream extends InputStream {
             reader = blobReader.get();
             try {
                 init = true;
-                buffer = new byte[1024 * 1024]; // not final because of fear it's not being GC'd
-                while (reader.hasReceiveMore()) {
-                    reader.recv(buffer, 0, buffer.length, 0);
-                    log.warn("Blob reader is in wrong state, should not happen.");
-                }
-                reader.recv(buffer, 0, buffer.length, 0);
-                reader.send(reference);
+                //buffer = new byte[1024 * 1024]; // not final because of fear it's not being GC'd
+                IOUtils.writeString(reader.getOutputStream(), reference);
+                inputStream = reader.getInputStream();
             } catch (Throwable t) {
                 log.error(t.getMessage());
                 error = true;
@@ -62,7 +63,7 @@ public class ZeroMQBlobInputStream extends InputStream {
     }
 
     @Override
-    public synchronized int read() {
+    public synchronized int read() throws IOException {
         if (error) {
             return -1;
         }
@@ -76,13 +77,23 @@ public class ZeroMQBlobInputStream extends InputStream {
         return 0x000000ff & buffer[cur++];
     }
 
-    private void nextBunch() {
-        if (reader != blobReader.get()) {
-            throw new IllegalStateException("*** Reading thread has changed! ***");
+    private void nextBunch() throws IOException {
+        if (inputStream == null) {
+            max = 0;
+            return;
         }
-        max = reader.recv(buffer, 0, buffer.length, 0);
+        try {
+            buffer = IOUtils.readBytes(inputStream);
+            max = buffer.length;
+        } catch (EOFException e) {
+            buffer = null;
+            max = 0;
+        }
         if (max < 1) {
             log.trace("Received {}", reference);
+            inputStream.close();
+            inputStream = null;
+            reader.close();
         }
         cur = 0;
     }

@@ -27,6 +27,7 @@ import org.apache.jackrabbit.oak.api.CommitFailedException;
 import org.apache.jackrabbit.oak.api.Descriptors;
 import org.apache.jackrabbit.oak.api.PropertyState;
 import org.apache.jackrabbit.oak.api.jmx.CheckpointMBean;
+import org.apache.jackrabbit.oak.commons.IOUtils;
 import org.apache.jackrabbit.oak.osgi.OsgiWhiteboard;
 import org.apache.jackrabbit.oak.plugins.memory.MemoryNodeBuilder;
 import org.apache.jackrabbit.oak.spi.blob.BlobOptions;
@@ -63,6 +64,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.Socket;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -185,13 +187,13 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
 
         if ("localhost".equals(backendPrefix)) {
             for (int i = 0; i < clusterInstances; ++i) {
-                nodeStateReader[i] = new ZeroMQSocketProvider("tcp://localhost:" + (8000 + 2 * i), context, SocketType.REQ);
-                nodeStateWriter[i] = new ZeroMQSocketProvider("tcp://localhost:" + (8001 + 2 * i), context, SocketType.REQ);
+                nodeStateReader[i] = new ZeroMQSocketProvider("localhost", (8000 + 2 * i));
+                nodeStateWriter[i] = new ZeroMQSocketProvider("localhost", (8001 + 2 * i));
             }
         } else {
             for (int i = 0; i < clusterInstances; ++i) {
-                nodeStateReader[i] = new ZeroMQSocketProvider(String.format("tcp://%s%d:8000", backendPrefix, i), context, SocketType.REQ);
-                nodeStateWriter[i] = new ZeroMQSocketProvider(String.format("tcp://%s%d:8001", backendPrefix, i), context, SocketType.REQ);
+                nodeStateReader[i] = new ZeroMQSocketProvider(String.format("%s%d", backendPrefix, i), 8000);
+                nodeStateWriter[i] = new ZeroMQSocketProvider(String.format("%s%d", backendPrefix, i), 8001);
             }
         }
 
@@ -350,8 +352,10 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         String msg;
         while (true) {
             try {
-                nodeStateReader[0].get().send("journal " + journalId);
-                msg = nodeStateReader[0].get().recvStr();
+                Socket sock = nodeStateReader[0].get();
+                IOUtils.writeString(sock.getOutputStream(), "journal " + journalId);
+                msg = IOUtils.readString(sock.getInputStream());
+                sock.close();
                 break;
             } catch (Throwable t) {
                 log.warn(t.toString());
@@ -372,8 +376,10 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         String msg;
         while (true) {
             try {
-                nodeStateReader[0].get().send("journal " + journalId + "-checkpoints");
-                msg = nodeStateReader[0].get().recvStr();
+                Socket sock = nodeStateReader[0].get();
+                IOUtils.writeString(sock.getOutputStream(), "journal " + journalId + "-checkpoints");
+                msg = IOUtils.readString(sock.getInputStream());
+                sock.close();
                 break;
             } catch (Throwable t) {
                 log.warn(t.toString());
@@ -429,13 +435,13 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         while (true) {
             synchronized (mergeRootMonitor) {
                 try {
-                    final ZMQ.Socket socket = nodeStateWriter[0].get();
-                    socket.send(getUUThreadId() + " "
+                    Socket socket = nodeStateWriter[0].get();
+                    IOUtils.writeString(socket.getOutputStream(), getUUThreadId() + " "
                                     + "journal" + " " + journalId + (type == null ? "" : "-" + type) + " "
                                     + uuid + " "
                                     + olduuid
                     );
-                    socket.recvStr(); // ignore
+                    socket.close(); // ignore
                     break;
                 } catch (Throwable t) {
                     log.warn(t.toString());
@@ -512,17 +518,16 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         }
         countNodeRead();
         StringBuilder msg;
-        final ZMQ.Socket socket = nodeStateReader[0].get();
         while (true) {
             msg = new StringBuilder();
+            Socket socket = nodeStateReader[0].get();
             try {
-                socket.send(uuid);
-                do {
-                    msg.append(socket.recvStr());
-                } while (socket.hasReceiveMore());
+                IOUtils.writeString(socket.getOutputStream(), uuid);
+                msg.append(IOUtils.readString(socket.getInputStream()));
                 if (log.isDebugEnabled()) {
                     log.debug("{} read.", uuid);
                 }
+                socket.close();
                 break;
             } catch (Throwable t) {
                 log.warn(t.toString());
@@ -546,9 +551,9 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
     private void write(String event) {
         if (writeBackNodes) {
             try {
-                final ZMQ.Socket writer = nodeStateWriter[0].get();
-                writer.send(getUUThreadId() + " " + event);
-                log.trace(writer.recvStr()); // ignore
+                final Socket writer = nodeStateWriter[0].get();
+                writer.getOutputStream().write((getUUThreadId() + " " + event).getBytes());
+                writer.close();
             } catch (Throwable t) {
                 log.error(t.getMessage());
             }

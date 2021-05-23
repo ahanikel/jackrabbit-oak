@@ -20,10 +20,15 @@ package org.apache.jackrabbit.oak.store.zeromq;
 
 import org.zeromq.ZMQ;
 
-public interface BackendStore {
-    void handleReaderService(ZMQ.Socket socket);
+import java.io.IOException;
+import java.net.ServerSocket;
+import java.net.Socket;
 
-    void handleWriterService(ZMQ.Socket socket);
+public interface BackendStore {
+
+    void handleReaderService(Socket socket) throws IOException;
+
+    void handleWriterService(Socket socket) throws IOException;
 
     void open();
 
