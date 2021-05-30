@@ -56,6 +56,7 @@ import org.slf4j.LoggerFactory;
 import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
+import org.zeromq.ZSocket;
 
 import java.io.Closeable;
 import java.io.File;
@@ -68,6 +69,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.StringTokenizer;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
@@ -144,6 +146,10 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
     private AtomicLong remoteWriteNodeCounter = new AtomicLong();
     private AtomicLong remoteReadBlobCounter = new AtomicLong();
     private AtomicLong remoteWriteBlobCounter = new AtomicLong();
+
+    private volatile String journalPending = null;
+    private ZMQ.Socket journalEvents;
+    private Thread journalEventHandler;
 
     public ZeroMQNodeStore() {
     }
@@ -248,6 +254,45 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
             }
         }
         loggingHook = LoggingHook.newLoggingHook(this::write);
+
+        if (writeBackJournal) {
+            journalEvents = context.createSocket(SocketType.SUB);
+            if ("localhost".equals(backendPrefix)) {
+                journalEvents.connect("tcp://localhost:9000");
+            } else {
+                journalEvents.connect(String.format("tcp://%s%d:9000", backendPrefix, 0));
+            }
+            journalEvents.subscribe("journal");
+            journalEventHandler = new Thread(() -> {
+                while (true) {
+                    String msg = journalEvents.recvStr();
+                    StringTokenizer msgReader = new StringTokenizer(msg);
+                    String op = msgReader.nextToken();
+                    String jId = msgReader.nextToken();
+                    String newUuid = msgReader.nextToken();
+                    if (this.journalId.equals(jId)) {
+                        if ("journal".equals(op)) {
+                            journalRoot = newUuid;
+                            if (journalPending != null && journalPending.equals(newUuid)) {
+                                String pending = journalPending;
+                                synchronized (pending) {
+                                    journalPending = null;
+                                    pending.notify();
+                                }
+                            }
+                        } else if ("journalrej".equals(op)) {
+                            if (journalPending != null && journalPending.equals(newUuid)) {
+                                synchronized (journalPending) {
+                                    journalPending.notify();
+                                }
+                            }
+                        }
+                    }
+                }
+            }, "ZeroMQ NodeStore Journal Event Handler");
+            journalEventHandler.setDaemon(true);
+            journalEventHandler.start();
+        }
     }
 
     public String getUUThreadId() {
@@ -410,10 +455,26 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         return readNodeState(checkpointRoot);
     }
 
-    private void setRoot(String uuid, String olduuid) {
-        journalRoot = uuid;
+    private boolean setRoot(String uuid, String olduuid) {
         if (writeBackJournal) {
-            setRootRemote(null, uuid, olduuid);
+            journalPending = uuid;
+            synchronized (journalPending) {
+                setRootRemote(null, uuid, olduuid);
+                try {
+                    journalPending.wait();
+                    if (journalPending == null) {
+                        return true;
+                    } else {
+                        journalPending = null;
+                        return false;
+                    }
+                } catch (InterruptedException e) {
+                    throw new IllegalStateException(e);
+                }
+            }
+        } else {
+            journalRoot = uuid;
+            return true;
         }
     }
 
@@ -421,7 +482,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         final String olduuid = checkpointRoot;
         checkpointRoot = uuid;
         if (writeBackJournal) {
-            setRootRemote("checkpoints", uuid, olduuid);
+            setRootRemote("checkpoints", uuid, olduuid); // TODO: do we need checkpoints in the repo?
         }
     }
 
@@ -452,8 +513,16 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         final ZeroMQNodeState superRoot = getSuperRoot();
         final NodeBuilder superRootBuilder = superRoot.builder();
         superRootBuilder.setChildNode(root, ns);
-        final ZeroMQNodeState newSuperRoot = (ZeroMQNodeState) superRootBuilder.getNodeState();
-        setRoot(newSuperRoot.getUuid(), superRoot.getUuid());
+        ZeroMQNodeState newSuperRoot = (ZeroMQNodeState) superRootBuilder.getNodeState();
+        while (!setRoot(newSuperRoot.getUuid(), superRoot.getUuid())) {
+            rebase(superRootBuilder, getRoot());
+            newSuperRoot = (ZeroMQNodeState) superRootBuilder.getNodeState();
+            try {
+                Thread.sleep(1000); // we don't want to spam the log
+            } catch (InterruptedException e) {
+                throw new IllegalStateException(e);
+            }
+        }
         return newSuperRoot;
     }
 

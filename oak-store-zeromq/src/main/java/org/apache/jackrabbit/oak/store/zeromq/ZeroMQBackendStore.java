@@ -24,6 +24,10 @@ import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
 
 import java.io.InputStream;
+import java.util.Map;
+import java.util.StringTokenizer;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
@@ -33,6 +37,7 @@ public abstract class ZeroMQBackendStore implements BackendStore {
     public static final Logger log = LoggerFactory.getLogger(ZeroMQBackendStore.class);
     public static final String ZEROMQ_READER_PORT = "ZEROMQ_READER_PORT";
     public static final String ZEROMQ_WRITER_PORT = "ZEROMQ_WRITER_PORT";
+    public static final String ZEROMQ_PUBLISHER_PORT = "ZEROMQ_PUBLISHER_PORT";
     public static final String ZEROMQ_NTHREADS    = "ZEROMQ_NTHREADS";
 
     protected Thread nodeDiffHandler;
@@ -42,20 +47,17 @@ public abstract class ZeroMQBackendStore implements BackendStore {
     final ZContext context;
 
     private int readerPort;
-
     private int writerPort;
-
+    private int publisherPort;
     private int nThreads;
-
     private final Executor threadPool;
-
     private final ZMQ.Socket readerFrontend;
-
     private final ZMQ.Socket readerBackend;
-
     private final ZMQ.Socket writerFrontend;
-
     private final ZMQ.Socket writerBackend;
+    private final ZMQ.Socket publisher;
+
+    private final Map<String, String> heads;
 
     public ZeroMQBackendStore(NodeStateAggregator nodeStateAggregator) {
         this.eventWriter = null;
@@ -76,44 +78,19 @@ public abstract class ZeroMQBackendStore implements BackendStore {
         } catch (NumberFormatException e) {
             nThreads = 4;
         }
+        try {
+            publisherPort = Integer.parseInt(System.getenv(ZEROMQ_PUBLISHER_PORT));
+        } catch (NumberFormatException e) {
+            publisherPort = 9000;
+        }
         context = new ZContext();
         threadPool = Executors.newFixedThreadPool(2 * nThreads + 2);
         readerFrontend = context.createSocket(SocketType.ROUTER);
         readerBackend  = context.createSocket(SocketType.DEALER);
         writerFrontend = context.createSocket(SocketType.ROUTER);
         writerBackend  = context.createSocket(SocketType.DEALER);
-        readerFrontend.bind("tcp://*:" + readerPort);
-        readerBackend.bind("inproc://readerBackend");
-        writerFrontend.bind("tcp://*:" + writerPort);
-        writerBackend.bind("inproc://writerBackend");
-        threadPool.execute(() -> ZMQ.proxy(readerFrontend, readerBackend, null));
-        threadPool.execute(() -> ZMQ.proxy(writerFrontend, writerBackend, null));
-        for (int nThread = 0; nThread < nThreads; ++nThread) {
-            threadPool.execute(() -> {
-                final ZMQ.Socket socket = context.createSocket(SocketType.REP);
-                socket.connect("inproc://readerBackend");
-                while (!Thread.currentThread().isInterrupted()) {
-                    try {
-                        handleReaderService(socket);
-                    } catch (Throwable t) {
-                        log.error(t.toString());
-                    }
-                }
-            });
-        };
-        for (int nThread = 0; nThread < nThreads; ++nThread) {
-            threadPool.execute(() -> {
-                final ZMQ.Socket socket = context.createSocket(SocketType.REP);
-                socket.connect("inproc://writerBackend");
-                while (!Thread.currentThread().isInterrupted()) {
-                    try {
-                        handleWriterService(socket);
-                    } catch (Throwable t) {
-                        log.error(t.toString());
-                    }
-                }
-            });
-        };
+        publisher      = context.createSocket(SocketType.PUB);
+        heads = new ConcurrentHashMap<>();
     }
 
     public void setEventWriter(Consumer<String> eventWriter) {
@@ -160,7 +137,26 @@ public abstract class ZeroMQBackendStore implements BackendStore {
     @Override
     public void handleWriterService(ZMQ.Socket socket) {
         final String msg = socket.recvStr();
-        eventWriter.accept(msg);
+        final StringTokenizer t = new StringTokenizer(msg);
+        final String threadId = t.nextToken();
+        final String op = t.nextToken();
+        if (op.equals("journal")) { // TODO: this belongs to the AbstractNodeStateAggregator
+            final String journalId = t.nextToken();
+            final String newHead = t.nextToken();
+            final String oldHead = t.nextToken();
+            synchronized (heads) {
+                final String currentHead = heads.getOrDefault(journalId, nodeStateAggregator.getJournalHead(journalId));
+                if (oldHead.equals(currentHead)) {
+                    heads.put(journalId, newHead);
+                    eventWriter.accept(msg);
+                    publisher.send(op + " " + journalId + " " + newHead + " " + oldHead);
+                } else {
+                    publisher.send("journalrej " + journalId + " " + newHead + " " + oldHead);
+                }
+            }
+        } else {
+            eventWriter.accept(msg);
+        }
         socket.send("confirmed");
     }
 
@@ -175,6 +171,39 @@ public abstract class ZeroMQBackendStore implements BackendStore {
                 }
             }
         }
+        readerFrontend.bind("tcp://*:" + readerPort);
+        readerBackend.bind("inproc://readerBackend");
+        writerFrontend.bind("tcp://*:" + writerPort);
+        writerBackend.bind("inproc://writerBackend");
+        publisher.bind("tcp://*:" + publisherPort);
+        threadPool.execute(() -> ZMQ.proxy(readerFrontend, readerBackend, null));
+        threadPool.execute(() -> ZMQ.proxy(writerFrontend, writerBackend, null));
+        for (int nThread = 0; nThread < nThreads; ++nThread) {
+            threadPool.execute(() -> {
+                final ZMQ.Socket socket = context.createSocket(SocketType.REP);
+                socket.connect("inproc://readerBackend");
+                while (!Thread.currentThread().isInterrupted()) {
+                    try {
+                        handleReaderService(socket);
+                    } catch (Throwable t) {
+                        log.error(t.toString());
+                    }
+                }
+            });
+        };
+        for (int nThread = 0; nThread < nThreads; ++nThread) {
+            threadPool.execute(() -> {
+                final ZMQ.Socket socket = context.createSocket(SocketType.REP);
+                socket.connect("inproc://writerBackend");
+                while (!Thread.currentThread().isInterrupted()) {
+                    try {
+                        handleWriterService(socket);
+                    } catch (Throwable t) {
+                        log.error(t.toString());
+                    }
+                }
+            });
+        };
     }
 
     private void stopBackgroundThreads() {
