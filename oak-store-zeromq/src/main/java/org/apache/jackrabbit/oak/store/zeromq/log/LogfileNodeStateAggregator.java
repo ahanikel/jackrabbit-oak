@@ -85,6 +85,9 @@ public class LogfileNodeStateAggregator extends AbstractNodeStateAggregator {
                 }
             } catch(RuntimeException e) {
                 throw e;
+            } catch(Throwable t) {
+                log.warn("Line: {}", line);
+                log.warn(t.getMessage() + " - continuing anyway");
             }
         }
     }

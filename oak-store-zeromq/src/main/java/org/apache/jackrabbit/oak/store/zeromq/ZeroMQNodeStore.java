@@ -39,6 +39,7 @@ import org.apache.jackrabbit.oak.spi.commit.Observable;
 import org.apache.jackrabbit.oak.spi.commit.Observer;
 import org.apache.jackrabbit.oak.spi.commit.ObserverTracker;
 import org.apache.jackrabbit.oak.spi.descriptors.GenericDescriptors;
+import org.apache.jackrabbit.oak.spi.state.Clusterable;
 import org.apache.jackrabbit.oak.spi.state.ConflictAnnotatingRebaseDiff;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
@@ -56,7 +57,6 @@ import org.slf4j.LoggerFactory;
 import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
-import org.zeromq.ZSocket;
 
 import java.io.Closeable;
 import java.io.File;
@@ -93,7 +93,7 @@ import static org.apache.jackrabbit.oak.spi.cluster.ClusterRepositoryInfo.getOrC
         property = "oak.nodestore.description=nodeStoreType=zeromq"
 )
 @Service
-public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, GarbageCollectableBlobStore {
+public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, GarbageCollectableBlobStore, Clusterable {
 
     private static final Logger log = LoggerFactory.getLogger(ZeroMQNodeStore.class.getName());
 
@@ -844,6 +844,21 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
     @Override
     public Closeable addObserver(Observer observer) {
         return changeDispatcher.addObserver(observer);
+    }
+
+    @Override
+    public @NotNull String getInstanceId() {
+        return storeId;
+    }
+
+    @Override
+    public @Nullable String getVisibilityToken() {
+        return getSuperRoot().getUuid(); // TODO: I don't know what I'm doing here
+    }
+
+    @Override
+    public boolean isVisible(@NotNull String visibilityToken, long maxWaitMillis) throws InterruptedException {
+        return true; // TODO: I don't know what I'm doing here
     }
 
     private static interface KVStore<K, V> {
