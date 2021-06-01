@@ -58,7 +58,7 @@ public class LogfileNodeStateAggregator extends AbstractNodeStateAggregator {
 
     @Override
     public void run() {
-        while (true) {
+        while (!Thread.interrupted()) {
             String line = nextRecord();
             if (line == null) {
                 if (!caughtup) {
@@ -83,8 +83,6 @@ public class LogfileNodeStateAggregator extends AbstractNodeStateAggregator {
                 } else {
                     recordHandler.handleRecord(uuThreadId, strippedLine, "");
                 }
-            } catch(RuntimeException e) {
-                throw e;
             } catch(Throwable t) {
                 log.warn("Line: {}", line);
                 log.warn(t.getMessage() + " - continuing anyway");

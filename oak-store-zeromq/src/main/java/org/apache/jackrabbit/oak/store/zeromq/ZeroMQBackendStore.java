@@ -100,10 +100,21 @@ public abstract class ZeroMQBackendStore implements BackendStore {
     @Override
     public void handleReaderService(ZMQ.Socket socket) {
         final String msg = socket.recvStr();
+        if (msg == null) {
+            return; // timeout
+        }
         String ret = null;
         if (msg.startsWith("journal ")) {
-            final String instance = msg.substring("journal ".length());
-            ret = nodeStateAggregator.getJournalHead(instance);
+            try {
+                final String instance = msg.substring("journal ".length());
+                ret = nodeStateAggregator.getJournalHead(instance);
+            } finally {
+                if (ret == null) {
+                    socket.send(new byte[0]);
+                } else {
+                    socket.send(ret);
+                }
+            }
         } else if (msg.startsWith("blob ")) {
             byte[] buffer = new byte[1024 * 1024]; // not final because of fear it's not being GC'd
             try {
@@ -122,42 +133,50 @@ public abstract class ZeroMQBackendStore implements BackendStore {
             } finally {
                 socket.send(new byte[0]);
             }
-            return;
         } else {
-            ret = nodeStateAggregator.readNodeState(msg);
-        }
-        if (ret != null) {
-            socket.send(ret);
-        } else {
-            socket.send("Node not found");
-            log.error("Requested node not found: {}", msg);
+            try {
+                ret = nodeStateAggregator.readNodeState(msg);
+            } finally {
+                if (ret != null) {
+                    socket.send(ret);
+                } else {
+                    socket.send("Node not found");
+                    log.error("Requested node not found: {}", msg);
+                }
+            }
         }
     }
 
     @Override
     public void handleWriterService(ZMQ.Socket socket) {
         final String msg = socket.recvStr();
-        final StringTokenizer t = new StringTokenizer(msg);
-        final String threadId = t.nextToken();
-        final String op = t.nextToken();
-        if (op.equals("journal")) { // TODO: this belongs to the AbstractNodeStateAggregator
-            final String journalId = t.nextToken();
-            final String newHead = t.nextToken();
-            final String oldHead = t.nextToken();
-            synchronized (heads) {
-                final String currentHead = heads.getOrDefault(journalId, nodeStateAggregator.getJournalHead(journalId));
-                if (oldHead.equals(currentHead)) {
-                    heads.put(journalId, newHead);
-                    eventWriter.accept(msg);
-                    publisher.send(op + " " + journalId + " " + newHead + " " + oldHead);
-                } else {
-                    publisher.send("journalrej " + journalId + " " + newHead + " " + oldHead);
-                }
-            }
-        } else {
-            eventWriter.accept(msg);
+        if (msg == null) {
+            return; // timeout
         }
-        socket.send("confirmed");
+        try {
+            final StringTokenizer t = new StringTokenizer(msg);
+            final String threadId = t.nextToken();
+            final String op = t.nextToken();
+            if (op.equals("journal")) { // TODO: this belongs to the AbstractNodeStateAggregator
+                final String journalId = t.nextToken();
+                final String newHead = t.nextToken();
+                final String oldHead = t.nextToken();
+                synchronized (heads) {
+                    final String currentHead = heads.getOrDefault(journalId, nodeStateAggregator.getJournalHead(journalId));
+                    if (oldHead.equals(currentHead)) {
+                        heads.put(journalId, newHead);
+                        eventWriter.accept(msg);
+                        publisher.send(op + " " + journalId + " " + newHead + " " + oldHead);
+                    } else {
+                        publisher.send("journalrej " + journalId + " " + newHead + " " + oldHead);
+                    }
+                }
+            } else {
+                eventWriter.accept(msg);
+            }
+        } finally {
+            socket.send("confirmed");
+        }
     }
 
     private void startBackgroundThreads() {
