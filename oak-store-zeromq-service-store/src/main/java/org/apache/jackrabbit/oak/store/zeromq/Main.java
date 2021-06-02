@@ -18,12 +18,6 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq;
 
-import org.apache.jackrabbit.oak.store.zeromq.dropwizard.HttpBackendApplication;
-import org.apache.jackrabbit.oak.store.zeromq.kafka.KafkaBackendStore;
-import org.apache.jackrabbit.oak.store.zeromq.log.LogBackendStore;
-
-import java.io.FileNotFoundException;
-
 /**
  * A store used for in-memory operations.
  */
@@ -33,23 +27,12 @@ public class Main {
             usage();
         }
         switch (args[0]) {
-            case "kafka": {
-                if (args.length != 1) {
-                    usage();
-                }
-                final BackendStore backendStore = new KafkaBackendStore();
-                break;
-            }
             case "log": {
                 if (args.length != 2) {
                     usage();
                 }
                 final String logFile = args[1];
-                final BackendStore backendStore = new LogBackendStore(logFile);
-                break;
-            }
-            case "server": {
-                HttpBackendApplication.main(args);
+                final BackendStore backendStore = new LogBackendStore(logFile, 0);
                 break;
             }
         }

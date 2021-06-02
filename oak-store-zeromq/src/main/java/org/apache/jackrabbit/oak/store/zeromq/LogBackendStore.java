@@ -16,27 +16,44 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.jackrabbit.oak.store.zeromq.log;
+package org.apache.jackrabbit.oak.store.zeromq;
 
-import org.apache.jackrabbit.oak.store.zeromq.ZeroMQBackendStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.zeromq.SocketType;
+import org.zeromq.ZContext;
+import org.zeromq.ZMQ;
 
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 
-/**
- * A store used for in-memory operations.
- */
 public class LogBackendStore extends ZeroMQBackendStore {
 
     private static final Logger log = LoggerFactory.getLogger(LogBackendStore.class);
     private final OutputStream logOut;
 
-    public LogBackendStore(String logFile) throws FileNotFoundException {
-        super(new LogfileNodeStateAggregator(logFile));
+    private static int publisherPort;
+
+    static {
+        try {
+            publisherPort = Integer.parseInt(System.getenv(ZEROMQ_PUBLISHER_PORT));
+        } catch (NumberFormatException e) {
+            publisherPort = 9000;
+        };
+    }
+
+    public LogBackendStore(String logFile, int lastOffset) throws IOException {
+        super("inproc://aggregator", new ZeroMQNodeStateAggregator("inproc://aggregator", "tcp://*:" + publisherPort));
+        FileInputStream fis = new FileInputStream(logFile);
+        fis.skip(lastOffset);
+        try {
+            Thread.sleep(500); // give the aggregator time to connect
+        } catch (InterruptedException e) {
+        }
+        initAggregator(fis);
         logOut = new FileOutputStream(logFile, true);
         setEventWriter(this::writeEvent);
         open();

@@ -279,6 +279,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
                                     journalPending = null;
                                     pending.notify();
                                 }
+                            } else {
+                                changeDispatcher.contentChanged(getRoot(), CommitInfo.EMPTY);
                             }
                         } else if ("journalrej".equals(op)) {
                             if (journalPending != null && journalPending.equals(newUuid)) {
@@ -853,12 +855,14 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     @Override
     public @Nullable String getVisibilityToken() {
-        return getSuperRoot().getUuid(); // TODO: I don't know what I'm doing here
+        // TODO: I don't know what I'm doing here
+        return journalPending;
     }
 
     @Override
     public boolean isVisible(@NotNull String visibilityToken, long maxWaitMillis) throws InterruptedException {
-        return true; // TODO: I don't know what I'm doing here
+        // TODO: I don't know what I'm doing here
+        return visibilityToken.equals(journalRoot);
     }
 
     private static interface KVStore<K, V> {

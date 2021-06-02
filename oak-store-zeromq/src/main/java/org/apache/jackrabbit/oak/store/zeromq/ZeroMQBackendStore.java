@@ -23,11 +23,9 @@ import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
 
+import java.io.IOException;
 import java.io.InputStream;
-import java.util.Map;
-import java.util.StringTokenizer;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Arrays;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
@@ -40,29 +38,25 @@ public abstract class ZeroMQBackendStore implements BackendStore {
     public static final String ZEROMQ_PUBLISHER_PORT = "ZEROMQ_PUBLISHER_PORT";
     public static final String ZEROMQ_NTHREADS    = "ZEROMQ_NTHREADS";
 
-    protected Thread nodeDiffHandler;
-    protected NodeStateAggregator nodeStateAggregator;
+    protected Thread aggregatorThread;
+    protected NodeStateAggregator aggregator;
     protected Consumer<String> eventWriter;
 
     final ZContext context;
 
     private int readerPort;
     private int writerPort;
-    private int publisherPort;
     private int nThreads;
     private final Executor threadPool;
     private final ZMQ.Socket readerFrontend;
     private final ZMQ.Socket readerBackend;
     private final ZMQ.Socket writerFrontend;
     private final ZMQ.Socket writerBackend;
-    private final ZMQ.Socket publisher;
+    private final ZMQ.Socket aggregatorSocket;
 
-    private final Map<String, String> heads;
-
-    public ZeroMQBackendStore(NodeStateAggregator nodeStateAggregator) {
+    public ZeroMQBackendStore(String aggregatorUrl, NodeStateAggregator aggregator) {
         this.eventWriter = null;
-        this.nodeStateAggregator = nodeStateAggregator;
-        nodeDiffHandler = new Thread(nodeStateAggregator, "ZeroMQBackendStore NodeStateAggregator");
+
         try {
             readerPort = Integer.parseInt(System.getenv(ZEROMQ_READER_PORT));
         } catch (NumberFormatException e) {
@@ -78,23 +72,52 @@ public abstract class ZeroMQBackendStore implements BackendStore {
         } catch (NumberFormatException e) {
             nThreads = 4;
         }
-        try {
-            publisherPort = Integer.parseInt(System.getenv(ZEROMQ_PUBLISHER_PORT));
-        } catch (NumberFormatException e) {
-            publisherPort = 9000;
-        }
+
         context = new ZContext();
         threadPool = Executors.newFixedThreadPool(2 * nThreads + 2);
         readerFrontend = context.createSocket(SocketType.ROUTER);
         readerBackend  = context.createSocket(SocketType.DEALER);
         writerFrontend = context.createSocket(SocketType.ROUTER);
         writerBackend  = context.createSocket(SocketType.DEALER);
-        publisher      = context.createSocket(SocketType.PUB);
-        heads = new ConcurrentHashMap<>();
+
+        aggregatorSocket = context.createSocket(SocketType.PUB);
+        aggregatorSocket.bind(aggregatorUrl);
+
+        this.aggregator = aggregator;
+        aggregatorThread = new Thread(aggregator, "ZeroMQBackendStore NodeStateAggregator");
+        aggregatorThread.setDaemon(true);
+        aggregatorThread.start();
     }
 
     public void setEventWriter(Consumer<String> eventWriter) {
         this.eventWriter = eventWriter;
+    }
+
+    protected void initAggregator(InputStream is) throws IOException {
+        final int bufLen = 1024 * 1024;
+        byte[] buf = new byte[bufLen]; // lines should not be bigger than 1M
+        int pos = 0;
+        int n;
+        while (true) {
+            if (pos == bufLen) {
+                throw new IllegalStateException("Line is bigger than 1MB");
+            }
+            n = is.read();
+            if (n < 0) {
+                if (pos > 0) {
+                    aggregatorSocket.sendMore("");
+                    aggregatorSocket.send(Arrays.copyOfRange(buf, 0, pos));
+                }
+                break;
+            }
+            if (n == '\n') {
+                aggregatorSocket.sendMore("");
+                aggregatorSocket.send(Arrays.copyOfRange(buf, 0, pos));
+                pos = 0;
+            } else {
+                buf[pos++] = (byte) n;
+            }
+        }
     }
 
     @Override
@@ -107,7 +130,7 @@ public abstract class ZeroMQBackendStore implements BackendStore {
         if (msg.startsWith("journal ")) {
             try {
                 final String instance = msg.substring("journal ".length());
-                ret = nodeStateAggregator.getJournalHead(instance);
+                ret = aggregator.getJournalHead(instance);
             } finally {
                 if (ret == null) {
                     socket.send(new byte[0]);
@@ -118,7 +141,7 @@ public abstract class ZeroMQBackendStore implements BackendStore {
         } else if (msg.startsWith("blob ")) {
             byte[] buffer = new byte[1024 * 1024]; // not final because of fear it's not being GC'd
             try {
-                final Blob blob = nodeStateAggregator.getBlob(msg.substring("blob ".length()));
+                final Blob blob = aggregator.getBlob(msg.substring("blob ".length()));
                 if (blob == null) {
                     throw new IllegalArgumentException(msg + " not found");
                 }
@@ -135,7 +158,7 @@ public abstract class ZeroMQBackendStore implements BackendStore {
             }
         } else {
             try {
-                ret = nodeStateAggregator.readNodeState(msg);
+                ret = aggregator.readNodeState(msg);
             } finally {
                 if (ret != null) {
                     socket.send(ret);
@@ -154,47 +177,18 @@ public abstract class ZeroMQBackendStore implements BackendStore {
             return; // timeout
         }
         try {
-            final StringTokenizer t = new StringTokenizer(msg);
-            final String threadId = t.nextToken();
-            final String op = t.nextToken();
-            if (op.equals("journal")) { // TODO: this belongs to the AbstractNodeStateAggregator
-                final String journalId = t.nextToken();
-                final String newHead = t.nextToken();
-                final String oldHead = t.nextToken();
-                synchronized (heads) {
-                    final String currentHead = heads.getOrDefault(journalId, nodeStateAggregator.getJournalHead(journalId));
-                    if (oldHead.equals(currentHead)) {
-                        heads.put(journalId, newHead);
-                        eventWriter.accept(msg);
-                        publisher.send(op + " " + journalId + " " + newHead + " " + oldHead);
-                    } else {
-                        publisher.send("journalrej " + journalId + " " + newHead + " " + oldHead);
-                    }
-                }
-            } else {
-                eventWriter.accept(msg);
-            }
+            eventWriter.accept(msg);
+            aggregatorSocket.send(msg);
         } finally {
             socket.send("confirmed");
         }
     }
 
     private void startBackgroundThreads() {
-        if (nodeDiffHandler != null) {
-            nodeDiffHandler.start();
-            while (!nodeStateAggregator.hasCaughtUp()) {
-                try {
-                    Thread.sleep(100);
-                } catch (InterruptedException e) {
-                    break;
-                }
-            }
-        }
         readerFrontend.bind("tcp://*:" + readerPort);
         readerBackend.bind("inproc://readerBackend");
         writerFrontend.bind("tcp://*:" + writerPort);
         writerBackend.bind("inproc://writerBackend");
-        publisher.bind("tcp://*:" + publisherPort);
         threadPool.execute(() -> ZMQ.proxy(readerFrontend, readerBackend, null));
         threadPool.execute(() -> ZMQ.proxy(writerFrontend, writerBackend, null));
         for (int nThread = 0; nThread < nThreads; ++nThread) {
@@ -226,8 +220,8 @@ public abstract class ZeroMQBackendStore implements BackendStore {
     }
 
     private void stopBackgroundThreads() {
-        if (nodeDiffHandler != null) {
-            nodeDiffHandler.interrupt();
+        if (aggregatorThread != null) {
+            aggregatorThread.interrupt();
         }
     }
 

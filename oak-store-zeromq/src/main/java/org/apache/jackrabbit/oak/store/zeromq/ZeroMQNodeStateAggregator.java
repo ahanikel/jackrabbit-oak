@@ -16,62 +16,51 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.jackrabbit.oak.store.zeromq.log;
+package org.apache.jackrabbit.oak.store.zeromq;
 
 import com.google.common.io.LineReader;
-import org.apache.jackrabbit.oak.store.zeromq.AbstractNodeStateAggregator;
-import org.apache.jackrabbit.oak.store.zeromq.SimpleRecordHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.zeromq.SocketType;
+import org.zeromq.ZContext;
+import org.zeromq.ZMQ;
 
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStreamReader;
 
-public class LogfileNodeStateAggregator extends AbstractNodeStateAggregator {
+public class ZeroMQNodeStateAggregator extends AbstractNodeStateAggregator {
 
-    private static final Logger log = LoggerFactory.getLogger(LogfileNodeStateAggregator.class);
+    private static final Logger log = LoggerFactory.getLogger(ZeroMQNodeStateAggregator.class);
 
-    private final LineReader reader;
+    private ZContext context;
+    private ZMQ.Socket socket;
 
-    public LogfileNodeStateAggregator(String filePath) throws FileNotFoundException {
+    public ZeroMQNodeStateAggregator(String urlIn, String urlOut) {
+        context = new ZContext();
+        socket = context.createSocket(SocketType.SUB);
+        socket.subscribe("");
+        socket.setReceiveTimeOut(1000);
+        socket.connect(urlIn);
         caughtup = false;
-        recordHandler = new SimpleRecordHandler();
-        final InputStreamReader inputStreamReader = new InputStreamReader(new FileInputStream(filePath));
-        reader = new LineReader(inputStreamReader);
-    }
-
-    private String nextRecord() {
-        while (true) {
-            try {
-                return reader.readLine();
-            } catch (IOException e) {
-                try {
-                    Thread.sleep(100);
-                } catch (InterruptedException interruptedException) {
-                    return null;
-                }
-            }
-        }
+        recordHandler = new FileSystemStoreHandler(urlOut);
     }
 
     @Override
     public void run() {
         while (!Thread.interrupted()) {
-            String line = nextRecord();
+            String line = socket.recvStr();
             if (line == null) {
                 if (!caughtup) {
                     log.info("We have caught up!");
                     caughtup = true;
-                }
-                try {
-                    Thread.sleep(100);
-                } catch (InterruptedException e) {
+                    socket.setReceiveTimeOut(-1);
                 }
                 continue;
             }
             if ("".equals(line)) {
+                log.warn("Empty line");
                 continue;
             }
             try {
