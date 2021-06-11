@@ -33,21 +33,56 @@ public class Main {
                 }
                 final String logFile = args[1];
                 final BackendStore backendStore = new LogBackendStore(logFile, 0);
+                while (true) {
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException e) {
+                        break;
+                    }
+                }
                 break;
             }
-        }
-        while (true) {
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
+            case "EventSink": {
+                if (args.length != 3) {
+                    usage();
+                }
+                final Runnable eventSink = new EventSink(args[1], args[2]);
+                eventSink.run();
+                break;
+            }
+            case "LogFileWriter": {
+                if (args.length != 3) {
+                    usage();
+                }
+                final Runnable logFileWriter = new LogFileWriter(args[1], args[2]);
+                logFileWriter.run();
+                break;
+            }
+            case "LogFilePublisher": {
+                if (args.length != 3) {
+                    usage();
+                }
+                final Runnable logFilePublisher = new LogFilePublisher(args[1], args[2]);
+                logFilePublisher.run();
+                break;
+            }
+            case "NodeStateAggregator": {
+                if (args.length != 3) {
+                    usage();
+                }
+                final Runnable nodeStateAggregator = new ZeroMQNodeStateAggregator(args[1], args[2]);
+                nodeStateAggregator.run();
                 break;
             }
         }
     }
 
     public static void usage() {
-        System.err.println("Usage: java -jar ... kafka <instanceName>");
-        System.err.println("       java -jar ... log   <instanceName> <logFileName>");
+        System.err.println("       java -jar ... log                 <instanceName> <logFileName>");
+        System.err.println("       java -jar ... EventSink           <bindIn>       <bindOut>");
+        System.err.println("       java -jar ... LogFileWriter       <connectIn>    <logFileName>");
+        System.err.println("       java -jar ... LogFilePublisher    <connectOut>   <logFileName>");
+        System.err.println("       java -jar ... NodeStateAggregator <connectIn>    <bindOut>");
         System.exit(1);
     }
 }
