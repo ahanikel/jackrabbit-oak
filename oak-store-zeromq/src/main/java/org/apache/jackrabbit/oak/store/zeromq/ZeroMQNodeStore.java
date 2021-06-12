@@ -656,20 +656,22 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         return blob;
     }
 
-    public Blob createBlob(Blob blob) throws IOException {
+    ZeroMQBlob createBlob(Blob blob) throws IOException {
+        ZeroMQBlob ret;
         if (blob instanceof ZeroMQBlob) {
-            blobCache.put(blob.getReference(), (ZeroMQBlob) blob);
-            return blob;
-        }
-        // TODO: remove this?
-        if (blob instanceof ZeroMQBlobStoreBlob) {
-            return blob;
+            ret = (ZeroMQBlob) blob;
+            if (blobCache.get(ret.getReference()) == null) {
+                writeBlob(ret); // should not happen
+            }
+            blobCache.put(blob.getReference(), ret);
+            return ret;
         }
         String ref = blob.getReference();
-        Blob ret = ref == null ? null : getBlob(ref);
+        ret = ref == null ? null : (ZeroMQBlob) getBlob(ref);
         if (ret == null || ret.getReference() == null) {
-            ret = createBlob(blob.getNewStream());
-            writeBlob((ZeroMQBlob) ret);
+            ret = ZeroMQBlob.newInstance(blob.getNewStream());
+            writeBlob(ret);
+            blobCache.put(ref, ret);
         }
         return ret;
     }
