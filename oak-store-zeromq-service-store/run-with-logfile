@@ -3,14 +3,9 @@ cd $(dirname $0)
 
 export KAFKA_TOPIC=nodestates
 export KAFKA_SERVERS=localhost:9092
-export clusterInstances=1
-export writeBackJournal=true
-export customBlobStore=false
-export backendPrefix=localhost
-export blobendPrefix=localhost
-export journalPrefix=localhost
-export initJournal=undefined
-export logNodeStates=false
+export ZEROMQ_READER_URL='tcp://*:8000'
+export ZEROMQ_WRITER_URL='tcp://*:8001'
+export ZEROMQ_NTHREADS=4
 
 debug="-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=6006"
 logging="-Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=yyyy-MM-dd'T'HH:mm:ss.SSSZ"

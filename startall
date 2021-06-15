@@ -2,14 +2,12 @@
 
 YJP_ARGS="-Dorg.apache.sling.launcher.bootdelegation=com.yourkit.api,com.yourkit.runtime,com.yourkit.util -Xbootclasspath/a:/Users/axel/yjp/lib/yjp-controller-api-redist.jar -agentpath:/Users/axel/yjp/bin/linux-x86-64/libyjpagent.so"
 
-export clusterInstances=1
+export journalId=golden
 export writeBackJournal=true
 export writeBackNodes=true
-export customBlobStore=false
-export backendPrefix=localhost
-export blobendPrefix=localhost
-export journalPrefix=localhost
-export initJournal=undefined
+export remoteReads=true
+export backendReaderURL='tcp://localhost:8000'
+export backendWriterURL='tcp://localhost:8001'
 export logNodeStates=false
 export blobCacheDir=/tmp/blobCacheDir
 

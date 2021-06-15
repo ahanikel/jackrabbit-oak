@@ -145,6 +145,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
     private AtomicLong remoteReadBlobCounter = new AtomicLong();
     private AtomicLong remoteWriteBlobCounter = new AtomicLong();
 
+    private long remoteReadRootTimestamp = 0;
+
     public ZeroMQNodeStore() {
     }
 
@@ -298,7 +300,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         checkpointRoot = readCPRootRemote();
         log.info("Journal root initialised with {}", uuid);
         journalRoot = uuid;
-        if ("undefined".equals(uuid)) {
+        if ("undefined".equals(uuid) || emptyNode.getUuid().equals(uuid)) {
             reset();
         }
         changeDispatcher = new ChangeDispatcher(getRoot());
@@ -322,6 +324,12 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
     }
 
     public String readRoot() {
+        long now = System.nanoTime();
+        // poll no more often than every 100ms
+        if (true || now - remoteReadRootTimestamp > 100 * 1000 * 1000) {
+            remoteReadRootTimestamp = now;
+            journalRoot = readRootRemote();
+        }
         return journalRoot;
     }
 
@@ -396,22 +404,24 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         return readNodeState(checkpointRoot);
     }
 
-    private void setRoot(String uuid, String olduuid) {
+    private boolean setRoot(String uuid, String olduuid) {
         if (writeBackJournal) {
             journalRoot = uuid;
-            setRootRemote(null, uuid, olduuid);
+            return setRootRemote(null, uuid, olduuid);
         }
+        return true;
     }
 
-    private synchronized void setCheckpointRoot(String uuid) {
+    private synchronized boolean setCheckpointRoot(String uuid) {
         final String olduuid = checkpointRoot;
         if (writeBackJournal) {
             checkpointRoot = uuid;
-            setRootRemote("checkpoints", uuid, olduuid);
+            return setRootRemote("checkpoints", uuid, olduuid);
         }
+        return true;
     }
 
-    private void setRootRemote(String type, String uuid, String olduuid) {
+    private boolean setRootRemote(String type, String uuid, String olduuid) {
         while (true) {
             synchronized (mergeRootMonitor) {
                 try {
@@ -421,8 +431,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
                                     + uuid + " "
                                     + olduuid
                     );
-                    socket.recvStr(); // ignore
-                    break;
+                    String result = socket.recvStr();
+                    return !"refused".equals(result);
                 } catch (Throwable t) {
                     log.warn(t.toString());
                     try {
@@ -434,46 +444,64 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         }
     }
 
-    private NodeState mergeRoot(String root, NodeState ns) {
+    private boolean mergeRoot(String root, NodeState ns) {
         final ZeroMQNodeState superRoot = getSuperRoot();
         final NodeBuilder superRootBuilder = superRoot.builder();
         superRootBuilder.setChildNode(root, ns);
         final ZeroMQNodeState newSuperRoot = (ZeroMQNodeState) superRootBuilder.getNodeState();
-        setRoot(newSuperRoot.getUuid(), superRoot.getUuid());
-        return newSuperRoot;
+        return setRoot(newSuperRoot.getUuid(), superRoot.getUuid());
     }
 
     @Override
     public NodeState merge(NodeBuilder builder, CommitHook commitHook, CommitInfo info) throws CommitFailedException {
         synchronized (mergeRootMonitor) {
             if (!(builder instanceof ZeroMQNodeBuilder)) {
-                throw new IllegalArgumentException();
+                throw new IllegalArgumentException("Builder is not of type ZeroMQNodeBuilder");
             }
-            final NodeState newBase = getRoot();
-            // rebase does nothing if the base hasn't changed
-            rebase(builder, newBase);
-            final NodeState after = builder.getNodeState();
-            final NodeState afterHook = commitHook.processCommit(newBase, after, info);
-            if (afterHook.equals(newBase)) {
-                return newBase; // TODO: There seem to be commits without any changes in them. Need to investigate.
+            // keep rebasing until we're successful
+            while (true) {
+                final NodeState newBase = getRoot();
+                // rebase does nothing if the base hasn't changed
+                rebase(builder, newBase);
+                final NodeState after = builder.getNodeState();
+                final NodeState afterHook = commitHook.processCommit(newBase, after, info);
+                if (afterHook.equals(newBase)) {
+                    return newBase; // TODO: There seem to be commits without any changes in them. Need to investigate.
+                }
+                if (mergeRoot("root", afterHook)) {
+                    ((ZeroMQNodeBuilder) builder).reset(afterHook);
+                    if (changeDispatcher != null) {
+                        changeDispatcher.contentChanged(afterHook, info);
+                    }
+                    return afterHook;
+                }
+                try {
+                    log.info("Commit rejected, retrying after 100 ms");
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    throw new CommitFailedException("Interrupted", 0, e.getMessage(), e);
+                }
             }
-            mergeRoot("root", afterHook);
-            ((ZeroMQNodeBuilder) builder).reset(afterHook);
-            if (changeDispatcher != null) {
-                changeDispatcher.contentChanged(afterHook, info);
-            }
-            return afterHook;
         }
     }
 
-    private NodeState mergeCheckpoint(NodeBuilder builder) {
+    private NodeState mergeCheckpoint(NodeBuilder builder) throws CommitFailedException {
         synchronized (checkpointMonitor) {
-            final NodeState newBase = getCheckpointRoot();
-            rebase(builder, newBase);
-            final ZeroMQNodeState after = (ZeroMQNodeState) builder.getNodeState();
-            setCheckpointRoot(after.getUuid());
-            ((ZeroMQNodeBuilder) builder).reset(after);
-            return after;
+            while (true) {
+                final NodeState newBase = getCheckpointRoot();
+                rebase(builder, newBase);
+                final ZeroMQNodeState after = (ZeroMQNodeState) builder.getNodeState();
+                if (setCheckpointRoot(after.getUuid())) {
+                    ((ZeroMQNodeBuilder) builder).reset(after);
+                    return after;
+                }
+                try {
+                    log.info("Commit rejected, retrying after 100 ms");
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    throw new CommitFailedException("Interrupted", 0, e.getMessage(), e);
+                }
+            }
         }
     }
 
@@ -707,7 +735,11 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         }
         cp.setChildNode("root", currentRoot);
 
-        mergeCheckpoint(checkpoints);
+        try {
+            mergeCheckpoint(checkpoints);
+        } catch (CommitFailedException e) {
+            throw new IllegalStateException(e);
+        }
         return name;
     }
 
@@ -756,7 +788,11 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         final NodeBuilder cpRoot = getCheckpointRoot().builder();
         boolean ret = cpRoot.getChildNode(checkpoint).remove();
         if (ret) {
-            mergeCheckpoint(cpRoot);
+            try {
+                mergeCheckpoint(cpRoot);
+            } catch (CommitFailedException e) {
+                throw new IllegalStateException(e);
+            }
         }
         return ret;
     }

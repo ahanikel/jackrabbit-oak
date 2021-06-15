@@ -25,6 +25,9 @@ import org.zeromq.ZMQ;
 
 import java.io.FileNotFoundException;
 import java.io.InputStream;
+import java.util.Map;
+import java.util.StringTokenizer;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
@@ -42,7 +45,9 @@ public abstract class ZeroMQBackendStore implements BackendStore {
         private String writerUrl;
         private int nThreads;
 
-        protected Builder() {}
+        protected Builder() {
+            initFromEnvironment();
+        }
 
         public NodeStateAggregator getNodeStateAggregator() {
             return nodeStateAggregator;
@@ -85,11 +90,11 @@ public abstract class ZeroMQBackendStore implements BackendStore {
         public Builder initFromEnvironment() {
             readerUrl = System.getenv(ZEROMQ_READER_URL);
             if (readerUrl == null) {
-                readerUrl = "tcp://localhost:8000";
+                readerUrl = "tcp://*:8000";
             }
             writerUrl = System.getenv(ZEROMQ_WRITER_URL);
             if (writerUrl == null) {
-                writerUrl = "tcp://localhost:8001";
+                writerUrl = "tcp://*:8001";
             }
             try {
                 nThreads = Integer.parseInt(System.getenv(ZEROMQ_NTHREADS));
@@ -115,6 +120,8 @@ public abstract class ZeroMQBackendStore implements BackendStore {
     private final ZMQ.Socket writerFrontend;
 
     private final ZMQ.Socket writerBackend;
+
+    private final Map<String, String> journalHeads = new ConcurrentHashMap();
 
     public ZeroMQBackendStore(Builder builder) {
         this.eventWriter = null;
@@ -205,6 +212,26 @@ public abstract class ZeroMQBackendStore implements BackendStore {
     @Override
     public void handleWriterService(ZMQ.Socket socket) {
         final String msg = socket.recvStr();
+        StringTokenizer t = new StringTokenizer(msg);
+        String threadId = t.nextToken();
+        String op = t.nextToken();
+        if (op.equals("journal")) {
+            String journalId = t.nextToken();
+            String newHead = t.nextToken();
+            String oldHead = t.nextToken();
+            synchronized (journalHeads) {
+                String refHead = journalHeads.get(journalId);
+                if (refHead == null) {
+                    refHead = builder.getNodeStateAggregator().getJournalHead(journalId);
+                    journalHeads.put(journalId, refHead);
+                }
+                if (refHead != null && !refHead.equals(oldHead)) {
+                    socket.send("refused");
+                    return;
+                }
+                journalHeads.put(journalId, newHead);
+            }
+        }
         eventWriter.accept(msg);
         socket.send("confirmed");
     }

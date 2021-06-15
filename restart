@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 
-thePid=$(ps auxww|grep java|grep quickstart|awk '{print $2}')
-
-if [[ -n $thePid ]]
-then
-    kill -9 $thePid
-fi
-
-while kill -0 $thePid
-do
-    sleep 1
-done 2>/dev/null
+#thePid=$(ps auxww|grep java|grep quickstart|awk '{print $2}')
+#
+#if [[ -n $thePid ]]
+#then
+#    kill -9 $thePid
+#fi
+#
+#while kill -0 $thePid
+#do
+#    sleep 1
+#done 2>/dev/null
 
 #rm -rf /tmp/blobs
 
@@ -20,12 +20,12 @@ YJP_ARGS="-Dorg.apache.sling.launcher.bootdelegation=com.yourkit.api,com.yourkit
 
 DEBUG='-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005'
 
-export clusterInstances=1
+export journalId=golden
 export writeBackJournal=true
 export writeBackNodes=true
 export remoteReads=true
-export customBlobStore=false
-export backendPrefix=localhost
+export backendReaderURL='tcp://localhost:8000'
+export backendWriterURL='tcp://localhost:8001'
 export logNodeStates=false
 export blobCacheDir=/tmp/blobCacheDir
 

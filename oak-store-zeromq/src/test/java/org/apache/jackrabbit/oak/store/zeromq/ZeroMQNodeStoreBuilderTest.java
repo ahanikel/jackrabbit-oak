@@ -25,7 +25,6 @@ import org.junit.Test;
 import java.net.MalformedURLException;
 
 import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeStoreBuilder.PARAM_BACKENDREADER_URL;
-import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeStoreBuilder.PARAM_CLUSTERINSTANCES;
 import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeStoreBuilder.PARAM_INITJOURNAL;
 import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeStoreBuilder.PARAM_REMOTEREADS;
 import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeStoreBuilder.PARAM_WRITEBACKJOURNAL;
@@ -49,7 +48,6 @@ public class ZeroMQNodeStoreBuilderTest {
     @Test
     public void initFromURI() throws MalformedURLException {
         assertEquals("journalId", "golden", builder.getJournalId());
-        assertEquals(PARAM_CLUSTERINSTANCES, 1, builder.getClusterInstances());
         assertTrue(PARAM_REMOTEREADS, builder.isRemoteReads());
         assertFalse(PARAM_WRITEBACKNODES, builder.isWriteBackNodes());
         assertEquals(PARAM_BACKENDREADER_URL, "localhost", builder.getBackendReaderURL());
@@ -58,8 +56,6 @@ public class ZeroMQNodeStoreBuilderTest {
 
         final StringBuilder sb = new StringBuilder("zeromq://someJournalId?");
         sb
-                .append(PARAM_CLUSTERINSTANCES).append("=2")
-                .append('&')
                 .append(PARAM_REMOTEREADS).append("=false")
                 .append('&')
                 .append(PARAM_WRITEBACKNODES).append("=true")
@@ -72,7 +68,6 @@ public class ZeroMQNodeStoreBuilderTest {
         builder.initFromURIString(sb.toString());
 
         assertEquals("journalId", "someJournalId", builder.getJournalId());
-        assertEquals(PARAM_CLUSTERINSTANCES, 2, builder.getClusterInstances());
         assertFalse(PARAM_REMOTEREADS, builder.isRemoteReads());
         assertTrue(PARAM_WRITEBACKNODES, builder.isWriteBackNodes());
         assertEquals(PARAM_BACKENDREADER_URL, "backend", builder.getBackendReaderURL());

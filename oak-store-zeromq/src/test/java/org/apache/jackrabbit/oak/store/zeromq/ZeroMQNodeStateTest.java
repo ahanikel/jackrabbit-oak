@@ -62,6 +62,8 @@ public class ZeroMQNodeStateTest {
 
     @After
     public void teardown() {
+        fixture.dispose(store);
+        store = null;
     }
 
     String getSerialised(int num) {

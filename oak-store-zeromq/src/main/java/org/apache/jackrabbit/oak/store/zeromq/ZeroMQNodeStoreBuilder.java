@@ -32,7 +32,7 @@ public class ZeroMQNodeStoreBuilder {
 
     private static final Logger log = LoggerFactory.getLogger(ZeroMQNodeStoreBuilder.class.getName());
 
-    public static final String PARAM_CLUSTERINSTANCES = "clusterInstances";
+    public static final String PARAM_JOURNAL_ID = "journalId";
     public static final String PARAM_BACKENDREADER_URL = "backendReaderURL";
     public static final String PARAM_BACKENDWRITER_URL = "backendWriterURL";
     public static final String PARAM_WRITEBACKJOURNAL = "writeBackJournal";
@@ -43,7 +43,6 @@ public class ZeroMQNodeStoreBuilder {
     private static final String PARAM_BLOBCACHE_DIR = "blobCacheDir";
 
     private String journalId;
-    private int clusterInstances;
     private boolean writeBackJournal;
     private boolean writeBackNodes;
     private boolean remoteReads;
@@ -55,7 +54,6 @@ public class ZeroMQNodeStoreBuilder {
 
    ZeroMQNodeStoreBuilder() {
        journalId = "golden";
-       clusterInstances = 1;
        writeBackJournal = false;
        writeBackNodes = false;
        remoteReads = true;
@@ -68,7 +66,7 @@ public class ZeroMQNodeStoreBuilder {
 
     public ZeroMQNodeStoreBuilder initFromEnvironment() {
         try {
-            clusterInstances = Integer.parseInt(System.getenv(PARAM_CLUSTERINSTANCES));
+            journalId = System.getenv(PARAM_JOURNAL_ID);
         } catch (Exception e) {
             // ignore
         }
@@ -135,13 +133,8 @@ public class ZeroMQNodeStoreBuilder {
         } catch (UnsupportedEncodingException e) {
             throw new RuntimeException(e);
         }
-        if (params.containsKey(PARAM_CLUSTERINSTANCES)) {
-            try {
-                setClusterInstances(Integer.parseInt(params.get(PARAM_CLUSTERINSTANCES)));
-            } catch (Exception e) {
-                log.warn(e.getMessage());
-                throw new IllegalArgumentException(e);
-            }
+        if (params.containsKey(PARAM_JOURNAL_ID)) {
+            setJournalId(params.get(PARAM_JOURNAL_ID));
         }
         if (params.containsKey(PARAM_WRITEBACKJOURNAL)) {
             try {
@@ -213,15 +206,6 @@ public class ZeroMQNodeStoreBuilder {
     public ZeroMQNodeStoreBuilder setJournalId(String journalId) {
        this.journalId = journalId;
        return this;
-    }
-
-    public int getClusterInstances() {
-        return clusterInstances;
-    }
-
-    public ZeroMQNodeStoreBuilder setClusterInstances(int clusterInstances) {
-        this.clusterInstances = clusterInstances;
-        return this;
     }
 
     public boolean isWriteBackJournal() {
