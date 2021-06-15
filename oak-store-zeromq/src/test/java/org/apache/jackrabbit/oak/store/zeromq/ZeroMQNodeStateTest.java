@@ -20,48 +20,58 @@
 package org.apache.jackrabbit.oak.store.zeromq;
 
 import org.apache.jackrabbit.oak.api.Blob;
-import org.apache.jackrabbit.oak.api.CommitFailedException;
 import org.apache.jackrabbit.oak.api.PropertyState;
 import org.apache.jackrabbit.oak.api.Type;
 import org.apache.jackrabbit.oak.plugins.memory.StringBasedBlob;
-import org.apache.jackrabbit.oak.spi.commit.CommitHook;
-import org.apache.jackrabbit.oak.spi.commit.CommitInfo;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
-import java.util.*;
+import java.util.ArrayList;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 
 public class ZeroMQNodeStateTest {
 
-    private static final int NUM_UUIDS = 6;
-    private static final UUID[] UUIDS = new UUID[NUM_UUIDS];
+    private static final int NUM_NODESTATES = 6;
+    private static final ZeroMQFixture fixture = new ZeroMQFixture();
+    private static final Logger log = LoggerFactory.getLogger(ZeroMQNodeStateTest.class);
 
-    private final Map<String, String> storage = new HashMap<>();
+    private ZeroMQNodeState[] nodeStates = new ZeroMQNodeState[NUM_NODESTATES];
+    private ZeroMQNodeStore store;
 
-    static {
-        for (int i = 0; i < NUM_UUIDS; ++i) {
-            UUIDS[i] = UUID.nameUUIDFromBytes(new byte[]{(byte) i, 0, 0, 0, 0, 0, 0, 0});
+    @Before
+    public void setup() throws ZeroMQNodeState.ParseFailure {
+        store = (ZeroMQNodeStore) fixture.createNodeStore();
+        for (int i = NUM_NODESTATES - 1; i >= 0; --i) {
+            nodeStates[i] = ZeroMQNodeState.deSerialise(store, getSerialised(i));
+            store.write(store.emptyNode, nodeStates[i]);
         }
     }
 
+    @After
+    public void teardown() {
+    }
 
-    String getSerialised(String sUuid) {
-        final UUID uuid = UUID.fromString(sUuid);
+    String getSerialised(int num) {
         final StringBuilder sb = new StringBuilder();
-        if (uuid.equals(UUIDS[0])) {
+        if (num == 0) {
             sb
                     .append("begin ZeroMQNodeState\n")
                     .append("begin children\n")
-                    .append("cOne\t").append(UUIDS[1]).append('\n')
-                    .append("cTwo\t").append(UUIDS[2]).append('\n')
+                    .append("cOne\t").append(nodeStates[1].getUuid()).append('\n')
+                    .append("cTwo\t").append(nodeStates[2].getUuid()).append('\n')
                     .append("end children\n")
                     .append("begin properties\n")
                     .append("pString <STRING> = Hello+world\n")
@@ -87,35 +97,9 @@ public class ZeroMQNodeStateTest {
         return sb.toString();
     }
 
-    ZeroMQNodeState staticReader(String sUuid) {
-
-        String serialised = getSerialised(sUuid);
-        ZeroMQNodeState ret = null;
-
-        try {
-            ret = ZeroMQNodeState.deSerialise(null, serialised);
-        } catch (ZeroMQNodeState.ParseFailure parseFailure) {
-        }
-
-        return ret;
-    }
-
-    private ZeroMQNodeState storageReader(String s) {
-        final String ser = storage.get(s);
-        try {
-            return ZeroMQNodeState.deSerialise(null, ser);
-        } catch (ZeroMQNodeState.ParseFailure parseFailure) {
-            throw new IllegalStateException(parseFailure);
-        }
-    }
-    private void storageWriter(ZeroMQNodeState ns) {
-        storage.put(ns.getUuid(), ns.getSerialised());
-    }
-
     @Test
     public void parse() {
-        storage.clear();
-        final ZeroMQNodeState ns = staticReader(UUIDS[0].toString());
+        final ZeroMQNodeState ns = store.readNodeState(nodeStates[0].getUuid());
         final ZeroMQNodeState cOne = (ZeroMQNodeState) ns.getChildNode("cOne");
         final ZeroMQNodeState cTwo = (ZeroMQNodeState) ns.getChildNode("cTwo");
 
@@ -151,32 +135,31 @@ public class ZeroMQNodeStateTest {
 
         assertEquals(Type.STRING, cTwo.getProperty("pOne").getType());
         assertEquals("Hello world", cTwo.getProperty("pOne").getValue(Type.STRING));
+
+        // make sure nodes from other tests do not leak; this one's from the emptyArray test
+        assertThrows("A nodestate from the emptyArray test should not be in the repo anymore",
+            Exception.class, () -> store.readNodeState("312a74df-8eab-4f97-a0bb-ecea67c7ed77"));
     }
 
-    // @Test
-    // This test always fails because the order of children and properties is not defined
-    // It can still be useful for manual testing
+    @Test
     public void serialise() {
-        storage.clear();
-        final ZeroMQNodeState ns = staticReader(UUIDS[0].toString());
+        final ZeroMQNodeState ns = store.readNodeState(nodeStates[0].getUuid());
         StringBuilder sb = new StringBuilder();
         sb.append(ns.getSerialised());
-        assertEquals(getSerialised(UUIDS[0].toString()), sb.toString());
+        assertEquals(getSerialised(0), sb.toString());
 
         sb = new StringBuilder();
         sb.append(((ZeroMQNodeState) ns.getChildNode("cOne")).getSerialised());
-        assertEquals(getSerialised(UUIDS[1].toString()), sb.toString());
+        assertEquals(getSerialised(1), sb.toString());
 
         sb = new StringBuilder();
         sb.append(((ZeroMQNodeState) ns.getChildNode("cTwo")).getSerialised());
-        assertEquals(getSerialised(UUIDS[2].toString()), sb.toString());
+        assertEquals(getSerialised(2), sb.toString());
     }
 
-    // @Test
-    // This test fails without a real node store
+    @Test
     public void diff() throws IOException {
-        storage.clear();
-        final ZeroMQNodeState ns = (ZeroMQNodeState) ZeroMQEmptyNodeState.EMPTY_NODE(null);
+        final ZeroMQNodeState ns = store.emptyNode;
         final NodeBuilder builder = ns.builder();
         builder.child("first")
                 .setProperty("1p", "blurb", Type.STRING)
@@ -198,7 +181,7 @@ public class ZeroMQNodeStateTest {
 
         final NodeState newNs = builder.getNodeState();
         final String uuid = ((ZeroMQNodeState) newNs).getUuid();
-        final NodeState nsRead = storageReader(uuid);
+        final NodeState nsRead = store.readNodeState(uuid);
 
         assertTrue(nsRead.hasChildNode("first"));
         assertTrue(nsRead.getChildNode("first").hasProperty("1p"));
@@ -245,29 +228,33 @@ public class ZeroMQNodeStateTest {
         assertTrue(nsRead.getChildNode("[empty:node]").exists());
     }
 
-    // TODO: needs to be rewritten
-    /*
     @Test
     public void stringToBlob() throws IOException {
-        final Blob blob = ZeroMQBlob.newInstance("48656C6C6F20776F726C64");
-        final InputStream is = blob.getNewStream();
+        final InputStream is = new ByteArrayInputStream("Hello world".getBytes());
+        final Blob blob = ZeroMQBlob.newInstance(is);
+        assertEquals("3E25960A79DBC69B674CD4EC67A72C62", blob.getReference());
+        final InputStream is1 = blob.getNewStream();
         final char[] ref = "Hello world".toCharArray();
         for (int i = 0; i < ref.length; ++i) {
-            assertEquals((int) ref[i], is.read());
+            assertEquals((int) ref[i], is1.read());
         }
-        assertEquals(-1, is.read());
+        assertEquals(-1, is1.read());
+        store.reset(); // empty the in-memory cache
+        final Blob blob2 = store.getBlob("3E25960A79DBC69B674CD4EC67A72C62");
+        final InputStream is2 = blob.getNewStream();
+        for (int i = 0; i < ref.length; ++i) {
+            assertEquals((int) ref[i], is2.read());
+        }
+        assertEquals(-1, is2.read());
     }
-    */
 
-    // @Test
-    // This test fails without a real node store
+    @Test
     public void emptyArray() throws ZeroMQNodeState.ParseFailure {
-        storage.clear();
-
-        final ZeroMQNodeState ns = (ZeroMQNodeState) ZeroMQEmptyNodeState.EMPTY_NODE(null);
+        final ZeroMQNodeState ns = store.emptyNode;
         final NodeBuilder builder = ns.builder();
         builder.setProperty("bla", new ArrayList<String>()  , Type.STRINGS);
         final NodeState ns2 = builder.getNodeState();
+        log.info(((ZeroMQNodeState) ns2).getUuid());
         final PropertyState ps = ns2.getProperty("bla");
         assertTrue(ps.isArray());
         assertTrue(ps.count() == 0);
@@ -281,14 +268,4 @@ public class ZeroMQNodeStateTest {
         final NodeState ns3 = ZeroMQNodeState.deSerialise(null, s);
         assertTrue(ns3.getProperty("bla").count() == 0);
     }
-
-    /*
-    @Test
-    public void testClusterInstanceForSegmentId() {
-        final int[] expected = {0, 0, 0, 0, 1, 0};
-        for (int i = 0; i < UUIDS.length; ++i) {
-            assertEquals(expected[i], clusterInstanceForUuid(2, UUIDS[i].toString()));
-        }
-    }
-    */
 }

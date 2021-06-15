@@ -23,8 +23,8 @@ import org.junit.Before;
 import org.junit.Test;
 import org.zeromq.ZMQ;
 
-import static org.apache.jackrabbit.oak.store.zeromq.kafka.KafkaBackendStore.ZEROMQ_READER_PORT;
-import static org.apache.jackrabbit.oak.store.zeromq.kafka.KafkaBackendStore.ZEROMQ_WRITER_PORT;
+import static org.apache.jackrabbit.oak.store.zeromq.kafka.KafkaBackendStore.ZEROMQ_READER_URL;
+import static org.apache.jackrabbit.oak.store.zeromq.kafka.KafkaBackendStore.ZEROMQ_WRITER_URL;
 import static org.junit.Assert.assertEquals;
 
 public class KafkaBackendStoreTest {
@@ -37,14 +37,14 @@ public class KafkaBackendStoreTest {
 
     @Before
     public void testInit() {
-        store = new KafkaBackendStore();
+        store = KafkaBackendStore.builder().build();
         try {
-            readerPort = Integer.parseInt(System.getenv(ZEROMQ_READER_PORT));
+            readerPort = Integer.parseInt(System.getenv(ZEROMQ_READER_URL));
         } catch (NumberFormatException e) {
             readerPort = 8000;
         }
         try {
-            writerPort = Integer.parseInt(System.getenv(ZEROMQ_WRITER_PORT));
+            writerPort = Integer.parseInt(System.getenv(ZEROMQ_WRITER_URL));
         } catch (NumberFormatException e) {
             writerPort = 8001;
         }

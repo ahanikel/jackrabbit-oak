@@ -24,7 +24,7 @@ import org.junit.Test;
 
 import java.net.MalformedURLException;
 
-import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeStoreBuilder.PARAM_BACKEND_PREFIX;
+import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeStoreBuilder.PARAM_BACKENDREADER_URL;
 import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeStoreBuilder.PARAM_CLUSTERINSTANCES;
 import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeStoreBuilder.PARAM_INITJOURNAL;
 import static org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeStoreBuilder.PARAM_REMOTEREADS;
@@ -52,7 +52,7 @@ public class ZeroMQNodeStoreBuilderTest {
         assertEquals(PARAM_CLUSTERINSTANCES, 1, builder.getClusterInstances());
         assertTrue(PARAM_REMOTEREADS, builder.isRemoteReads());
         assertFalse(PARAM_WRITEBACKNODES, builder.isWriteBackNodes());
-        assertEquals(PARAM_BACKEND_PREFIX, "localhost", builder.getBackendPrefix());
+        assertEquals(PARAM_BACKENDREADER_URL, "localhost", builder.getBackendReaderURL());
         assertNull(PARAM_INITJOURNAL, builder.getInitJournal());
         assertFalse(PARAM_WRITEBACKJOURNAL, builder.isWriteBackJournal());
 
@@ -64,7 +64,7 @@ public class ZeroMQNodeStoreBuilderTest {
                 .append('&')
                 .append(PARAM_WRITEBACKNODES).append("=true")
                 .append('&')
-                .append(PARAM_BACKEND_PREFIX).append("=backend")
+                .append(PARAM_BACKENDREADER_URL).append("=backend")
                 .append('&')
                 .append(PARAM_INITJOURNAL).append("=12345-0")
                 .append('&')
@@ -75,7 +75,7 @@ public class ZeroMQNodeStoreBuilderTest {
         assertEquals(PARAM_CLUSTERINSTANCES, 2, builder.getClusterInstances());
         assertFalse(PARAM_REMOTEREADS, builder.isRemoteReads());
         assertTrue(PARAM_WRITEBACKNODES, builder.isWriteBackNodes());
-        assertEquals(PARAM_BACKEND_PREFIX, "backend", builder.getBackendPrefix());
+        assertEquals(PARAM_BACKENDREADER_URL, "backend", builder.getBackendReaderURL());
         assertEquals(PARAM_INITJOURNAL, "12345-0", builder.getInitJournal());
         assertTrue(PARAM_WRITEBACKJOURNAL, builder.isWriteBackJournal());
     }

@@ -37,7 +37,7 @@ public class Main {
                 if (args.length != 1) {
                     usage();
                 }
-                final BackendStore backendStore = new KafkaBackendStore();
+                final BackendStore backendStore = KafkaBackendStore.builder().build();
                 break;
             }
             case "log": {
@@ -45,7 +45,7 @@ public class Main {
                     usage();
                 }
                 final String logFile = args[1];
-                final BackendStore backendStore = new LogBackendStore(logFile);
+                final BackendStore backendStore = LogBackendStore.builder().withLogFile(logFile).build();
                 break;
             }
             case "server": {

@@ -42,6 +42,7 @@ import org.apache.jackrabbit.oak.spi.whiteboard.Registration;
 import org.apache.jackrabbit.oak.spi.whiteboard.Tracker;
 import org.apache.jackrabbit.oak.spi.whiteboard.Whiteboard;
 import org.apache.jackrabbit.oak.stats.StatisticsProvider;
+import org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeStore;
 import org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeStoreBuilder;
 
 import static java.lang.management.ManagementFactory.getPlatformMBeanServer;
@@ -130,7 +131,7 @@ public class NodeStoreFixtureProvider {
                 break;
             }
             case "zeromq": {
-                store = new ZeroMQNodeStoreBuilder().initFromURI(uri).build();
+                store = ZeroMQNodeStore.builder().initFromURI(uri).build();
                 blobStore = null;
                 break;
             }

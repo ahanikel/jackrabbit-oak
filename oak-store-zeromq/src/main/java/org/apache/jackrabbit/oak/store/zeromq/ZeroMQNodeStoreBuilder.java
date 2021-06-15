@@ -33,7 +33,8 @@ public class ZeroMQNodeStoreBuilder {
     private static final Logger log = LoggerFactory.getLogger(ZeroMQNodeStoreBuilder.class.getName());
 
     public static final String PARAM_CLUSTERINSTANCES = "clusterInstances";
-    public static final String PARAM_BACKEND_PREFIX = "backendPrefix";
+    public static final String PARAM_BACKENDREADER_URL = "backendReaderURL";
+    public static final String PARAM_BACKENDWRITER_URL = "backendWriterURL";
     public static final String PARAM_WRITEBACKJOURNAL = "writeBackJournal";
     public static final String PARAM_WRITEBACKNODES = "writeBackNodes";
     public static final String PARAM_INITJOURNAL = "initJournal";
@@ -47,20 +48,22 @@ public class ZeroMQNodeStoreBuilder {
     private boolean writeBackNodes;
     private boolean remoteReads;
     private String initJournal;
-    private String backendPrefix;
+    private String backendReaderURL;
+    private String backendWriterURL;
     private boolean logNodeStates;
     private String blobCacheDir;
 
-   public ZeroMQNodeStoreBuilder() {
+   ZeroMQNodeStoreBuilder() {
        journalId = "golden";
        clusterInstances = 1;
        writeBackJournal = false;
        writeBackNodes = false;
        remoteReads = true;
        initJournal = null;
-       backendPrefix = "localhost";
+       backendReaderURL = "tcp://localhost:8000";
+       backendWriterURL = "tcp://localhost:8001";
        logNodeStates = false;
-       blobCacheDir = "/tmp/blobs";
+       blobCacheDir = "/tmp/blobCacheDir";
     }
 
     public ZeroMQNodeStoreBuilder initFromEnvironment() {
@@ -90,7 +93,12 @@ public class ZeroMQNodeStoreBuilder {
             // ignore
         }
         try {
-            backendPrefix = System.getenv(PARAM_BACKEND_PREFIX);
+            backendReaderURL = System.getenv(PARAM_BACKENDREADER_URL);
+        } catch (Exception e) {
+            // ignore
+        }
+        try {
+            backendWriterURL = System.getenv(PARAM_BACKENDWRITER_URL);
         } catch (Exception e) {
             // ignore
         }
@@ -167,9 +175,9 @@ public class ZeroMQNodeStoreBuilder {
                 throw new IllegalArgumentException(e);
             }
         }
-        if (params.containsKey(PARAM_BACKEND_PREFIX)) {
+        if (params.containsKey(PARAM_BACKENDREADER_URL)) {
             try {
-                setBackendPrefix(params.get(PARAM_BACKEND_PREFIX));
+                setBackendReaderURL(params.get(PARAM_BACKENDREADER_URL));
             } catch (Exception e) {
                 log.warn(e.getMessage());
                 throw new IllegalArgumentException(e);
@@ -252,12 +260,21 @@ public class ZeroMQNodeStoreBuilder {
         return this;
     }
 
-    public String getBackendPrefix() {
-        return backendPrefix;
+    public String getBackendReaderURL() {
+        return backendReaderURL;
     }
 
-    public ZeroMQNodeStoreBuilder setBackendPrefix(String backendPrefix) {
-        this.backendPrefix = backendPrefix;
+    public String getBackendWriterURL() {
+        return backendWriterURL;
+    }
+
+    public ZeroMQNodeStoreBuilder setBackendReaderURL(String backendReaderURL) {
+        this.backendReaderURL = backendReaderURL;
+        return this;
+    }
+
+    public ZeroMQNodeStoreBuilder setBackendWriterURL(String backendWriterURL) {
+        this.backendWriterURL = backendWriterURL;
         return this;
     }
 

@@ -36,5 +36,5 @@ services:
       - remoteReads=true
       - customBlobStore=false
       - logNodeStates=false
-      - delay=60
+      - delay=180
 

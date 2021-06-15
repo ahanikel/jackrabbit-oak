@@ -23,6 +23,7 @@ import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
 
+import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -31,21 +32,79 @@ import java.util.function.Consumer;
 public abstract class ZeroMQBackendStore implements BackendStore {
 
     public static final Logger log = LoggerFactory.getLogger(ZeroMQBackendStore.class);
-    public static final String ZEROMQ_READER_PORT = "ZEROMQ_READER_PORT";
-    public static final String ZEROMQ_WRITER_PORT = "ZEROMQ_WRITER_PORT";
-    public static final String ZEROMQ_NTHREADS    = "ZEROMQ_NTHREADS";
+    public static final String ZEROMQ_READER_URL = "ZEROMQ_READER_URL";
+    public static final String ZEROMQ_WRITER_URL = "ZEROMQ_WRITER_URL";
+    public static final String ZEROMQ_NTHREADS   = "ZEROMQ_NTHREADS";
+
+    public static abstract class Builder {
+        private NodeStateAggregator nodeStateAggregator;
+        private String readerUrl;
+        private String writerUrl;
+        private int nThreads;
+
+        protected Builder() {}
+
+        public NodeStateAggregator getNodeStateAggregator() {
+            return nodeStateAggregator;
+        }
+
+        public Builder withNodeStateAggregator(NodeStateAggregator nodeStateAggregator) {
+            this.nodeStateAggregator = nodeStateAggregator;
+            return this;
+        }
+
+        public String getReaderUrl() {
+            return readerUrl;
+        }
+
+        public Builder withReaderUrl(String readerUrl) {
+            this.readerUrl = readerUrl;
+            return this;
+        }
+
+        public String getWriterUrl() {
+            return writerUrl;
+        }
+
+        public Builder withWriterUrl(String writerUrl) {
+            this.writerUrl = writerUrl;
+            return this;
+        }
+
+        public int getNumThreads() {
+            return nThreads;
+        }
+
+        public Builder withNumThreads(int nThreads) {
+            this.nThreads = nThreads;
+            return this;
+        }
+
+        public abstract ZeroMQBackendStore build() throws FileNotFoundException;
+
+        public Builder initFromEnvironment() {
+            readerUrl = System.getenv(ZEROMQ_READER_URL);
+            if (readerUrl == null) {
+                readerUrl = "tcp://localhost:8000";
+            }
+            writerUrl = System.getenv(ZEROMQ_WRITER_URL);
+            if (writerUrl == null) {
+                writerUrl = "tcp://localhost:8001";
+            }
+            try {
+                nThreads = Integer.parseInt(System.getenv(ZEROMQ_NTHREADS));
+            } catch (NumberFormatException e) {
+                nThreads = 4;
+            }
+            return this;
+        }
+    }
 
     protected Thread nodeDiffHandler;
-    protected NodeStateAggregator nodeStateAggregator;
+    protected Builder builder;
     protected Consumer<String> eventWriter;
 
     final ZContext context;
-
-    private int readerPort;
-
-    private int writerPort;
-
-    private int nThreads;
 
     private final Executor threadPool;
 
@@ -57,38 +116,24 @@ public abstract class ZeroMQBackendStore implements BackendStore {
 
     private final ZMQ.Socket writerBackend;
 
-    public ZeroMQBackendStore(NodeStateAggregator nodeStateAggregator) {
+    public ZeroMQBackendStore(Builder builder) {
         this.eventWriter = null;
-        this.nodeStateAggregator = nodeStateAggregator;
-        nodeDiffHandler = new Thread(nodeStateAggregator, "ZeroMQBackendStore NodeStateAggregator");
-        try {
-            readerPort = Integer.parseInt(System.getenv(ZEROMQ_READER_PORT));
-        } catch (NumberFormatException e) {
-            readerPort = 8000;
-        }
-        try {
-            writerPort = Integer.parseInt(System.getenv(ZEROMQ_WRITER_PORT));
-        } catch (NumberFormatException e) {
-            writerPort = 8001;
-        }
-        try {
-            nThreads = Integer.parseInt(System.getenv(ZEROMQ_NTHREADS));
-        } catch (NumberFormatException e) {
-            nThreads = 4;
-        }
+        this.builder = builder;
+        nodeDiffHandler = new Thread(builder.getNodeStateAggregator(), "ZeroMQBackendStore NodeStateAggregator");
+
         context = new ZContext();
-        threadPool = Executors.newFixedThreadPool(2 * nThreads + 2);
+        threadPool = Executors.newFixedThreadPool(2 * builder.getNumThreads() + 2);
         readerFrontend = context.createSocket(SocketType.ROUTER);
         readerBackend  = context.createSocket(SocketType.DEALER);
         writerFrontend = context.createSocket(SocketType.ROUTER);
         writerBackend  = context.createSocket(SocketType.DEALER);
-        readerFrontend.bind("tcp://*:" + readerPort);
+        readerFrontend.bind(builder.getReaderUrl());
         readerBackend.bind("inproc://readerBackend");
-        writerFrontend.bind("tcp://*:" + writerPort);
+        writerFrontend.bind(builder.getWriterUrl());
         writerBackend.bind("inproc://writerBackend");
         threadPool.execute(() -> ZMQ.proxy(readerFrontend, readerBackend, null));
         threadPool.execute(() -> ZMQ.proxy(writerFrontend, writerBackend, null));
-        for (int nThread = 0; nThread < nThreads; ++nThread) {
+        for (int nThread = 0; nThread < builder.getNumThreads(); ++nThread) {
             threadPool.execute(() -> {
                 final ZMQ.Socket socket = context.createSocket(SocketType.REP);
                 socket.connect("inproc://readerBackend");
@@ -101,7 +146,7 @@ public abstract class ZeroMQBackendStore implements BackendStore {
                 }
             });
         };
-        for (int nThread = 0; nThread < nThreads; ++nThread) {
+        for (int nThread = 0; nThread < builder.getNumThreads(); ++nThread) {
             threadPool.execute(() -> {
                 final ZMQ.Socket socket = context.createSocket(SocketType.REP);
                 socket.connect("inproc://writerBackend");
@@ -126,11 +171,11 @@ public abstract class ZeroMQBackendStore implements BackendStore {
         String ret = null;
         if (msg.startsWith("journal ")) {
             final String instance = msg.substring("journal ".length());
-            ret = nodeStateAggregator.getJournalHead(instance);
+            ret = builder.getNodeStateAggregator().getJournalHead(instance);
         } else if (msg.startsWith("blob ")) {
             byte[] buffer = new byte[1024 * 1024]; // not final because of fear it's not being GC'd
             try {
-                final Blob blob = nodeStateAggregator.getBlob(msg.substring("blob ".length()));
+                final Blob blob = builder.getNodeStateAggregator().getBlob(msg.substring("blob ".length()));
                 if (blob == null) {
                     throw new IllegalArgumentException(msg + " not found");
                 }
@@ -147,7 +192,7 @@ public abstract class ZeroMQBackendStore implements BackendStore {
             }
             return;
         } else {
-            ret = nodeStateAggregator.readNodeState(msg);
+            ret = builder.getNodeStateAggregator().readNodeState(msg);
         }
         if (ret != null) {
             socket.send(ret);
@@ -167,7 +212,7 @@ public abstract class ZeroMQBackendStore implements BackendStore {
     private void startBackgroundThreads() {
         if (nodeDiffHandler != null) {
             nodeDiffHandler.start();
-            while (!nodeStateAggregator.hasCaughtUp()) {
+            while (!builder.getNodeStateAggregator().hasCaughtUp()) {
                 try {
                     Thread.sleep(100);
                 } catch (InterruptedException e) {
@@ -191,6 +236,5 @@ public abstract class ZeroMQBackendStore implements BackendStore {
     @Override
     public void close() {
         stopBackgroundThreads();
-        context.close();
     }
 }

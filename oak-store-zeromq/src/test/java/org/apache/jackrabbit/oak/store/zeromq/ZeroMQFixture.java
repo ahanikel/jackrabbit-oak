@@ -18,29 +18,57 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq;
 
+import com.google.common.io.Files;
 import org.apache.jackrabbit.oak.fixture.NodeStoreFixture;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
-import static org.junit.Assert.assertEquals;
+import org.apache.jackrabbit.oak.store.zeromq.log.LogBackendStore;
+
+import java.io.File;
+import java.io.IOException;
 
 public class ZeroMQFixture extends NodeStoreFixture {
 
-    private volatile ZeroMQNodeStore store = null;
+    private ZeroMQNodeStore store;
+    private ZeroMQBackendStore logBackendStore;
+    private File logFile;
+    private File cacheDir;
 
     public ZeroMQFixture() {
-        store = new ZeroMQNodeStoreBuilder().setJournalId("test").build();
+        try {
+            logFile = File.createTempFile("ZeroMQFixture", ".log");
+            cacheDir = Files.createTempDir();
+            logBackendStore = LogBackendStore.builder()
+                .withLogFile(logFile.getAbsolutePath())
+                .withReaderUrl("tcp://*:8000")
+                .withWriterUrl("tcp://*:8001")
+                .withNumThreads(4)
+                .build();
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
+
+        store = ZeroMQNodeStore.builder()
+            .setJournalId("test")
+            .setBackendReaderURL("tcp://localhost:8000")
+            .setBackendWriterURL("tcp://localhost:8001")
+            .setBlobCacheDir(cacheDir.getAbsolutePath())
+            .build();
     }
 
     @Override
     public NodeStore createNodeStore() {
+        logFile.delete();
+        cacheDir.delete();
+        cacheDir.mkdir();
         store.reset();
         return store;
     }
 
     @Override
     public void dispose(NodeStore nodeStore) {
-        // it looks like dispose is never called so
-        // we always return the same node store
-        // ((ZeroMQNodeStore) store).close();
-        // store = null;
+        store.close();
+        logBackendStore.close();
+        store = null;
+        logBackendStore = null;
     }
 }

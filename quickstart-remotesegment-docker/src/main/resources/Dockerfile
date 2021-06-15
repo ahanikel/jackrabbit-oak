@@ -7,18 +7,20 @@ ENV javaargs="-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*
 ENV jarargs="-nofork -nobrowser -r author,crx3,crx3tar-nofds"
 ENV backendPrefix="ahanikel-log-svc-"
 ENV clusterInstances="1"
-ENV writeBackJournal="false"
-ENV writeBackNodes="false"
+ENV writeBackJournal="true"
+ENV writeBackNodes="true"
 ENV remoteReads="true"
 ENV logNodeStates="false"
+ENV blobCacheDir="/tmp/blobCacheDir"
 
 EXPOSE 4502
 EXPOSE 5005
 WORKDIR /root
-#RUN mkdir -p crx-quickstart/install/15
+COPY ${license} ./
+COPY crx-quickstart ./crx-quickstart
 COPY ${slingarchive} ./
+#RUN mkdir -p crx-quickstart/install/15
 #COPY ${zeromqarchive} crx-quickstart/install/15/
 #COPY ${configfile} crx-quickstart/install/
-COPY ${license} ./
 ENV delay=0
 ENTRYPOINT sleep $delay && echo admin | java ${javaargs} -jar ${slingarchive} ${jarargs}

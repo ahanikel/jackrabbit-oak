@@ -81,9 +81,6 @@ import static org.apache.jackrabbit.oak.api.Type.LONG;
 import static org.apache.jackrabbit.oak.api.Type.STRING;
 import static org.apache.jackrabbit.oak.spi.cluster.ClusterRepositoryInfo.getOrCreateId;
 
-/**
- * A store which dumps everything into a queue.
- */
 @Component(
         scope = ServiceScope.SINGLETON,
         immediate = true,
@@ -95,20 +92,23 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     private static final Logger log = LoggerFactory.getLogger(ZeroMQNodeStore.class.getName());
 
+    public static ZeroMQNodeStoreBuilder builder() {
+        return new ZeroMQNodeStoreBuilder();
+    }
+
     @NotNull
     ZContext context;
     private String journalId;
 
-    private int clusterInstances;
     private boolean writeBackJournal;
     private boolean writeBackNodes;
     private boolean remoteReads;
 
     @NotNull
-    ZeroMQSocketProvider nodeStateReader[];
+    ZeroMQSocketProvider nodeStateReader;
 
     @NotNull
-    ZeroMQSocketProvider nodeStateWriter[];
+    ZeroMQSocketProvider nodeStateWriter;
 
     @NotNull
     KVStore<String, ZeroMQNodeState> nodeStateCache;
@@ -149,17 +149,17 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
     }
 
     ZeroMQNodeStore(ZeroMQNodeStoreBuilder builder) {
-        configure(builder.getJournalId(), builder.getClusterInstances(), builder.isWriteBackJournal(), builder.isWriteBackNodes(), builder.isRemoteReads(), builder.getInitJournal(), builder.getBackendPrefix(), builder.isLogNodeStates(), builder.getBlobCacheDir());
+        configure(builder.getJournalId(), builder.isWriteBackJournal(), builder.isWriteBackNodes(), builder.isRemoteReads(), builder.getInitJournal(), builder.getBackendReaderURL(), builder.getBackendWriterURL(), builder.isLogNodeStates(), builder.getBlobCacheDir());
     }
 
     private void configure(
-                String journalId,
-        int clusterInstances,
+        String journalId,
         boolean writeBackJournal,
         boolean writeBackNodes,
         boolean remoteReads,
         String initJournal,
-        String backendPrefix,
+        String backendReaderURL,
+        String backendWriterURL,
         boolean logNodeStates,
         String blobCacheDir) {
 
@@ -170,9 +170,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         configured = true;
         this.journalId = journalId;
 
-        context = new ZContext(50);
+        context = new ZContext();
 
-        this.clusterInstances = clusterInstances;
         this.writeBackJournal = writeBackJournal;
         this.writeBackNodes = writeBackNodes;
         this.remoteReads = remoteReads;
@@ -180,20 +179,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         ZeroMQBlob.blobCacheDir = new File(blobCacheDir);
         ZeroMQBlob.blobCacheDir.mkdir();
 
-        nodeStateReader = new ZeroMQSocketProvider[clusterInstances];
-        nodeStateWriter = new ZeroMQSocketProvider[clusterInstances];
-
-        if ("localhost".equals(backendPrefix)) {
-            for (int i = 0; i < clusterInstances; ++i) {
-                nodeStateReader[i] = new ZeroMQSocketProvider("tcp://localhost:" + (8000 + 2 * i), context, SocketType.REQ);
-                nodeStateWriter[i] = new ZeroMQSocketProvider("tcp://localhost:" + (8001 + 2 * i), context, SocketType.REQ);
-            }
-        } else {
-            for (int i = 0; i < clusterInstances; ++i) {
-                nodeStateReader[i] = new ZeroMQSocketProvider(String.format("tcp://%s%d:8000", backendPrefix, i), context, SocketType.REQ);
-                nodeStateWriter[i] = new ZeroMQSocketProvider(String.format("tcp://%s%d:8001", backendPrefix, i), context, SocketType.REQ);
-            }
-        }
+        nodeStateReader = new ZeroMQSocketProvider(backendReaderURL, context, SocketType.REQ);
+        nodeStateWriter = new ZeroMQSocketProvider(backendWriterURL, context, SocketType.REQ);
 
         /*
             If we allow remote reads, we just cache the return values
@@ -203,7 +190,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
             final Cache<String, ZeroMQNodeState> cache =
                     CacheBuilder.newBuilder()
                             .concurrencyLevel(10)
-                            .maximumSize(1000000).build();
+                            .maximumSize(200000).build();
             nodeStateCache = new NodeStateCache<>(cache, uuid -> {
 
                 final String sNode = read(uuid);
@@ -222,7 +209,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
             final Cache<String, ZeroMQBlob> bCache =
                     CacheBuilder.newBuilder()
                             .concurrencyLevel(10)
-                            .maximumSize(100000).build();
+                            .maximumSize(100).build();
             blobCache = new NodeStateCache<>(bCache, reference -> {
                 try {
                     ZeroMQBlob ret = ZeroMQBlob.newInstance(reference);
@@ -256,10 +243,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     @Override
     public void close() {
-        for (int i = 0; i < clusterInstances; ++i) {
-            nodeStateReader[i].close();
-            nodeStateWriter[i].close();
-        }
+        nodeStateReader.close();
+        nodeStateWriter.close();
         try {
             if (nodeStateOutput != null) {
                 nodeStateOutput.close();
@@ -276,7 +261,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         // TODO: configure using OSGi config
         final ZeroMQNodeStoreBuilder builder = new ZeroMQNodeStoreBuilder();
         builder.initFromEnvironment();
-        configure(builder.getJournalId(), builder.getClusterInstances(), builder.isWriteBackJournal(), builder.isWriteBackNodes(), builder.isRemoteReads(), builder.getInitJournal(), builder.getBackendPrefix(), builder.isLogNodeStates(), builder.getBlobCacheDir());
+        configure(builder.getJournalId(), builder.isWriteBackJournal(), builder.isWriteBackNodes(), builder.isRemoteReads(), builder.getInitJournal(), builder.getBackendReaderURL(), builder.getBackendWriterURL(), builder.isLogNodeStates(), builder.getBlobCacheDir());
 
         init();
         whiteboard = new OsgiWhiteboard(ctx.getBundleContext());
@@ -325,6 +310,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
      * implemented) removes them. This is needed for testing.
      */
     public void reset() {
+        nodeStateCache.empty();
         final NodeBuilder builder = emptyNode.builder();
         builder.setChildNode("root");
         builder.setChildNode("checkpoints");
@@ -350,8 +336,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         String msg;
         while (true) {
             try {
-                nodeStateReader[0].get().send("journal " + journalId);
-                msg = nodeStateReader[0].get().recvStr();
+                nodeStateReader.get().send("journal " + journalId);
+                msg = nodeStateReader.get().recvStr();
                 break;
             } catch (Throwable t) {
                 log.warn(t.toString());
@@ -372,8 +358,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         String msg;
         while (true) {
             try {
-                nodeStateReader[0].get().send("journal " + journalId + "-checkpoints");
-                msg = nodeStateReader[0].get().recvStr();
+                nodeStateReader.get().send("journal " + journalId + "-checkpoints");
+                msg = nodeStateReader.get().recvStr();
                 break;
             } catch (Throwable t) {
                 log.warn(t.toString());
@@ -411,16 +397,16 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
     }
 
     private void setRoot(String uuid, String olduuid) {
-        journalRoot = uuid;
         if (writeBackJournal) {
+            journalRoot = uuid;
             setRootRemote(null, uuid, olduuid);
         }
     }
 
     private synchronized void setCheckpointRoot(String uuid) {
         final String olduuid = checkpointRoot;
-        checkpointRoot = uuid;
         if (writeBackJournal) {
+            checkpointRoot = uuid;
             setRootRemote("checkpoints", uuid, olduuid);
         }
     }
@@ -429,7 +415,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         while (true) {
             synchronized (mergeRootMonitor) {
                 try {
-                    final ZMQ.Socket socket = nodeStateWriter[0].get();
+                    final ZMQ.Socket socket = nodeStateWriter.get();
                     socket.send(getUUThreadId() + " "
                                     + "journal" + " " + journalId + (type == null ? "" : "-" + type) + " "
                                     + uuid + " "
@@ -512,7 +498,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         }
         countNodeRead();
         StringBuilder msg;
-        final ZMQ.Socket socket = nodeStateReader[0].get();
+        final ZMQ.Socket socket = nodeStateReader.get();
         while (true) {
             msg = new StringBuilder();
             try {
@@ -546,7 +532,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
     private void write(String event) {
         if (writeBackNodes) {
             try {
-                final ZMQ.Socket writer = nodeStateWriter[0].get();
+                final ZMQ.Socket writer = nodeStateWriter.get();
                 writer.send(getUUThreadId() + " " + event);
                 log.trace(writer.recvStr()); // ignore
             } catch (Throwable t) {
@@ -609,7 +595,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
             return null;
         }
         countBlobRead();
-        final InputStream ret = new ZeroMQBlobInputStream(nodeStateReader[0], "blob " + reference);
+        final InputStream ret = new ZeroMQBlobInputStream(nodeStateReader, "blob " + reference);
         return ret;
     }
 
@@ -787,6 +773,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         public void put(K key, V value);
 
         public boolean isCached(K key);
+
+        public void empty();
     }
 
     private static class NodeStateMemoryStore<K, V> implements KVStore<K, V> {
@@ -809,6 +797,11 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         @Override
         public boolean isCached(K key) {
             return store.containsKey(key);
+        }
+
+        @Override
+        public void empty() {
+            store.clear();
         }
     }
 
@@ -838,6 +831,11 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         @Override
         public boolean isCached(K key) {
             return cache.getIfPresent(key) != null;
+        }
+
+        @Override
+        public void empty() {
+            cache.invalidateAll();
         }
     }
 

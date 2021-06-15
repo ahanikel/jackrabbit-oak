@@ -24,6 +24,7 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.apache.kafka.streams.StreamsConfig;
 
+import java.io.FileNotFoundException;
 import java.util.Properties;
 
 /**
@@ -34,8 +35,20 @@ public class KafkaBackendStore extends ZeroMQBackendStore {
     private String kafkaTopic;
     private KafkaProducer<String, String> producer;
 
-    public KafkaBackendStore() {
-        super(new KafkaNodeStateAggregator());
+    public static class Builder extends ZeroMQBackendStore.Builder {
+        @Override
+        public ZeroMQBackendStore build() {
+            withNodeStateAggregator(new KafkaNodeStateAggregator());
+            return new KafkaBackendStore(this);
+        }
+    }
+
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public KafkaBackendStore(Builder builder) {
+        super(builder);
         setEventWriter(this::writeEvent);
         initKafka();
         open();

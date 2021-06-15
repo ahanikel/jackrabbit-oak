@@ -41,6 +41,12 @@
                             <outputDirectory>${project.basedir}/target/docker</outputDirectory>
                             <resources>
                                 <resource>
+                                    <directory>${quickstartdir}</directory>
+                                    <includes>
+                                        <include>crx-quickstart/**</include>
+                                    </includes>
+                                </resource>
+                                <resource>
                                     <!-- source files can use Maven variables; check the delimiter below -->
                                     <directory>${project.basedir}/src/main/resources</directory>
                                     <filtering>true</filtering>
