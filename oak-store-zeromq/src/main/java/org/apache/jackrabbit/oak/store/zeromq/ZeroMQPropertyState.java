@@ -72,6 +72,9 @@ public class ZeroMQPropertyState implements PropertyState {
 
         if (type.equals(Type.BINARY)) {
             Blob ret = ns.getBlob(value);
+            if (ret == null) {
+                throw new IllegalStateException("Blob not found: " + value);
+            }
             if (!ret.getReference().equals(value)) {
                 if ("D41D8CD98F00B204E9800998ECF8427E".equals(ret.getReference())) {
                     throw new IllegalStateException("Blob not found: " + value);
@@ -439,7 +442,12 @@ public class ZeroMQPropertyState implements PropertyState {
                     }
                 }
                 if (values.size() != 1) {
-                    throw new IllegalStateException("values is empty: " + this.getSerialised());
+                    if (stringValues.size() != 1) {
+                        throw new IllegalStateException("values is empty: " + this.getSerialised());
+                    } else {
+                        Object v = convertTo(stringValues.get(0), type);
+                        values.add(v);
+                    }
                 }
                 return (T) values.get(0);
             }
