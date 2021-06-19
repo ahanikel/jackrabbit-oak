@@ -39,6 +39,7 @@ import org.apache.jackrabbit.oak.spi.commit.Observable;
 import org.apache.jackrabbit.oak.spi.commit.Observer;
 import org.apache.jackrabbit.oak.spi.commit.ObserverTracker;
 import org.apache.jackrabbit.oak.spi.descriptors.GenericDescriptors;
+import org.apache.jackrabbit.oak.spi.state.Clusterable;
 import org.apache.jackrabbit.oak.spi.state.ConflictAnnotatingRebaseDiff;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
@@ -88,7 +89,7 @@ import static org.apache.jackrabbit.oak.spi.cluster.ClusterRepositoryInfo.getOrC
         property = "oak.nodestore.description=nodeStoreType=zeromq"
 )
 @Service
-public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, GarbageCollectableBlobStore {
+public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, GarbageCollectableBlobStore, Clusterable {
 
     private static final Logger log = LoggerFactory.getLogger(ZeroMQNodeStore.class.getName());
 
@@ -275,6 +276,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
                         , "ZeroMQNodeStore checkpoint management"
                         , new HashMap<>()
                 );
+        /*
         // ensure a clusterId is initialized
         // and expose it as 'oak.clusterid' repository descriptor
         GenericDescriptors clusterIdDesc = new GenericDescriptors();
@@ -290,6 +292,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         executor = new WhiteboardExecutor();
         executor.start(whiteboard);
         //registerCloseable(executor);
+        */
         observerTracker = new ObserverTracker(this);
         observerTracker.start(ctx.getBundleContext());
         //registerCloseable(observerTracker);
@@ -406,10 +409,15 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     private boolean setRoot(String uuid, String olduuid) {
         if (writeBackJournal) {
+            boolean res = setRootRemote(null, uuid, olduuid);
+            if (res) {
+                journalRoot = uuid;
+            }
+            return res;
+        } else {
             journalRoot = uuid;
-            return setRootRemote(null, uuid, olduuid);
+            return true;
         }
-        return true;
     }
 
     private synchronized boolean setCheckpointRoot(String uuid) {
@@ -800,6 +808,35 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
     @Override
     public Closeable addObserver(Observer observer) {
         return changeDispatcher.addObserver(observer);
+    }
+
+    @Override
+    public @NotNull String getInstanceId() {
+        return storeId;
+    }
+
+    @Override
+    public @Nullable String getVisibilityToken() {
+        return "" + System.nanoTime();
+    }
+
+    @Override
+    public boolean isVisible(@NotNull String visibilityToken, long maxWaitMillis) throws InterruptedException {
+        // The 200ms-ought-to-be-enough-for-everybody implementation
+        long startTime = 0;
+        try {
+            startTime = Long.getLong(visibilityToken);
+        } catch (Exception e) {
+        }
+        long now = System.nanoTime();
+        long waitTimeMillis = 200 - ((now - startTime) / 1_000_000);
+        if (waitTimeMillis <= 0) {
+            return true;
+        } else if (waitTimeMillis <= maxWaitMillis) {
+            Thread.sleep(waitTimeMillis);
+            return true;
+        }
+        return false;
     }
 
     private static interface KVStore<K, V> {

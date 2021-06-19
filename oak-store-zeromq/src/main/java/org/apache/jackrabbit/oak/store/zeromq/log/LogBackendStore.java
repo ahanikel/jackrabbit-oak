@@ -71,7 +71,7 @@ public class LogBackendStore extends ZeroMQBackendStore {
         close();
     }
 
-    private void writeEvent(String event) {
+    private synchronized void writeEvent(String event) {
         for (int i = 0; ; ++i) {
             try {
                 synchronized (logOut) {

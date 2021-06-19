@@ -84,7 +84,7 @@ public class LogfileNodeStateAggregator extends AbstractNodeStateAggregator {
                     recordHandler.handleRecord(uuThreadId, strippedLine, "");
                 }
             } catch(RuntimeException e) {
-                throw e;
+                log.error(e.getMessage());
             }
         }
     }

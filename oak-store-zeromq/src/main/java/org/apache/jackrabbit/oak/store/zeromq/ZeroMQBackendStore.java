@@ -168,6 +168,7 @@ public abstract class ZeroMQBackendStore implements BackendStore {
         };
     }
 
+    // this is being called by the specialised LogBackendStore / KafkaBackendStore
     public void setEventWriter(Consumer<String> eventWriter) {
         this.eventWriter = eventWriter;
     }
@@ -222,18 +223,29 @@ public abstract class ZeroMQBackendStore implements BackendStore {
             synchronized (journalHeads) {
                 String refHead = journalHeads.get(journalId);
                 if (refHead == null) {
+                    while (!builder.getNodeStateAggregator().hasCaughtUp()) {
+                        try {
+                            Thread.sleep(100);
+                        } catch (InterruptedException e) {
+                        }
+                    }
                     refHead = builder.getNodeStateAggregator().getJournalHead(journalId);
                     journalHeads.put(journalId, refHead);
                 }
-                if (refHead != null && !refHead.equals(oldHead)) {
+                if (!refHead.equals(oldHead)) {
                     socket.send("refused");
                     return;
                 }
+                // I think we need to do this within the synchronized block:
+                eventWriter.accept(msg);
                 journalHeads.put(journalId, newHead);
+                socket.send("confirmed");
+                return;
             }
+        } else {
+            eventWriter.accept(msg);
+            socket.send("confirmed");
         }
-        eventWriter.accept(msg);
-        socket.send("confirmed");
     }
 
     private void startBackgroundThreads() {
