@@ -679,12 +679,15 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
     @Override
     public Blob getBlob(String reference) {
         if (reference == null) {
-            throw new NullPointerException("reference is null");
+            return null;
         }
         final Blob ret = blobCache.get(reference);
-        if (ret == null) {
+        if (ret == null ||
+            (!reference.equals("D41D8CD98F00B204E9800998ECF8427E")
+                && ret.getReference().equals("D41D8CD98F00B204E9800998ECF8427E"))) {
             final String msg = "Blob " + reference + " not found";
             log.warn(msg);
+            return null;
         }
         return ret;
     }

@@ -131,7 +131,7 @@ public class ZeroMQBlob implements Blob {
         checkNotNull(is);
         InputStreamFileSupplier fileSupplier = new InputStreamFileSupplier(is);
         if (!reference.equals(fileSupplier.getReference())) {
-            //log.warn("Requested reference {} does not match calculated reference {}.", reference, fileSupplier.getReference());
+            log.warn("Requested reference {} does not match calculated reference {}.", reference, fileSupplier.getReference());
         }
         return new ZeroMQBlob(fileSupplier.getReference(), fileSupplier);
     }

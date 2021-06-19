@@ -71,7 +71,15 @@ public class ZeroMQPropertyState implements PropertyState {
         }
 
         if (type.equals(Type.BINARY)) {
-            return (T) ns.getBlob(value);
+            Blob ret = ns.getBlob(value);
+            if (!ret.getReference().equals(value)) {
+                if ("D41D8CD98F00B204E9800998ECF8427E".equals(ret.getReference())) {
+                    throw new IllegalStateException("Blob not found: " + value);
+                } else {
+                    throw new IllegalStateException("Blob reference is not correct for " + value);
+                }
+            }
+            return (T) ret;
         }
 
         Type<?> base = getType();
