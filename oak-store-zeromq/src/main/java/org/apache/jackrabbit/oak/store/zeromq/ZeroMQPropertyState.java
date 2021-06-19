@@ -438,6 +438,9 @@ public class ZeroMQPropertyState implements PropertyState {
                         }
                     }
                 }
+                if (values.size() != 1) {
+                    throw new IllegalStateException("values is empty: " + this.getSerialised());
+                }
                 return (T) values.get(0);
             }
             else if (type.equals(Type.STRING)) {
