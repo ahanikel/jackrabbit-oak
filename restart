@@ -21,15 +21,15 @@ YJP_ARGS="-Dorg.apache.sling.launcher.bootdelegation=com.yourkit.api,com.yourkit
 DEBUG='-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005'
 
 export clusterInstances=1
-export writeBackJournal=false
-export writeBackNodes=false
+export writeBackJournal=true
+export writeBackNodes=true
 export remoteReads=true
 export customBlobStore=false
 export backendPrefix=localhost
 export logNodeStates=false
 export blobCacheDir=/tmp/blobCacheDir
 
-rm -rf ~/Downloads/crx-quickstart
+#rm -rf ~/Downloads/crx-quickstart
 rm -rf /tmp/blobCacheDir
 
 #(cd /Users/axel/Downloads && java -Xmx16g $DEBUG -Doak.queryLimitReads=10000000 -Dorg.apache.sling.launchpad.startupmode=restart -jar cq-quickstart-6.6.0-1.38.0.nosegment.jar -nofork -nobrowser -r author,crx3,crx3tar-nofds) &

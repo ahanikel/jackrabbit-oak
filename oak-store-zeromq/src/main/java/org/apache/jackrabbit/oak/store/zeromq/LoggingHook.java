@@ -26,6 +26,8 @@ import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.apache.jackrabbit.oak.spi.state.NodeStateDiff;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -41,6 +43,8 @@ import static org.apache.jackrabbit.oak.api.Type.STRING;
 import static org.apache.jackrabbit.oak.api.Type.STRINGS;
 
 public class LoggingHook implements CommitHook, NodeStateDiff {
+
+    public static final Logger log = LoggerFactory.getLogger(LoggingHook.class);
 
     public static final String UUID_NULL = new UUID(0, 0).toString();
 
@@ -109,6 +113,11 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
     // - if the value exceeds a certain limit, stores it as a blob and a reference to that blob
     // - uses the writer directly instead of going via a string
     private static String toString(final PropertyState ps) {
+        if (!(ps instanceof ZeroMQPropertyState)) {
+            final String msg = String.format("ps has class {}", ps.getClass().getName());
+            log.error(msg);
+            throw new IllegalStateException(msg);
+        }
         final StringBuilder val = new StringBuilder();
         val.append(safeEncode(ps.getName()));
         val.append(" <");

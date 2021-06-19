@@ -110,13 +110,6 @@ public class ZeroMQPropertyState implements PropertyState {
         this.type = Type.fromString(type);
         this.stringValues = stringValues;
         this.values = null;
-        /*
-        this.values = new ArrayList();
-        stringValues.forEach(v  ->
-                this.values.add(convertTo(v, this.type.isArray()
-                        ? this.type.getBaseType()
-                        : this.type)));
-         */
     }
 
     <T> ZeroMQPropertyState(ZeroMQNodeStore ns, String name, Type<T> type, T value) {
@@ -126,8 +119,24 @@ public class ZeroMQPropertyState implements PropertyState {
         this.stringValues = new ArrayList();
         this.values = new ArrayList();
         if (type.isArray()) {
-            ((Iterable<?>) value).forEach(this.values::add);
+            ((Iterable<Object>) value).forEach(v -> {
+                if (type.getBaseType().equals(Type.BINARY)) {
+                    try {
+                        v = ns.createBlob((Blob) v);  // ensure blob exists in the blobstore
+                    } catch (IOException e) {
+                        throw new IllegalStateException(e);
+                    }
+                }
+                this.values.add(v);
+            });
         } else {
+            if (type.equals(Type.BINARY)) {
+                try {
+                    value = (T) ns.createBlob((Blob) value); // ensure blob exists in the blobstore
+                } catch (IOException e) {
+                    throw new IllegalStateException(e);
+                }
+            }
             this.values.add(value);
         }
         // TODO: we shouldn't do that either
@@ -386,7 +395,17 @@ public class ZeroMQPropertyState implements PropertyState {
                     synchronized (stringValues) {
                         if (values == null) {
                             values = new ArrayList();
-                            stringValues.forEach(v -> values.add(convertTo(v, this.type.getBaseType())));
+                            stringValues.forEach(s -> {
+                                Object v = convertTo(s, this.type.getBaseType());
+                                if (type.getBaseType().equals(Type.BINARY)) {
+                                    try {
+                                        v = ns.createBlob((Blob) v); // ensure blob exists in the blobstore
+                                    } catch (IOException e) {
+                                        throw new IllegalStateException(e);
+                                    }
+                                }
+                                values.add(v);
+                            });
                         }
                     }
                 }
@@ -407,7 +426,15 @@ public class ZeroMQPropertyState implements PropertyState {
                     synchronized (stringValues) {
                         if (values == null) {
                             values = new ArrayList();
-                            values.add(convertTo(stringValues.get(0), type));
+                            Object v = convertTo(stringValues.get(0), type);
+                            if (type.equals(Type.BINARY)) {
+                                try {
+                                    v = ns.createBlob((Blob) v); // ensure blob exists in the blobstore
+                                } catch (IOException e) {
+                                    throw new IllegalStateException(e);
+                                }
+                            }
+                            values.add(v);
                         }
                     }
                 }
