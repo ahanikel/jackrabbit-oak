@@ -84,7 +84,9 @@ public class SimpleRecordHandler implements RecordHandler {
     private final Map<String, String> heads;
     private final Map<String, String> checkpoints;
     private final SimpleNodeStore store;
+    // uuThreadId -> current SimpleNodeState
     private final Map<String, SimpleNodeState> nodeStates;
+    // uuThreadId -> current blob
     private final Map<String, CurrentBlob> currentBlobMap;
 
     public SimpleRecordHandler() {
