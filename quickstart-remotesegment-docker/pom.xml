@@ -5,7 +5,7 @@
 
     <groupId>org.apache.jackrabbit</groupId>
     <artifactId>quickstart-remotesegment-docker</artifactId>
-    <version>1.38.0-zeromq</version>
+    <version>1.38.0-zeromq-concurrent</version>
     <packaging>pom</packaging>
 
     <name>quickstart-remotesegment-docker</name>
@@ -40,12 +40,14 @@
                         <configuration>
                             <outputDirectory>${project.basedir}/target/docker</outputDirectory>
                             <resources>
+                                <!--
                                 <resource>
                                     <directory>${quickstartdir}</directory>
                                     <includes>
                                         <include>crx-quickstart/**</include>
                                     </includes>
                                 </resource>
+                                -->
                                 <resource>
                                     <!-- source files can use Maven variables; check the delimiter below -->
                                     <directory>${project.basedir}/src/main/resources</directory>

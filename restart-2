@@ -28,11 +28,12 @@ export backendReaderURL='tcp://localhost:8000'
 export backendWriterURL='tcp://localhost:8001'
 export logNodeStates=false
 export blobCacheDir=/tmp/blobCacheDir-2
+export ZEROMQ_LEADER=false
 
 rm -rf /tmp/blobCacheDir-2
 rm -rf ~/Downloads/inst-2
 mkdir ~/Downloads/inst-2
-cp -pR ~/Downloads/crx-quickstart.test-1.38.0 ~/Downloads/inst-2/crx-quickstart
+#cp -pR ~/Downloads/crx-quickstart.test-1.38.0 ~/Downloads/inst-2/crx-quickstart
 cp ~/Downloads/license.properties ~/Downloads/inst-2/
 #rm -rf ~/Downloads/inst-1/crx-quickstart/repository/index
 
