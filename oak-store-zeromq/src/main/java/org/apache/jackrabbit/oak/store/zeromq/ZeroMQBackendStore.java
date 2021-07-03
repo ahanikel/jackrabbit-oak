@@ -23,8 +23,17 @@ import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
 
+import java.io.Closeable;
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.io.InputStream;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.Map;
+import java.util.Queue;
+import java.util.Stack;
+import java.util.StringTokenizer;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
@@ -108,9 +117,7 @@ public abstract class ZeroMQBackendStore implements BackendStore {
 
     private final Executor threadPool;
 
-    private final ZMQ.Socket readerFrontend;
-
-    private final ZMQ.Socket readerBackend;
+    private final Router readerFrontend;
 
     private final ZMQ.Socket writerFrontend;
 
@@ -123,20 +130,20 @@ public abstract class ZeroMQBackendStore implements BackendStore {
 
         context = new ZContext();
         threadPool = Executors.newFixedThreadPool(2 * builder.getNumThreads() + 2);
-        readerFrontend = context.createSocket(SocketType.ROUTER);
-        readerBackend  = context.createSocket(SocketType.DEALER);
+        readerFrontend = new Router(context, builder.getReaderUrl(), "inproc://readerBackend");
         writerFrontend = context.createSocket(SocketType.ROUTER);
         writerBackend  = context.createSocket(SocketType.DEALER);
-        readerFrontend.bind(builder.getReaderUrl());
-        readerBackend.bind("inproc://readerBackend");
         writerFrontend.bind(builder.getWriterUrl());
         writerBackend.bind("inproc://writerBackend");
-        threadPool.execute(() -> ZMQ.proxy(readerFrontend, readerBackend, null));
         threadPool.execute(() -> ZMQ.proxy(writerFrontend, writerBackend, null));
         for (int nThread = 0; nThread < builder.getNumThreads(); ++nThread) {
             threadPool.execute(() -> {
-                final ZMQ.Socket socket = context.createSocket(SocketType.REP);
+                log.info(Thread.currentThread().getName());
+                final ZMQ.Socket socket = context.createSocket(SocketType.REQ);
+                socket.setIdentity(("" + Thread.currentThread().getId()).getBytes());
                 socket.connect("inproc://readerBackend");
+                socket.sendMore("H");
+                socket.send("");
                 while (!Thread.currentThread().isInterrupted()) {
                     try {
                         handleReaderService(socket);
@@ -181,22 +188,27 @@ public abstract class ZeroMQBackendStore implements BackendStore {
                 }
                 final InputStream is = blob.getNewStream();
                 for (int nBytes = is.read(buffer); nBytes > 0; nBytes = is.read(buffer)) {
-                    socket.send(buffer, 0, nBytes, ZMQ.SNDMORE);
+                    socket.sendMore("C");
+                    socket.send(buffer, 0, nBytes, 0);
+                    socket.recv();
                 }
+                socket.sendMore("E");
+                socket.send("");
             } catch (IllegalArgumentException iae) {
                 log.trace(iae.getMessage());
             } catch (Exception ioe) {
                 log.error(ioe.getMessage());
             } finally {
-                socket.send(new byte[0]);
+                return;
             }
-            return;
         } else {
             ret = builder.getNodeStateAggregator().readNodeState(msg);
         }
         if (ret != null) {
+            socket.sendMore("E");
             socket.send(ret);
         } else {
+            socket.sendMore("E");
             socket.send("Node not found");
             log.error("Requested node not found: {}", msg);
         }
@@ -220,11 +232,16 @@ public abstract class ZeroMQBackendStore implements BackendStore {
                 }
             }
         }
+        readerFrontend.start();
     }
 
     private void stopBackgroundThreads() {
         if (nodeDiffHandler != null) {
             nodeDiffHandler.interrupt();
+        }
+        try {
+            readerFrontend.close();
+        } catch (IOException e) {
         }
     }
 
@@ -236,5 +253,154 @@ public abstract class ZeroMQBackendStore implements BackendStore {
     @Override
     public void close() {
         stopBackgroundThreads();
+    }
+
+    private static class Pair<T,U> {
+        public T fst;
+        public U snd;
+
+        public static <T,U> Pair of(T fst, U snd) {
+            return new Pair<>(fst, snd);
+        }
+
+        private Pair(T fst, U snd) {
+            this.fst = fst;
+            this.snd = snd;
+        }
+    }
+
+    private static class Router extends Thread implements Closeable {
+        private final ZContext context;
+        private final String requestBindAddr;
+        private final String workerBindAddr;
+        private volatile boolean shutDown;
+        private ZMQ.Socket requestRouter;
+        private ZMQ.Socket workerRouter;
+        private final Stack<byte[]> available = new Stack<>();
+        private final Map<byte[], byte[]> busyByWorkerId = new HashMap<>();
+        private final Map<byte[], byte[]> busyByRequestId = new HashMap<>();
+        private ZMQ.Poller poller;
+        private Queue<Pair<byte[], byte[]>> pending = new LinkedList<>();
+
+        public Router(ZContext context, String requestBindAddr, String workerBindAddr) {
+            super("Backend Router");
+            this.context = context;
+            this.requestBindAddr = requestBindAddr;
+            this.workerBindAddr = workerBindAddr;
+        }
+
+        @Override
+        public void run() {
+            shutDown = false;
+            requestRouter = context.createSocket(SocketType.ROUTER);
+            requestRouter.bind(requestBindAddr);
+            workerRouter = context.createSocket(SocketType.ROUTER);
+            poller = context.createPoller(2);
+            poller.register(requestRouter, ZMQ.Poller.POLLIN);
+            poller.register(workerRouter, ZMQ.Poller.POLLIN);
+            workerRouter.bind(workerBindAddr);
+            loop: while (!shutDown) {
+                try {
+                    poller.poll(100);
+                    if (poller.pollin(0)) {
+                        handleIncomingRequest();
+                    } else if (poller.pollin(1)) {
+                        handleWorkerRequest();
+                    } else {
+                        continue loop;
+                    }
+                    handlePendingRequests();
+                } catch (Throwable t) {
+                    if (t instanceof InterruptedException) {
+                        shutDown = true;
+                    } else {
+                        log.error(t.getMessage());
+                    }
+                }
+            }
+            requestRouter.close();
+            workerRouter.close();
+            available.clear();
+            busyByWorkerId.clear();
+            busyByRequestId.clear();
+        }
+
+        private void handleIncomingRequest() throws InterruptedException {
+            byte[] requestId = requestRouter.recv(); // requester identity
+            requestRouter.recvStr();                    // delimiter
+            byte[] payload = requestRouter.recv();
+            pending.add(Pair.of(requestId, payload));
+        }
+
+        private void handlePendingRequests() {
+            while (!pending.isEmpty()) {
+                Pair<byte[], byte[]> request = pending.peek();
+                byte[] workerId = busyByRequestId.get(request.fst);
+                if (workerId == null) {
+                    if (available.isEmpty()) {
+                        return;
+                    } else {
+                        workerId = available.pop();
+                        busyByWorkerId.put(workerId, request.fst);
+                        busyByRequestId.put(request.fst, workerId);
+                    }
+                }
+                pending.remove();
+                workerRouter.sendMore(workerId);
+                workerRouter.sendMore("");
+                workerRouter.send(request.snd);
+            }
+        }
+
+        private void handleWorkerRequest() {
+            byte[] workerId = workerRouter.recv();      // worker identity
+            workerRouter.recvStr();                     // delimiter
+            String verb = workerRouter.recvStr();       // verb (H = Hello, C = Continuation, E = End)
+            byte[] payload = workerRouter.recv();
+            byte[] requestId = busyByWorkerId.get(workerId);
+            if (requestId != null) {
+                switch (verb) {
+                    case "H":
+                        log.error("Got Hello on busy connection");
+                        break;
+                    case "C":
+                        requestRouter.sendMore(requestId);
+                        requestRouter.sendMore("");
+                        requestRouter.sendMore(verb);
+                        requestRouter.send(payload);
+                        workerRouter.send(""); // confirm
+                        break;
+                    case "E":
+                        requestRouter.sendMore(requestId);
+                        requestRouter.sendMore("");
+                        requestRouter.sendMore(verb);
+                        requestRouter.send(payload);
+                        busyByWorkerId.remove(workerId);
+                        busyByRequestId.remove(requestId);
+                        available.push(workerId);
+                        break;
+                    default:
+                        log.error("Unknown worker verb {}", verb);
+                }
+                return;
+            }
+            if (available.contains(workerId)) {
+                log.error("Spurious message from available worker: {}: {}", verb, payload);
+                return;
+            }
+            switch (verb) {
+                case "H":
+                    log.info("New worker registered: {}", workerId);
+                    available.push(workerId);
+                    break;
+                default:
+                    log.error("Expected Hello message from new worker but got {}: {}", verb, payload);
+            }
+        }
+
+        @Override
+        public void close() throws IOException {
+            shutDown = true;
+        }
     }
 }

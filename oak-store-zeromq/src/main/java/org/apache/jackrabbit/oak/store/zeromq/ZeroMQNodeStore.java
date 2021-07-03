@@ -337,6 +337,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         while (true) {
             try {
                 nodeStateReader.get().send("journal " + journalId);
+                nodeStateReader.get().recv(); // verb, always "E"
                 msg = nodeStateReader.get().recvStr();
                 break;
             } catch (Throwable t) {
@@ -359,6 +360,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         while (true) {
             try {
                 nodeStateReader.get().send("journal " + journalId + "-checkpoints");
+                nodeStateReader.get().recvStr(); // verb, always "E"
                 msg = nodeStateReader.get().recvStr();
                 break;
             } catch (Throwable t) {
@@ -504,6 +506,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
             try {
                 socket.send(uuid);
                 do {
+                    socket.recvStr(); // verb, always "E"
                     msg.append(socket.recvStr());
                 } while (socket.hasReceiveMore());
                 if (log.isDebugEnabled()) {

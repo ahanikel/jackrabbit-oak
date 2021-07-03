@@ -34,6 +34,7 @@ public class ZeroMQBlobInputStream extends InputStream {
     private final Supplier<ZMQ.Socket> blobReader;
     private ZMQ.Socket reader;
     private final String reference;
+    private String verb = "";
 
     private static final Logger log = LoggerFactory.getLogger(ZeroMQBlobInputStream.class.getName());
 
@@ -48,11 +49,6 @@ public class ZeroMQBlobInputStream extends InputStream {
             try {
                 init = true;
                 buffer = new byte[1024 * 1024]; // not final because of fear it's not being GC'd
-                while (reader.hasReceiveMore()) {
-                    reader.recv(buffer, 0, buffer.length, 0);
-                    log.warn("Blob reader is in wrong state, should not happen.");
-                }
-                reader.recv(buffer, 0, buffer.length, 0);
                 reader.send(reference);
             } catch (Throwable t) {
                 log.error(t.getMessage());
@@ -80,7 +76,17 @@ public class ZeroMQBlobInputStream extends InputStream {
         if (reader != blobReader.get()) {
             throw new IllegalStateException("*** Reading thread has changed! ***");
         }
+        if (verb.equals("E")) {
+            verb = "";
+            max = -1;
+            cur = 0;
+            return;
+        }
+        verb = reader.recvStr();
         max = reader.recv(buffer, 0, buffer.length, 0);
+        if (verb.equals("C")) {
+            reader.send("");
+        }
         if (max < 1) {
             log.trace("Received {}", reference);
         }

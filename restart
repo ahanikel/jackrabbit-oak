@@ -31,7 +31,7 @@ export blobCacheDir=/tmp/blobCacheDir
 export ZEROMQ_LEADER=true
 
 rm -rf ~/Downloads/crx-quickstart
-cp -pR ~/Downloads/crx-quickstart.test-1.38.0 ~/Downloads/crx-quickstart
+#cp -pR ~/Downloads/crx-quickstart.test-1.38.0 ~/Downloads/crx-quickstart
 rm -rf /tmp/blobCacheDir
 
 #(cd /Users/axel/Downloads && java -Xmx16g $DEBUG -Doak.queryLimitReads=10000000 -Dorg.apache.sling.launchpad.startupmode=restart -jar cq-quickstart-6.6.0-1.38.0.nosegment.jar -nofork -nobrowser -r author,crx3,crx3tar-nofds) &
