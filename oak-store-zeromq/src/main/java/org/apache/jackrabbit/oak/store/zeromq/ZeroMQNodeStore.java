@@ -21,24 +21,20 @@ package org.apache.jackrabbit.oak.store.zeromq;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import org.apache.felix.scr.annotations.Service;
-import org.apache.jackrabbit.commons.SimpleValueFactory;
 import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.api.CommitFailedException;
-import org.apache.jackrabbit.oak.api.Descriptors;
 import org.apache.jackrabbit.oak.api.PropertyState;
 import org.apache.jackrabbit.oak.api.jmx.CheckpointMBean;
 import org.apache.jackrabbit.oak.osgi.OsgiWhiteboard;
 import org.apache.jackrabbit.oak.plugins.memory.MemoryNodeBuilder;
 import org.apache.jackrabbit.oak.spi.blob.BlobOptions;
 import org.apache.jackrabbit.oak.spi.blob.GarbageCollectableBlobStore;
-import org.apache.jackrabbit.oak.spi.cluster.ClusterRepositoryInfo;
 import org.apache.jackrabbit.oak.spi.commit.ChangeDispatcher;
 import org.apache.jackrabbit.oak.spi.commit.CommitHook;
 import org.apache.jackrabbit.oak.spi.commit.CommitInfo;
 import org.apache.jackrabbit.oak.spi.commit.Observable;
 import org.apache.jackrabbit.oak.spi.commit.Observer;
 import org.apache.jackrabbit.oak.spi.commit.ObserverTracker;
-import org.apache.jackrabbit.oak.spi.descriptors.GenericDescriptors;
 import org.apache.jackrabbit.oak.spi.state.Clusterable;
 import org.apache.jackrabbit.oak.spi.state.ConflictAnnotatingRebaseDiff;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
@@ -80,7 +76,6 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.collect.Maps.newHashMap;
 import static org.apache.jackrabbit.oak.api.Type.LONG;
 import static org.apache.jackrabbit.oak.api.Type.STRING;
-import static org.apache.jackrabbit.oak.spi.cluster.ClusterRepositoryInfo.getOrCreateId;
 
 @Component(
         scope = ServiceScope.SINGLETON,
@@ -348,6 +343,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         while (true) {
             try {
                 nodeStateReader.get().send("journal " + journalId);
+                nodeStateReader.get().recv(); // verb, always "E"
                 msg = nodeStateReader.get().recvStr();
                 break;
             } catch (Throwable t) {
@@ -370,6 +366,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         while (true) {
             try {
                 nodeStateReader.get().send("journal " + journalId + "-checkpoints");
+                nodeStateReader.get().recvStr(); // verb, always "E"
                 msg = nodeStateReader.get().recvStr();
                 break;
             } catch (Throwable t) {
@@ -540,6 +537,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
             try {
                 socket.send(uuid);
                 do {
+                    socket.recvStr(); // verb, always "E"
                     msg.append(socket.recvStr());
                 } while (socket.hasReceiveMore());
                 if (log.isDebugEnabled()) {
