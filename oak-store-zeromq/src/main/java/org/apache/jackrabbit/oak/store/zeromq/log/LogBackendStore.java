@@ -57,7 +57,9 @@ public class LogBackendStore extends ZeroMQBackendStore {
     }
 
     public static Builder builder() {
-        return new Builder();
+        Builder builder = new Builder();
+        builder.initFromEnvironment();
+        return builder;
     }
 
     private LogBackendStore(Builder builder) throws FileNotFoundException {

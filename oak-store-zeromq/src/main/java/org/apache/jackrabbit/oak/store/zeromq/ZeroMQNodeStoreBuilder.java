@@ -93,12 +93,16 @@ public class ZeroMQNodeStoreBuilder {
         try {
             backendReaderURL = System.getenv(PARAM_BACKENDREADER_URL);
         } catch (Exception e) {
-            // ignore
+        }
+        if (backendReaderURL == null) {
+            backendReaderURL = "tcp://localhost:8000";
         }
         try {
             backendWriterURL = System.getenv(PARAM_BACKENDWRITER_URL);
         } catch (Exception e) {
-            // ignore
+        }
+        if (backendWriterURL == null) {
+            backendWriterURL = "tcp://localhost:8001";
         }
         try {
             logNodeStates = Boolean.parseBoolean(System.getenv(PARAM_LOG_NODE_STATES));
@@ -108,7 +112,9 @@ public class ZeroMQNodeStoreBuilder {
         try {
             blobCacheDir = System.getenv(PARAM_BLOBCACHE_DIR);
         } catch (Exception e) {
-            // ignore
+        }
+        if (blobCacheDir == null) {
+            blobCacheDir = "/tmp/blobCacheDir";
         }
         return this;
     }
