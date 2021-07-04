@@ -28,6 +28,7 @@ export customBlobStore=false
 export backendPrefix=localhost
 export logNodeStates=false
 export blobCacheDir=/tmp/blobCacheDir-1
+export ZEROMQ_LEADER=true
 
 rm -rf ~/Downloads/inst-1
 rm -rf /tmp/blobCacheDir-1

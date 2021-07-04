@@ -28,6 +28,7 @@ export customBlobStore=false
 export backendPrefix=localhost
 export logNodeStates=false
 export blobCacheDir=/tmp/blobCacheDir
+export ZEROMQ_LEADER=true
 
 rm -rf ~/Downloads/crx-quickstart
 cp -pR ~/Downloads/crx-quickstart.test-1.38.0 ~/Downloads/crx-quickstart
