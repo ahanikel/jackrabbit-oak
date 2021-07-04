@@ -85,11 +85,11 @@ public abstract class ZeroMQBackendStore implements BackendStore {
         public Builder initFromEnvironment() {
             readerUrl = System.getenv(ZEROMQ_READER_URL);
             if (readerUrl == null) {
-                readerUrl = "tcp://localhost:8000";
+                readerUrl = "tcp://*:8000";
             }
             writerUrl = System.getenv(ZEROMQ_WRITER_URL);
             if (writerUrl == null) {
-                writerUrl = "tcp://localhost:8001";
+                writerUrl = "tcp://*:8001";
             }
             try {
                 nThreads = Integer.parseInt(System.getenv(ZEROMQ_NTHREADS));
