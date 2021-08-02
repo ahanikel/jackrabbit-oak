@@ -471,7 +471,9 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
                 final NodeState after = builder.getNodeState();
                 final NodeState afterHook = commitHook.processCommit(newBase, after, info);
                 if (afterHook.equals(newBase)) {
-                    return newBase; // TODO: There seem to be commits without any changes in them. Need to investigate.
+                    // There are commits without any changes in them. This seems to be normal:
+                    // Some methods call something like "getOrCreate" and then do a commit unconditionally.
+                    return newBase;
                 }
                 if (mergeRoot("root", afterHook)) {
                     ((ZeroMQNodeBuilder) builder).reset(afterHook);
