@@ -329,8 +329,10 @@ public abstract class ZeroMQBackendStore implements BackendStore {
         public void run() {
             shutDown = false;
             requestRouter = context.createSocket(SocketType.ROUTER);
+            requestRouter.setBacklog(100000);
             requestRouter.bind(requestBindAddr);
             workerRouter = context.createSocket(SocketType.ROUTER);
+            workerRouter.setBacklog(100000);
             poller = context.createPoller(2);
             poller.register(requestRouter, ZMQ.Poller.POLLIN);
             poller.register(workerRouter, ZMQ.Poller.POLLIN);
@@ -343,11 +345,13 @@ public abstract class ZeroMQBackendStore implements BackendStore {
                     } else if (poller.pollin(1)) {
                         handleWorkerRequest();
                     } else {
+                        // timeout
                         continue loop;
                     }
                     handlePendingRequests();
                 } catch (Throwable t) {
                     if (t instanceof InterruptedException) {
+                        log.info("Interrupted.");
                         shutDown = true;
                     } else {
                         log.error(t.getMessage());
