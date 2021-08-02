@@ -293,11 +293,13 @@ public abstract class ZeroMQBackendStore implements BackendStore {
         public void run() {
             shutDown = false;
             requestRouter = context.createSocket(SocketType.ROUTER);
-            requestRouter.bind(requestBindAddr);
+            requestRouter.setBacklog(100000);
             workerRouter = context.createSocket(SocketType.ROUTER);
+            workerRouter.setBacklog(100000);
             poller = context.createPoller(2);
             poller.register(requestRouter, ZMQ.Poller.POLLIN);
             poller.register(workerRouter, ZMQ.Poller.POLLIN);
+            requestRouter.bind(requestBindAddr);
             workerRouter.bind(workerBindAddr);
             loop: while (!shutDown) {
                 try {
