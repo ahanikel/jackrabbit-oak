@@ -52,7 +52,7 @@ public class ZeroMQNodeStoreBuilderTest {
         assertEquals(PARAM_CLUSTERINSTANCES, 1, builder.getClusterInstances());
         assertTrue(PARAM_REMOTEREADS, builder.isRemoteReads());
         assertFalse(PARAM_WRITEBACKNODES, builder.isWriteBackNodes());
-        assertEquals(PARAM_BACKENDREADER_URL, "localhost", builder.getBackendReaderURL());
+        assertEquals(PARAM_BACKENDREADER_URL, "tcp://localhost:8000", builder.getBackendReaderURL());
         assertNull(PARAM_INITJOURNAL, builder.getInitJournal());
         assertFalse(PARAM_WRITEBACKJOURNAL, builder.isWriteBackJournal());
 
@@ -64,7 +64,7 @@ public class ZeroMQNodeStoreBuilderTest {
                 .append('&')
                 .append(PARAM_WRITEBACKNODES).append("=true")
                 .append('&')
-                .append(PARAM_BACKENDREADER_URL).append("=backend")
+                .append(PARAM_BACKENDREADER_URL).append("=tcp%3a%2f%2fbackend%3a9999")
                 .append('&')
                 .append(PARAM_INITJOURNAL).append("=12345-0")
                 .append('&')
@@ -75,7 +75,7 @@ public class ZeroMQNodeStoreBuilderTest {
         assertEquals(PARAM_CLUSTERINSTANCES, 2, builder.getClusterInstances());
         assertFalse(PARAM_REMOTEREADS, builder.isRemoteReads());
         assertTrue(PARAM_WRITEBACKNODES, builder.isWriteBackNodes());
-        assertEquals(PARAM_BACKENDREADER_URL, "backend", builder.getBackendReaderURL());
+        assertEquals(PARAM_BACKENDREADER_URL, "tcp://backend:9999", builder.getBackendReaderURL());
         assertEquals(PARAM_INITJOURNAL, "12345-0", builder.getInitJournal());
         assertTrue(PARAM_WRITEBACKJOURNAL, builder.isWriteBackJournal());
     }
