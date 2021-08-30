@@ -37,7 +37,7 @@ public class LogfileNodeStateAggregator extends AbstractNodeStateAggregator {
 
     public LogfileNodeStateAggregator(String filePath) throws FileNotFoundException {
         caughtup = false;
-        recordHandler = new SimpleRecordHandler();
+        recordHandler = new SimpleRecordHandler(blobCacheDir);
         final InputStreamReader inputStreamReader = new InputStreamReader(new FileInputStream(filePath));
         reader = new LineReader(inputStreamReader);
     }
@@ -58,7 +58,7 @@ public class LogfileNodeStateAggregator extends AbstractNodeStateAggregator {
 
     @Override
     public void run() {
-        while (true) {
+        while (!shutDown) {
             String line = nextRecord();
             if (line == null) {
                 if (!caughtup) {

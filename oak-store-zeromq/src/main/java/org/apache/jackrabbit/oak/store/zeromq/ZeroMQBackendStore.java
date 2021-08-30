@@ -32,8 +32,6 @@ import java.util.LinkedList;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Stack;
-import java.util.StringTokenizer;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
@@ -109,7 +107,8 @@ public abstract class ZeroMQBackendStore implements BackendStore {
         }
     }
 
-    protected Thread nodeDiffHandler;
+    protected NodeStateAggregator nodeDiffHandler;
+    protected Thread nodeDiffHandlerThread;
     protected Builder builder;
     protected Consumer<String> eventWriter;
 
@@ -126,7 +125,8 @@ public abstract class ZeroMQBackendStore implements BackendStore {
     public ZeroMQBackendStore(Builder builder) {
         this.eventWriter = null;
         this.builder = builder;
-        nodeDiffHandler = new Thread(builder.getNodeStateAggregator(), "ZeroMQBackendStore NodeStateAggregator");
+        nodeDiffHandler = builder.getNodeStateAggregator();
+        nodeDiffHandlerThread = new Thread(nodeDiffHandler, "ZeroMQBackendStore NodeStateAggregator");
 
         context = new ZContext();
         threadPool = Executors.newFixedThreadPool(2 * builder.getNumThreads() + 2);
@@ -179,6 +179,9 @@ public abstract class ZeroMQBackendStore implements BackendStore {
         if (msg.startsWith("journal ")) {
             final String instance = msg.substring("journal ".length());
             ret = builder.getNodeStateAggregator().getJournalHead(instance);
+        } else if (msg.startsWith("hasblob ")) {
+            final Blob blob = builder.getNodeStateAggregator().getBlob(msg.substring("hasblob ".length()));
+            ret = blob == null ? "false" : "true";
         } else if (msg.startsWith("blob ")) {
             byte[] buffer = new byte[1024 * 1024]; // not final because of fear it's not being GC'd
             try {
@@ -222,8 +225,8 @@ public abstract class ZeroMQBackendStore implements BackendStore {
     }
 
     private void startBackgroundThreads() {
-        if (nodeDiffHandler != null) {
-            nodeDiffHandler.start();
+        if (nodeDiffHandlerThread != null) {
+            nodeDiffHandlerThread.start();
             while (!builder.getNodeStateAggregator().hasCaughtUp()) {
                 try {
                     Thread.sleep(100);
@@ -236,8 +239,12 @@ public abstract class ZeroMQBackendStore implements BackendStore {
     }
 
     private void stopBackgroundThreads() {
-        if (nodeDiffHandler != null) {
-            nodeDiffHandler.interrupt();
+        if (nodeDiffHandlerThread != null) {
+            try {
+                nodeDiffHandler.close();
+                nodeDiffHandlerThread.join();
+            } catch (InterruptedException | IOException e) {
+            }
         }
         try {
             readerFrontend.close();
@@ -253,6 +260,8 @@ public abstract class ZeroMQBackendStore implements BackendStore {
     @Override
     public void close() {
         stopBackgroundThreads();
+        writerFrontend.close();
+        writerBackend.close();
     }
 
     private static class Pair<T,U> {
@@ -403,6 +412,11 @@ public abstract class ZeroMQBackendStore implements BackendStore {
         @Override
         public void close() throws IOException {
             shutDown = true;
+            try {
+                this.join();
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+            }
         }
     }
 }

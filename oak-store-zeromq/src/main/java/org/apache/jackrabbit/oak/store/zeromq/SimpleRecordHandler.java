@@ -77,6 +77,7 @@ public class SimpleRecordHandler implements RecordHandler {
         }
     }
 
+    private final File blobDir;
     private final Base64.Decoder b64 = Base64.getDecoder();
     private Runnable onCommit;
     private Runnable onNode;
@@ -87,7 +88,8 @@ public class SimpleRecordHandler implements RecordHandler {
     private final Map<String, SimpleNodeState> nodeStates;
     private final Map<String, CurrentBlob> currentBlobMap;
 
-    public SimpleRecordHandler() {
+    public SimpleRecordHandler(File blobDir) {
+        this.blobDir = blobDir;
         this.heads = new ConcurrentHashMap<>();
         this.checkpoints = new ConcurrentHashMap<>();
         store = new SimpleNodeStore();
@@ -219,17 +221,13 @@ public class SimpleRecordHandler implements RecordHandler {
                     log.error(msg);
                     throw new IllegalStateException(msg);
                 }
-                currentBlob.setFound(ZeroMQBlob.newInstance(ref));
+                currentBlob.setFound(ZeroMQBlob.newInstance(blobDir, ref));
                 if (currentBlob.getFound() != null) {
                     break;
                 }
                 currentBlob.setRef(ref);
                 for (int i = 0; ; ++i) {
                     try {
-                        File blobDir = new File("/tmp/blobs"); // TODO: Make configurable
-                        if (!blobDir.exists()) {
-                            blobDir.mkdirs();
-                        }
                         currentBlob.setFile(File.createTempFile("b64temp", ".dat", blobDir));
                         currentBlob.setFos(new FileOutputStream(currentBlob.getFile()));
                         break;
@@ -306,7 +304,7 @@ public class SimpleRecordHandler implements RecordHandler {
                 }
                 try {
                     currentBlobFos.close();
-                    Blob blob = ZeroMQBlob.newInstance(currentBlob.getRef(), currentBlob.getFile());
+                    Blob blob = ZeroMQBlob.newInstance(blobDir, currentBlob.getRef(), currentBlob.getFile());
                     log.trace("Created new blob {}", blob.getReference());
                     currentBlobMap.remove(uuThreadId);
                 } catch (IOException e) {
@@ -358,7 +356,7 @@ public class SimpleRecordHandler implements RecordHandler {
 
     @Override
     public Blob getBlob(String reference) {
-        return ZeroMQBlob.newInstance(reference);
+        return ZeroMQBlob.newInstance(blobDir, reference);
     }
 
     private static class SimpleNodeStore {

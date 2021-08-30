@@ -22,25 +22,32 @@ import com.google.common.io.Files;
 import org.apache.jackrabbit.oak.fixture.NodeStoreFixture;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
 import org.apache.jackrabbit.oak.store.zeromq.log.LogBackendStore;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
 
 public class ZeroMQFixture extends NodeStoreFixture {
 
+    private static Logger log = LoggerFactory.getLogger(ZeroMQFixture.class);
     private ZeroMQNodeStore store;
     private ZeroMQBackendStore logBackendStore;
     private File logFile;
     private File cacheDir;
 
     public ZeroMQFixture() {
+    }
+
+    @Override
+    public NodeStore createNodeStore() {
         try {
             logFile = File.createTempFile("ZeroMQFixture", ".log");
             cacheDir = Files.createTempDir();
             logBackendStore = LogBackendStore.builder()
                 .withLogFile(logFile.getAbsolutePath())
-                .withReaderUrl("tcp://*:8000")
-                .withWriterUrl("tcp://*:8001")
+                .withReaderUrl("ipc:///tmp/fixtureBackendReader")
+                .withWriterUrl("ipc:///tmp/fixtureBackendWriter")
                 .withNumThreads(4)
                 .build();
         } catch (IOException e) {
@@ -49,26 +56,37 @@ public class ZeroMQFixture extends NodeStoreFixture {
 
         store = ZeroMQNodeStore.builder()
             .setJournalId("test")
-            .setBackendReaderURL("tcp://localhost:8000")
-            .setBackendWriterURL("tcp://localhost:8001")
+            .setBackendReaderURL("ipc:///tmp/fixtureBackendReader")
+            .setBackendWriterURL("ipc:///tmp/fixtureBackendWriter")
             .setBlobCacheDir(cacheDir.getAbsolutePath())
+            .setWriteBackNodes(true)
+            .setWriteBackJournal(true)
             .build();
-    }
 
-    @Override
-    public NodeStore createNodeStore() {
-        logFile.delete();
-        cacheDir.delete();
-        cacheDir.mkdir();
         store.reset();
+
+        log.info("LogFile: {}", logFile.getAbsolutePath());
+        log.info("CacheDir: {}", cacheDir.getAbsolutePath());
         return store;
     }
 
     @Override
     public void dispose(NodeStore nodeStore) {
-        store.close();
-        logBackendStore.close();
-        store = null;
-        logBackendStore = null;
+        if (store != null) {
+            store.close();
+            store = null;
+        }
+        if (logBackendStore != null) {
+            logBackendStore.close();
+            logBackendStore = null;
+        }
+    }
+
+    public File getLogFile() {
+        return logFile;
+    }
+
+    public File getCacheDir() {
+        return cacheDir;
     }
 }

@@ -22,12 +22,22 @@ import org.apache.jackrabbit.oak.api.Blob;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.Closeable;
+import java.io.File;
+
 public abstract class AbstractNodeStateAggregator implements NodeStateAggregator {
 
     private static final Logger log = LoggerFactory.getLogger(AbstractNodeStateAggregator.class);
 
     protected RecordHandler recordHandler;
     protected volatile boolean caughtup;
+    protected File blobCacheDir = new File("/tmp/backendBlobs");
+    protected volatile boolean shutDown;
+
+    public AbstractNodeStateAggregator() {
+        blobCacheDir.mkdirs();
+        shutDown = false;
+    }
 
     @Override
     public boolean hasCaughtUp() {
@@ -51,5 +61,15 @@ public abstract class AbstractNodeStateAggregator implements NodeStateAggregator
     @Override
     public Blob getBlob(String reference) {
         return recordHandler.getBlob(reference);
+    }
+
+    @Override
+    public void close() {
+        shutDown = true;
+    }
+
+    public void setBlobCacheDir(String blobCacheDir) {
+        this.blobCacheDir = new File(blobCacheDir);
+        this.blobCacheDir.mkdirs();
     }
 }

@@ -57,7 +57,7 @@ public class KafkaNodeStateAggregator extends AbstractNodeStateAggregator {
         consumer = new KafkaConsumer<>(props);
         consumer.subscribe(Collections.singletonList(TOPIC), new HandleRebalance());
         records = null;
-        recordHandler = new SimpleRecordHandler();
+        recordHandler = new SimpleRecordHandler(blobCacheDir);
         recordHandler.setOnCommit(() -> {
             try {
                 // TODO: this is quite expensive, perhaps we can commit every second or so instead of
