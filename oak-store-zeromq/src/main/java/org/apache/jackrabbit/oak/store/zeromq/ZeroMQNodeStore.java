@@ -142,6 +142,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
     private AtomicLong remoteWriteBlobCounter = new AtomicLong();
 
     private long remoteReadRootTimestamp = 0;
+    private File blobCacheDir;
 
     public ZeroMQNodeStore() {
     }
@@ -174,8 +175,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         this.writeBackNodes = writeBackNodes;
         this.remoteReads = remoteReads;
         this.initJournal = initJournal;
-        ZeroMQBlob.blobCacheDir = new File(blobCacheDir);
-        ZeroMQBlob.blobCacheDir.mkdir();
+        this.blobCacheDir = new File(blobCacheDir);
+        this.blobCacheDir.mkdirs();
 
         nodeStateReader = new ZeroMQSocketProvider(backendReaderURL, context, SocketType.REQ);
         nodeStateWriter = new ZeroMQSocketProvider(backendWriterURL, context, SocketType.REQ);
@@ -210,9 +211,9 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
                             .maximumSize(100).build();
             blobCache = new NodeStateCache<>(bCache, reference -> {
                 try {
-                    ZeroMQBlob ret = ZeroMQBlob.newInstance(reference);
+                    ZeroMQBlob ret = ZeroMQBlob.newInstance(this.blobCacheDir, reference);
                     if (ret == null) {
-                        ret = ZeroMQBlob.newInstance(reference, readBlob(reference));
+                        ret = ZeroMQBlob.newInstance(this.blobCacheDir, reference, readBlob(reference));
                     }
                     return ret;
                 } catch (Throwable t) {
@@ -304,13 +305,18 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         changeDispatcher = new ChangeDispatcher(getRoot());
     }
 
+    void reInit() {
+        emptyCaches();
+        init();
+    }
+
     /**
      * Wipe the complete repo by setting the root to an empty node. The existing
      * nodes remain lingering around unless some GC mechanism (which is not yet
      * implemented) removes them. This is needed for testing.
      */
     public void reset() {
-        nodeStateCache.empty();
+        emptyCaches();
         final NodeBuilder builder = emptyNode.builder();
         builder.setChildNode("root");
         builder.setChildNode("checkpoints");
@@ -319,6 +325,11 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         final ZeroMQNodeState zmqNewSuperRoot = (ZeroMQNodeState) newSuperRoot;
         setRoot(zmqNewSuperRoot.getUuid(), emptyNode.getUuid());
         setCheckpointRoot(emptyNode.getUuid());
+    }
+
+    void emptyCaches() {
+        nodeStateCache.empty();
+        blobCache.empty();
     }
 
     public String readRoot() {
@@ -635,6 +646,20 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         return ret;
     }
 
+    private boolean hasBlob(String reference) {
+        ZMQ.Socket socket = nodeStateReader.get();
+        socket.send("hasblob " + reference);
+        socket.recvStr(); // always "E"
+        final String ret = socket.recvStr();
+        if ("true".equals(ret)) {
+            return true;
+        } else if ("false".equals(ret)) {
+            return false;
+        } else {
+            throw new IllegalStateException("hasBlob returned " + ret);
+        }
+    }
+
     private void countBlobRead() {
         final long c = remoteReadBlobCounter.incrementAndGet();
         if (c % 1000 == 0) {
@@ -670,9 +695,11 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     @Override
     public Blob createBlob(InputStream inputStream) throws IOException {
-        final ZeroMQBlob blob = ZeroMQBlob.newInstance(inputStream);
-        if (blobCache.get(blob.getReference()) == null) {
+        final ZeroMQBlob blob = ZeroMQBlob.newInstance(blobCacheDir, inputStream);
+        if (!hasBlob(blob.getReference())) {
             writeBlob(blob);
+        }
+        if (blobCache.get(blob.getReference()) == null) {
             blobCache.put(blob.getReference(), blob);
         }
         return blob;
@@ -688,7 +715,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
             blobCache.put(ret.getReference(), ret);
             return ret;
         }
-        ret = ZeroMQBlob.newInstance(blob.getNewStream());
+        ret = ZeroMQBlob.newInstance(blobCacheDir, blob.getNewStream());
         if (getBlob(ret.getReference()) == null) {
             writeBlob(ret);
             blobCache.put(ret.getReference(), ret);

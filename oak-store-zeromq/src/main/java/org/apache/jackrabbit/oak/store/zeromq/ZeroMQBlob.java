@@ -26,7 +26,6 @@ public class ZeroMQBlob implements Blob {
 
     private final Supplier<File> fileSupplier;
     private String reference;
-    static File blobCacheDir = new File("/tmp/blobs");
 
     private static final Logger log = LoggerFactory.getLogger(ZeroMQBlob.class);
 
@@ -39,11 +38,14 @@ public class ZeroMQBlob implements Blob {
         private volatile File file;
         private volatile String reference;
         private final InputStream is;
+        private final File blobCacheDir;
         private static final ExecutorService readerThreads = Executors.newFixedThreadPool(10);
         private final CountDownLatch countDownLatch;
 
-        InputStreamFileSupplier(@NotNull InputStream is) {
+        InputStreamFileSupplier(@NotNull File blobCacheDir, @NotNull InputStream is) {
+            checkNotNull(blobCacheDir);
             checkNotNull(is);
+            this.blobCacheDir = blobCacheDir;
             this.is = is;
             countDownLatch = new CountDownLatch(1);
             readerThreads.execute(this::getInternal);
@@ -108,7 +110,7 @@ public class ZeroMQBlob implements Blob {
         @return an instance of ZeroMQBlob if it exists, otherwise null.
     */
     @Nullable
-    public static ZeroMQBlob newInstance(String reference) {
+    public static ZeroMQBlob newInstance(File blobCacheDir, String reference) {
         File destFile = new File(blobCacheDir, reference);
         if (destFile.exists()) {
             return new ZeroMQBlob(reference, () -> destFile);
@@ -116,7 +118,7 @@ public class ZeroMQBlob implements Blob {
         return null;
     }
 
-    public static ZeroMQBlob newInstance(String reference, File f) {
+    public static ZeroMQBlob newInstance(File blobCacheDir, String reference, File f) {
         try {
             File destFile = new File(blobCacheDir, reference);
             synchronized (ZeroMQBlob.class) {
@@ -133,18 +135,19 @@ public class ZeroMQBlob implements Blob {
         }
     }
 
-    static ZeroMQBlob newInstance(String reference, @NotNull InputStream is) {
+    static ZeroMQBlob newInstance(@NotNull File blobCacheDir, String reference, @NotNull InputStream is) {
+        checkNotNull(blobCacheDir);
         checkNotNull(is);
-        InputStreamFileSupplier fileSupplier = new InputStreamFileSupplier(is);
+        InputStreamFileSupplier fileSupplier = new InputStreamFileSupplier(blobCacheDir, is);
         if (!reference.equals(fileSupplier.getReference())) {
             log.warn("Requested reference {} does not match calculated reference {}.", reference, fileSupplier.getReference());
         }
         return new ZeroMQBlob(fileSupplier.getReference(), fileSupplier);
     }
 
-    static ZeroMQBlob newInstance(@NotNull InputStream is) {
+    static ZeroMQBlob newInstance(@NotNull File blobCacheDir, @NotNull InputStream is) {
         checkNotNull(is);
-        InputStreamFileSupplier fileSupplier = new InputStreamFileSupplier(is);
+        InputStreamFileSupplier fileSupplier = new InputStreamFileSupplier(blobCacheDir, is);
         return new ZeroMQBlob(fileSupplier.getReference(), fileSupplier);
     }
 

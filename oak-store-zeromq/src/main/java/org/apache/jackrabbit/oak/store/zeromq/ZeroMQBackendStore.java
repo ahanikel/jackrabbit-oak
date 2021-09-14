@@ -22,6 +22,7 @@ import org.slf4j.LoggerFactory;
 import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
+import org.zeromq.ZMQException;
 
 import java.io.Closeable;
 import java.io.FileNotFoundException;
@@ -111,7 +112,8 @@ public abstract class ZeroMQBackendStore implements BackendStore {
         }
     }
 
-    protected Thread nodeDiffHandler;
+    protected NodeStateAggregator nodeDiffHandler;
+    protected Thread nodeDiffHandlerThread;
     protected Builder builder;
     protected Consumer<String> eventWriter;
 
@@ -130,7 +132,8 @@ public abstract class ZeroMQBackendStore implements BackendStore {
     public ZeroMQBackendStore(Builder builder) {
         this.eventWriter = null;
         this.builder = builder;
-        nodeDiffHandler = new Thread(builder.getNodeStateAggregator(), "ZeroMQBackendStore NodeStateAggregator");
+        nodeDiffHandler = builder.getNodeStateAggregator();
+        nodeDiffHandlerThread = new Thread(nodeDiffHandler, "ZeroMQBackendStore NodeStateAggregator");
 
         context = new ZContext();
         threadPool = Executors.newFixedThreadPool(2 * builder.getNumThreads() + 2);
@@ -146,6 +149,7 @@ public abstract class ZeroMQBackendStore implements BackendStore {
                 final ZMQ.Socket socket = context.createSocket(SocketType.REQ);
                 socket.setIdentity(("" + Thread.currentThread().getId()).getBytes());
                 socket.connect("inproc://readerBackend");
+                socket.setReceiveTimeOut(1000);
                 socket.sendMore("H");
                 socket.send("");
                 while (!Thread.currentThread().isInterrupted()) {
@@ -179,43 +183,61 @@ public abstract class ZeroMQBackendStore implements BackendStore {
 
     @Override
     public void handleReaderService(ZMQ.Socket socket) {
-        final String msg = socket.recvStr();
-        String ret = null;
-        if (msg.startsWith("journal ")) {
-            final String instance = msg.substring("journal ".length());
-            ret = builder.getNodeStateAggregator().getJournalHead(instance);
-        } else if (msg.startsWith("blob ")) {
-            byte[] buffer = new byte[1024 * 1024]; // not final because of fear it's not being GC'd
-            try {
-                final Blob blob = builder.getNodeStateAggregator().getBlob(msg.substring("blob ".length()));
-                if (blob == null) {
-                    throw new IllegalArgumentException(msg + " not found");
-                }
-                final InputStream is = blob.getNewStream();
-                for (int nBytes = is.read(buffer); nBytes > 0; nBytes = is.read(buffer)) {
-                    socket.sendMore("C");
-                    socket.send(buffer, 0, nBytes, 0);
-                    socket.recv();
-                }
-                socket.sendMore("E");
-                socket.send("");
-            } catch (IllegalArgumentException iae) {
-                log.trace(iae.getMessage());
-            } catch (Exception ioe) {
-                log.error(ioe.getMessage());
-            } finally {
-                return;
-            }
-        } else {
-            ret = builder.getNodeStateAggregator().readNodeState(msg);
+        String msg;
+        try {
+            msg = socket.recvStr();
+        }  catch (ZMQException e) {
+            socket.send("");
+            return;
         }
-        if (ret != null) {
+        if (msg == null) {
+            return; // timeout
+        }
+        String ret = null;
+
+        try {
+            if (msg.startsWith("journal ")) {
+                final String instance = msg.substring("journal ".length());
+                ret = builder.getNodeStateAggregator().getJournalHead(instance);
+            } else if (msg.startsWith("hasblob ")) {
+                final Blob blob = builder.getNodeStateAggregator().getBlob(msg.substring("hasblob ".length()));
+                ret = blob == null ? "false" : "true";
+            } else if (msg.startsWith("blob ")) {
+                byte[] buffer = new byte[1024 * 1024]; // not final because of fear it's not being GC'd
+                try {
+                    final Blob blob = builder.getNodeStateAggregator().getBlob(msg.substring("blob ".length()));
+                    if (blob == null) {
+                        throw new IllegalArgumentException(msg + " not found");
+                    }
+                    final InputStream is = blob.getNewStream();
+                    for (int nBytes = is.read(buffer); nBytes > 0; nBytes = is.read(buffer)) {
+                        socket.sendMore("C");
+                        socket.send(buffer, 0, nBytes, 0);
+                        do {
+                            ret = socket.recvStr();
+                        } while (ret == null);
+                    }
+                } catch (Exception ioe) {
+                    log.error(ioe.getMessage());
+                } finally {
+                    ret = "";
+                }
+            } else {
+                ret = builder.getNodeStateAggregator().readNodeState(msg);
+            }
+        } catch (Exception e) {
+            if (ret == null) {
+                ret = "Node not found";
+                log.error("Requested node not found: {}", msg);
+            } else {
+                log.error(e.toString());
+            }
+        } finally {
             socket.sendMore("E");
+            if (ret == null) {
+                ret = "";
+            }
             socket.send(ret);
-        } else {
-            socket.sendMore("E");
-            socket.send("Node not found");
-            log.error("Requested node not found: {}", msg);
         }
     }
 
@@ -258,8 +280,8 @@ public abstract class ZeroMQBackendStore implements BackendStore {
     }
 
     private void startBackgroundThreads() {
-        if (nodeDiffHandler != null) {
-            nodeDiffHandler.start();
+        if (nodeDiffHandlerThread != null) {
+            nodeDiffHandlerThread.start();
             while (!builder.getNodeStateAggregator().hasCaughtUp()) {
                 try {
                     Thread.sleep(100);
@@ -272,8 +294,16 @@ public abstract class ZeroMQBackendStore implements BackendStore {
     }
 
     private void stopBackgroundThreads() {
-        if (nodeDiffHandler != null) {
-            nodeDiffHandler.interrupt();
+        if (nodeDiffHandlerThread != null) {
+            try {
+                nodeDiffHandler.close();
+                nodeDiffHandlerThread.join();
+            } catch (InterruptedException | IOException e) {
+            }
+        }
+        try {
+            readerFrontend.close();
+        } catch (IOException e) {
         }
         try {
             readerFrontend.close();
@@ -289,6 +319,8 @@ public abstract class ZeroMQBackendStore implements BackendStore {
     @Override
     public void close() {
         stopBackgroundThreads();
+        writerFrontend.close();
+        writerBackend.close();
     }
 
     private static class Pair<T,U> {
@@ -330,28 +362,26 @@ public abstract class ZeroMQBackendStore implements BackendStore {
             shutDown = false;
             requestRouter = context.createSocket(SocketType.ROUTER);
             requestRouter.setBacklog(100000);
-            requestRouter.bind(requestBindAddr);
             workerRouter = context.createSocket(SocketType.ROUTER);
             workerRouter.setBacklog(100000);
             poller = context.createPoller(2);
             poller.register(requestRouter, ZMQ.Poller.POLLIN);
             poller.register(workerRouter, ZMQ.Poller.POLLIN);
+            requestRouter.bind(requestBindAddr);
             workerRouter.bind(workerBindAddr);
             loop: while (!shutDown) {
                 try {
+                    handlePendingRequests();
                     poller.poll(100);
                     if (poller.pollin(0)) {
                         handleIncomingRequest();
                     } else if (poller.pollin(1)) {
                         handleWorkerRequest();
                     } else {
-                        // timeout
                         continue loop;
                     }
-                    handlePendingRequests();
                 } catch (Throwable t) {
                     if (t instanceof InterruptedException) {
-                        log.info("Interrupted.");
                         shutDown = true;
                     } else {
                         log.error(t.getMessage());
@@ -393,54 +423,66 @@ public abstract class ZeroMQBackendStore implements BackendStore {
         }
 
         private void handleWorkerRequest() {
-            byte[] workerId = workerRouter.recv();      // worker identity
-            workerRouter.recvStr();                     // delimiter
-            String verb = workerRouter.recvStr();       // verb (H = Hello, C = Continuation, E = End)
-            byte[] payload = workerRouter.recv();
-            byte[] requestId = busyByWorkerId.get(workerId);
-            if (requestId != null) {
+            try {
+                byte[] workerId = workerRouter.recv();      // worker identity
+                workerRouter.recvStr();                     // delimiter
+                String verb = workerRouter.recvStr();       // verb (H = Hello, C = Continuation, E = End)
+                byte[] payload = workerRouter.recv();
+                byte[] requestId = busyByWorkerId.get(workerId);
+                if (requestId != null) {
+                    switch (verb) {
+                        case "H":
+                            log.error("Got Hello on busy connection");
+                            break;
+                        case "C":
+                            requestRouter.sendMore(requestId);
+                            requestRouter.sendMore("");
+                            requestRouter.sendMore(verb);
+                            requestRouter.send(payload);
+                            workerRouter.sendMore(workerId);
+                            workerRouter.sendMore(""); // delimiter
+                            workerRouter.send(""); // confirm
+                            break;
+                        case "E":
+                            requestRouter.sendMore(requestId);
+                            requestRouter.sendMore("");
+                            requestRouter.sendMore(verb);
+                            requestRouter.send(payload);
+                            busyByWorkerId.remove(workerId);
+                            busyByRequestId.remove(requestId);
+                            available.push(workerId);
+                            break;
+                        default:
+                            log.error("Unknown worker verb {}", verb);
+                    }
+                    return;
+                }
+                if (available.contains(workerId)) {
+                    log.error("Spurious message from available worker: {}: {}", verb, payload);
+                    return;
+                }
                 switch (verb) {
                     case "H":
-                        log.error("Got Hello on busy connection");
-                        break;
-                    case "C":
-                        requestRouter.sendMore(requestId);
-                        requestRouter.sendMore("");
-                        requestRouter.sendMore(verb);
-                        requestRouter.send(payload);
-                        workerRouter.send(""); // confirm
-                        break;
-                    case "E":
-                        requestRouter.sendMore(requestId);
-                        requestRouter.sendMore("");
-                        requestRouter.sendMore(verb);
-                        requestRouter.send(payload);
-                        busyByWorkerId.remove(workerId);
-                        busyByRequestId.remove(requestId);
+                        log.info("New worker registered: {}", workerId);
                         available.push(workerId);
                         break;
                     default:
-                        log.error("Unknown worker verb {}", verb);
+                        log.error("Expected Hello message from new worker but got {}: {}", verb, payload);
                 }
-                return;
-            }
-            if (available.contains(workerId)) {
-                log.error("Spurious message from available worker: {}: {}", verb, payload);
-                return;
-            }
-            switch (verb) {
-                case "H":
-                    log.info("New worker registered: {}", workerId);
-                    available.push(workerId);
-                    break;
-                default:
-                    log.error("Expected Hello message from new worker but got {}: {}", verb, payload);
+            } catch (Throwable t) {
+                log.error(t.toString());
+                throw t;
             }
         }
 
         @Override
         public void close() throws IOException {
             shutDown = true;
+            try {
+                this.join();
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+            }
         }
     }
 }

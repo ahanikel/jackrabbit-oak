@@ -1,6 +1,7 @@
 package org.apache.jackrabbit.oak.store.zeromq;
 
 import com.google.common.collect.ImmutableMap;
+import com.google.common.io.Files;
 import org.apache.jackrabbit.oak.api.CommitFailedException;
 import org.apache.jackrabbit.oak.plugins.commit.AnnotatingConflictHandler;
 import org.apache.jackrabbit.oak.plugins.commit.ConflictHook;
@@ -16,6 +17,7 @@ import org.apache.jackrabbit.oak.spi.commit.SimpleCommitContext;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
+import org.apache.jackrabbit.oak.store.zeromq.log.LogBackendStore;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Ignore;
@@ -23,6 +25,7 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.util.Map;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
@@ -33,6 +36,8 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 public class ZeroMQPubSubTest {
+    private ZeroMQBackendStore logBackendStore;
+
     final char[] ref = "Hello world".toCharArray();
 
     interface Condition {
@@ -47,20 +52,53 @@ public class ZeroMQPubSubTest {
 
     @Before
     public void setup() throws Exception {
-        store1 = (ZeroMQNodeStore) fixture.createNodeStore();
-        store2 = fixture.createNodeStoreWithSameBackendAs(store1);
+        final File logFile = File.createTempFile("ZeroMQFixture", ".log");
+        logBackendStore = LogBackendStore.builder()
+            .withLogFile(logFile.getAbsolutePath())
+            .withReaderUrl("ipc:///tmp/fixtureBackendReader")
+            .withWriterUrl("ipc:///tmp/fixtureBackendWriter")
+            .withNumThreads(4)
+            .build();
+        store1 = ZeroMQNodeStore.builder()
+            .setJournalId("test")
+            .setBackendReaderURL("ipc:///tmp/fixtureBackendReader")
+            .setBackendWriterURL("ipc:///tmp/fixtureBackendWriter")
+            .setBlobCacheDir(Files.createTempDir().getAbsolutePath())
+            .setWriteBackNodes(true)
+            .setWriteBackJournal(true)
+            .build();
+        store1.reset();
+        Thread.sleep(1000); // TODO: Wait until a commit is confirmed
 
         NodeState root = store1.getRoot();
         NodeBuilder builder = root.builder();
         builder.child("content");
         store1.merge(builder, EmptyHook.INSTANCE, CommitInfo.EMPTY);
+        store2 = ZeroMQNodeStore.builder()
+            .setJournalId("test")
+            .setBackendReaderURL("ipc:///tmp/fixtureBackendReader")
+            .setBackendWriterURL("ipc:///tmp/fixtureBackendWriter")
+            .setBlobCacheDir(Files.createTempDir().getAbsolutePath())
+            .setWriteBackNodes(true)
+            .setWriteBackJournal(true)
+            .build();
     }
 
     @After
-    public void tearDown() throws Exception {
+    public void tearDown() {
         log.info("tearDown: start");
-        fixture.dispose(store1);
-        fixture.dispose(store2);
+        if (store2 != null) {
+            store2.close();
+            store2 = null;
+        }
+        if (store1 != null) {
+            store1.close();
+            store1 = null;
+        }
+        if (logBackendStore != null) {
+            logBackendStore.close();
+            logBackendStore = null;
+        }
         log.info("tearDown: done");
     }
 
@@ -127,7 +165,14 @@ public class ZeroMQPubSubTest {
 
     @Test
     public void multipleWritersTest() throws Exception {
-        NodeStore store3 = fixture.createNodeStoreWithSameBackendAs(store1);
+        ZeroMQNodeStore store3 = ZeroMQNodeStore.builder()
+            .setJournalId("test")
+            .setBackendReaderURL("ipc:///tmp/fixtureBackendReader")
+            .setBackendWriterURL("ipc:///tmp/fixtureBackendWriter")
+            .setBlobCacheDir(Files.createTempDir().getAbsolutePath())
+            .setWriteBackNodes(true)
+            .setWriteBackJournal(true)
+            .build();
         boolean b1 = store1.getRoot().hasChildNode("content");
         boolean b2 = store2.getRoot().hasChildNode("content");
         boolean b3 = store3.getRoot().hasChildNode("content");
@@ -173,7 +218,7 @@ public class ZeroMQPubSubTest {
             }));
 
         } finally {
-            fixture.dispose(store3);
+            store3.close();
         }
     }
 
