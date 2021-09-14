@@ -481,6 +481,9 @@ public class ZeroMQPropertyState implements PropertyState {
                     }
                 }
             }
+            if (values.size() == 0 || stringValues.size() == 0) {
+                log.warn("values.size:{}, stringValues.size:{}", values.size(), stringValues.size());
+            }
             return (T) values.get(index);
         }
         else if (type.equals(Type.STRING)) {
