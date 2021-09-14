@@ -82,8 +82,16 @@ public class ZeroMQBlobInputStream extends InputStream {
             cur = 0;
             return;
         }
-        verb = reader.recvStr();
+        int timeout = reader.getReceiveTimeOut();
+        reader.setReceiveTimeOut(1000);
+        do {
+            verb = reader.recvStr();
+            if (verb == null) {
+                log.warn("Timeout while reading blob {}", reference);
+            }
+        } while (verb == null);
         max = reader.recv(buffer, 0, buffer.length, 0);
+        reader.setReceiveTimeOut(timeout);
         if (verb.equals("C")) {
             reader.send("");
         }
