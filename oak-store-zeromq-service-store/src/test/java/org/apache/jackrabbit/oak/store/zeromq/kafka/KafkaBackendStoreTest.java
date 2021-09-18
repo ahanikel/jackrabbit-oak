@@ -21,7 +21,11 @@ package org.apache.jackrabbit.oak.store.zeromq.kafka;
 import org.apache.jackrabbit.oak.store.zeromq.BackendStore;
 import org.junit.Before;
 import org.junit.Test;
+import org.zeromq.SocketType;
+import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
+
+import java.io.IOException;
 
 import static org.apache.jackrabbit.oak.store.zeromq.kafka.KafkaBackendStore.ZEROMQ_READER_URL;
 import static org.apache.jackrabbit.oak.store.zeromq.kafka.KafkaBackendStore.ZEROMQ_WRITER_URL;
@@ -31,12 +35,12 @@ public class KafkaBackendStoreTest {
     private BackendStore store;
     private int readerPort;
     private int writerPort;
-    private ZMQ.Context context;
+    private ZContext context;
     private ZMQ.Socket readerService;
     private ZMQ.Socket writerService;
 
     @Before
-    public void testInit() {
+    public void testInit() throws IOException {
         store = KafkaBackendStore.builder().build();
         try {
             readerPort = Integer.parseInt(System.getenv(ZEROMQ_READER_URL));
@@ -48,10 +52,10 @@ public class KafkaBackendStoreTest {
         } catch (NumberFormatException e) {
             writerPort = 8001;
         }
-        context = ZMQ.context(2);
-        readerService = context.socket(ZMQ.REQ);
+        context = new ZContext();
+        readerService = context.createSocket(SocketType.REQ);
         readerService.connect("tcp://localhost:" + readerPort);
-        writerService = context.socket(ZMQ.REQ);
+        writerService = context.createSocket(SocketType.REQ);
         writerService.connect("tcp://localhost:" + writerPort);
     }
 

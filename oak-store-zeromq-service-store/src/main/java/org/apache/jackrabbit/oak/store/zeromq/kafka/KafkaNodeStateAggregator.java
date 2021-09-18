@@ -27,6 +27,7 @@ import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
@@ -42,7 +43,7 @@ public class KafkaNodeStateAggregator extends AbstractNodeStateAggregator {
     private final KafkaConsumer<String, String> consumer;
     private Iterator<ConsumerRecord<String, String>> records;
 
-    public KafkaNodeStateAggregator() {
+    public KafkaNodeStateAggregator() throws IOException {
         caughtup = false;
 
         // Kafka consumer
@@ -58,7 +59,7 @@ public class KafkaNodeStateAggregator extends AbstractNodeStateAggregator {
         consumer.subscribe(Collections.singletonList(TOPIC), new HandleRebalance());
         records = null;
         recordHandler = new SimpleRecordHandler(blobCacheDir);
-        recordHandler.setOnCommit(() -> {
+        recordHandler.setOnCommit((commitDescriptor) -> {
             try {
                 // TODO: this is quite expensive, perhaps we can commit every second or so instead of
                 // after every transaction? Or enable autocommit?

@@ -18,8 +18,6 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq;
 
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
 import org.apache.jackrabbit.oak.api.Blob;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,18 +26,16 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.io.UnsupportedEncodingException;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.StringTokenizer;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 
-public class SimpleRecordHandler implements RecordHandler {
+public class PersistentRecordHandler implements RecordHandler {
 
-    private static final Logger log = LoggerFactory.getLogger(SimpleRecordHandler.class);
+    private static final Logger log = LoggerFactory.getLogger(PersistentRecordHandler.class);
 
     private static class CurrentBlob {
         private String ref;
@@ -82,26 +78,24 @@ public class SimpleRecordHandler implements RecordHandler {
         }
     }
 
-    private final File blobDir;
+    private final File dataDir;
     private final Base64.Decoder b64 = Base64.getDecoder();
     private Consumer<CommitDescriptor> onCommit;
     private Runnable onNode;
     private int line = 0;
     private final Map<String, String> heads;
     private final Map<String, String> checkpoints;
-    private final SimpleBlobStore store;
+    private final SimpleNodeStore store;
     private final Map<String, SimpleNodeState> nodeStates;
     private final Map<String, CurrentBlob> currentBlobMap;
-    private final Cache<String, SimpleNodeState> cache;
 
-    public SimpleRecordHandler(File blobDir) throws IOException {
-        this.blobDir = blobDir;
+    public PersistentRecordHandler(File dataDir) {
+        this.dataDir = dataDir;
         this.heads = new ConcurrentHashMap<>();
         this.checkpoints = new ConcurrentHashMap<>();
-        store = new SimpleBlobStore(blobDir);
+        store = new SimpleNodeStore();
         nodeStates = new HashMap<>();
         currentBlobMap = new HashMap<>();
-        cache = CacheBuilder.newBuilder().maximumSize(1000).build();
     }
 
     public void setOnCommit(Consumer<CommitDescriptor> onCommit) {
@@ -117,7 +111,7 @@ public class SimpleRecordHandler implements RecordHandler {
 
         ++line;
         if (line % 100000 == 0) {
-            log.info("We're at line {}, nodes so far: {}", line, store.size());
+            log.info("We're at line {}, nodes so far: {}", line, store.nodeStore.size());
         }
 
         StringTokenizer tokens = new StringTokenizer(value);
@@ -130,34 +124,11 @@ public class SimpleRecordHandler implements RecordHandler {
             case "n:": {
                 final String newUuid = tokens.nextToken();
                 SimpleNodeState newNode;
-                if (cache.getIfPresent(newUuid) != null || store.hasBlob(newUuid)) {
+                if (store.hasNodeState(newUuid)) {
                     newNode = new SimpleNodeState(newUuid, true);
                 } else {
                     final String oldid = tokens.nextToken();
-                    final SimpleNodeState oldNode;
-                    if (oldid.equals(ZeroMQEmptyNodeState.UUID_NULL.toString())) {
-                        oldNode = new SimpleNodeState(oldid);
-                    } else {
-                        try {
-                            oldNode = cache.get(oldid, () -> {
-                                final String oldNodeSer;
-                                try {
-                                    oldNodeSer = store.getString(oldid);
-                                } catch (IOException e) {
-                                    log.error("Node not found: " + oldid);
-                                    throw new IllegalStateException(e);
-                                }
-                                try {
-                                    return SimpleNodeState.deserialise(oldid, oldNodeSer);
-                                } catch (ZeroMQNodeState.ParseFailure parseFailure) {
-                                    log.error(parseFailure.getMessage() + " when trying to fetch node " + oldid);
-                                    throw new IllegalStateException(parseFailure);
-                                }
-                            });
-                        } catch (ExecutionException e) {
-                            throw new IllegalStateException(e);
-                        }
-                    }
+                    final SimpleNodeState oldNode = store.getNodeState(oldid);
                     newNode = oldNode.clone(newUuid);
                 }
                 nodeStates.put(uuThreadId, newNode);
@@ -165,19 +136,13 @@ public class SimpleRecordHandler implements RecordHandler {
             }
 
             case "n!": {
-                final SimpleNodeState ns = nodeStates.get(uuThreadId);
+                final SimpleNodeState ns = nodeStates.remove(uuThreadId);
                 if (ns == null) {
                     log.error("Current nodestate not present");
                     break;
                 }
                 if (!ns.skip) {
-                    try {
-                        store.putString(ns.getUuid(), ns.serialise());
-                        cache.put(ns.getUuid(), ns);
-                    } catch (IOException e) {
-                        log.error(e.getMessage() + " while trying to write node " + ns.getUuid());
-                        break;
-                    }
+                    store.putNodeState(ns);
                 }
                 if (onNode != null) {
                     onNode.run();
@@ -257,14 +222,14 @@ public class SimpleRecordHandler implements RecordHandler {
                     log.error(msg);
                     throw new IllegalStateException(msg);
                 }
-                currentBlob.setFound(ZeroMQBlob.newInstance(blobDir, ref));
+                currentBlob.setFound(ZeroMQBlob.newInstance(dataDir, ref));
                 if (currentBlob.getFound() != null) {
                     break;
                 }
                 currentBlob.setRef(ref);
                 for (int i = 0; ; ++i) {
                     try {
-                        currentBlob.setFile(File.createTempFile("b64temp", ".dat", blobDir));
+                        currentBlob.setFile(File.createTempFile("b64temp", ".dat", dataDir));
                         currentBlob.setFos(new FileOutputStream(currentBlob.getFile()));
                         break;
                     } catch (IOException e) {
@@ -340,7 +305,7 @@ public class SimpleRecordHandler implements RecordHandler {
                 }
                 try {
                     currentBlobFos.close();
-                    Blob blob = ZeroMQBlob.newInstance(blobDir, currentBlob.getRef(), currentBlob.getFile());
+                    Blob blob = ZeroMQBlob.newInstance(dataDir, currentBlob.getRef(), currentBlob.getFile());
                     log.trace("Created new blob {}", blob.getReference());
                     currentBlobMap.remove(uuThreadId);
                 } catch (IOException e) {
@@ -383,16 +348,64 @@ public class SimpleRecordHandler implements RecordHandler {
 
     @Override
     public String readNodeState(String msg) {
-        try {
-            return store.getString(msg);
-        } catch (IOException e) {
-            return null;
+        final SimpleNodeState ret = store.getNodeState(msg);
+        if (ret != null) {
+            return ret.serialise();
         }
+        return null;
     }
 
     @Override
     public Blob getBlob(String reference) {
-        return ZeroMQBlob.newInstance(blobDir, reference);
+        return ZeroMQBlob.newInstance(dataDir, reference);
+    }
+
+    private static class SimpleNodeStore {
+        private Map<String, SimpleNodeState> nodeStore;
+        private final boolean writeNodeStates = false; // for debugging
+        private static final File nodeStateDir = new File("/tmp/nodestates"); // for debugging
+
+        private SimpleNodeStore() {
+            this.nodeStore = new ConcurrentHashMap<>(10000000);
+            final String emptyUuid = "00000000-0000-0000-0000-000000000000";
+            final SimpleNodeState empty = new SimpleNodeState(emptyUuid);
+            empty.makeImmutable();
+            this.nodeStore.put(emptyUuid, empty);
+            if (writeNodeStates) {
+                nodeStateDir.mkdir();
+            }
+        }
+
+        private SimpleNodeState getNodeState(String uuid) {
+            return nodeStore.get(uuid);
+        }
+
+        private void putNodeState(SimpleNodeState ns) {
+            ns.makeImmutable();
+            final String uuid = ns.getUuid();
+            nodeStore.put(uuid, ns);
+            if (writeNodeStates) {
+                writeNodeState(ns);
+            }
+            if (log.isTraceEnabled()) {
+                log.trace("Stored {}, size {}", uuid, nodeStore.size());
+            }
+        }
+
+        public boolean hasNodeState(String uuid) {
+            return nodeStore.containsKey(uuid);
+        }
+
+        private void writeNodeState(SimpleNodeState ns) {
+            try {
+                final OutputStream os = new FileOutputStream(new File(nodeStateDir, ns.getUuid()));
+                final String s = ns.serialise();
+                os.write(s.getBytes());
+                os.close();
+            } catch (IOException ioe) {
+                log.warn(ioe.getMessage());
+            }
+        }
     }
 
     private static class SimpleNodeState {
@@ -406,13 +419,6 @@ public class SimpleRecordHandler implements RecordHandler {
             this.uuid = uuid;
             this.children = new HashMap<>();
             this.properties = new HashMap<>();
-            this.skip = false;
-        }
-
-        private SimpleNodeState(String uuid, Map<String, String> children, Map<String, String> properties) {
-            this.uuid = uuid;
-            this.children = children;
-            this.properties = properties;
             this.skip = false;
         }
 
@@ -447,12 +453,6 @@ public class SimpleRecordHandler implements RecordHandler {
             return serialised;
         }
 
-        private static SimpleNodeState deserialise(String uuid, String serialised) throws ZeroMQNodeState.ParseFailure {
-            final Pair<Map<String, String>, Map<String, String>> pair = ZeroMQNodeState.deserialise2(serialised);
-            final SimpleNodeState ret = new SimpleNodeState(uuid, pair.fst, pair.snd);
-            return ret;
-        }
-
         private void setChild(String name, String uuid) {
             checkImmutable();
             children.put(name, uuid);
@@ -483,7 +483,7 @@ public class SimpleRecordHandler implements RecordHandler {
         }
 
         private void checkImmutable() {
-            if (false && serialised != null) {
+            if (serialised != null) {
                 throw new IllegalStateException("NodeState is immutable");
             }
         }

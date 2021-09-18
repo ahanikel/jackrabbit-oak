@@ -88,7 +88,7 @@ public abstract class ZeroMQBackendStore implements BackendStore {
             return this;
         }
 
-        public abstract ZeroMQBackendStore build() throws FileNotFoundException;
+        public abstract ZeroMQBackendStore build() throws IOException;
 
         public Builder initFromEnvironment() {
             readerUrl = System.getenv(ZEROMQ_READER_URL);
@@ -220,8 +220,7 @@ public abstract class ZeroMQBackendStore implements BackendStore {
             }
         } catch (Exception e) {
             if (ret == null) {
-                ret = "Node not found";
-                log.error("Requested node not found: {}", msg);
+                log.error("Requested node not found: {}, exception: {}", msg, e.getMessage());
             } else {
                 log.error(e.toString());
             }

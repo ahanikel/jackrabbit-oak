@@ -49,7 +49,7 @@ public class LogBackendStore extends ZeroMQBackendStore {
         }
 
         @Override
-        public ZeroMQBackendStore build() throws FileNotFoundException {
+        public ZeroMQBackendStore build() throws IOException {
             withNodeStateAggregator(new LogfileNodeStateAggregator(getLogFile()));
             return new LogBackendStore(this);
         }

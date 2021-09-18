@@ -35,7 +35,7 @@ public class LogfileNodeStateAggregator extends AbstractNodeStateAggregator {
 
     private final LineReader reader;
 
-    public LogfileNodeStateAggregator(String filePath) throws FileNotFoundException {
+    public LogfileNodeStateAggregator(String filePath) throws IOException {
         caughtup = false;
         recordHandler = new SimpleRecordHandler(blobCacheDir);
         final InputStreamReader inputStreamReader = new InputStreamReader(new FileInputStream(filePath));

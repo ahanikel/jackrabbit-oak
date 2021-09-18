@@ -39,8 +39,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Consumer;
-import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -221,11 +219,40 @@ public class ZeroMQNodeState extends AbstractNodeState {
         }
     }
 
-    static ZeroMQNodeState deSerialise(ZeroMQNodeStore ns, String s) throws ParseFailure {
+    static ZeroMQNodeState deserialise(ZeroMQNodeStore ns, String s) throws ParseFailure {
+        return deserialise3(ns, s, deserialise1(s));
+    }
+
+    // this function is for exclusive use of SimpleRecordHandler.SimpleNodeState
+    // that's important for the encoding/decoding
+    static Pair<Map<String, String>, Map<String, String>> deserialise2(String s) throws ParseFailure {
+        final Pair<List<String>, List<String>> lists = deserialise1(s);
+        final List<String> children = lists.fst;
+        final List<String> properties = lists.snd;
+        final Map<String, String> childrenMap = new HashMap<>(10);
+        final Map<String, String> propertiesMap = new HashMap<>(10);
+        for (String child : children) {
+            Parser p = new Parser(child);
+            FinalVar<String> key = new FinalVar<>();
+            FinalVar<String> value = new FinalVar<>();
+            p
+                .parseRegexp(tabSeparatedPattern, 1).assignTo(key)
+                .parseRegexp(allTheRestPattern, 0).assignTo(value);
+            // childrenMap.put(SafeEncode.safeDecode(key.val), value.val);
+            childrenMap.put(key.val, value.val);
+        }
+        for (String prop : properties) {
+            FinalVar<String> pName = new FinalVar<>();
+            Parser p = new Parser(prop);
+            p.parseRegexp(spaceSeparatedPattern, 1).assignToWithDecode(pName);
+            propertiesMap.put(pName.val(), prop);
+        }
+        return Pair.of(childrenMap, propertiesMap);
+    }
+
+    static Pair<List<String>, List<String>> deserialise1(String s) throws ParseFailure {
         final List<String> children = new ArrayList<>();
         final List<String> properties = new ArrayList<>();
-        final Map<String, String> childrenMap = new HashMap<>(10);
-        final Map<String, ZeroMQPropertyState> propertiesMap = new HashMap<>(10);
         final Parser parser = new Parser(s);
         parser
             .parseString("begin ZeroMQNodeState\n")
@@ -242,6 +269,14 @@ public class ZeroMQNodeState extends AbstractNodeState {
                 1
             )
             .parseString("end ZeroMQNodeState\n");
+        return Pair.of(children, properties);
+    }
+
+    static ZeroMQNodeState deserialise3(ZeroMQNodeStore ns, String s, Pair<List<String>, List<String>> pair) throws ParseFailure {
+        final List<String> children = pair.fst;
+        final List<String> properties = pair.snd;
+        final Map<String, String> childrenMap = new HashMap<>(10);
+        final Map<String, ZeroMQPropertyState> propertiesMap = new HashMap<>(10);
         for (String child : children) {
             Parser p = new Parser(child);
             FinalVar<String> key = new FinalVar<>();
@@ -289,8 +324,8 @@ public class ZeroMQNodeState extends AbstractNodeState {
         return ZeroMQNodeState.serialise3(children, sb, true);
     }
 
-    // This one is for use by the SimpleNodeState. Be aware that this one does not encode
-    // the names.
+    // This one is for exclusive use by SimpleRecordHandler.SimpleNodeState.
+    // That's important for encoding/decoding.
     static String serialise2(Map<String, String> children, Map<String, String> properties) {
         final StringBuilder sb = new StringBuilder();
         final AtomicReference<Exception> e = new AtomicReference<>();
@@ -329,21 +364,42 @@ public class ZeroMQNodeState extends AbstractNodeState {
         return sb.toString();
     }
 
-    static StringBuilder serialiseChildren(Map<String, String> children, boolean encodeName) {
+    static StringBuilder serialiseChildren(Map<String, String> children, boolean encodeChildNames) {
         final StringBuilder sb = new StringBuilder();
         final AtomicReference<Exception> e = new AtomicReference<>();
-        List<String> childNames = new ArrayList<>(children.keySet());
+        Map<String, String> childNameMap = new HashMap<>();
+        List<String> childNames = new ArrayList<>();
+
+        // if we don't encode names they are already encoded
+        // we need to decode them to get the correct sort order
+        if (encodeChildNames) {
+            childNames.addAll(children.keySet());
+            for (String decodedName : children.keySet()) {
+                try {
+                    String encodedName = SafeEncode.safeEncode(decodedName);
+                    childNameMap.put(decodedName, encodedName);
+                } catch (UnsupportedEncodingException uee) {
+                    e.compareAndSet(null, uee);
+                }
+            }
+        } else {
+            for (String encodedName : children.keySet()) {
+                try {
+                    String decodedName = SafeEncode.safeDecode(encodedName);
+                    childNames.add(decodedName);
+                    childNameMap.put(decodedName, encodedName);
+                } catch (UnsupportedEncodingException uee) {
+                    e.compareAndSet(null, uee);
+                }
+            }
+        }
         childNames.sort(Comparator.naturalOrder());
         childNames.forEach(name -> {
-            try {
-                sb
-                        .append(encodeName ? SafeEncode.safeEncode(name) : name)
-                        .append('\t')
-                        .append(children.get(name))
-                        .append('\n');
-            } catch (UnsupportedEncodingException ex) {
-                e.compareAndSet(null, ex);
-            }
+            sb
+                .append(childNameMap.get(name))
+                .append('\t')
+                .append(children.get(encodeChildNames ? name : childNameMap.get(name)))
+                .append('\n');
         });
         if (e.get() != null) {
             log.error(e.get().getMessage());
@@ -361,6 +417,24 @@ public class ZeroMQNodeState extends AbstractNodeState {
             final long msb = Longs.fromByteArray(Arrays.copyOfRange(digest, 0, 8));
             final long lsb = Longs.fromByteArray(Arrays.copyOfRange(digest, 8, 16));
             return new UUID(msb, lsb).toString();
+        }
+    }
+
+    static String generateUuid(String serialised) {
+        synchronized (md) {
+            final byte[] digest;
+            try {
+                digest = md.digest(serialised.getBytes("UTF-8"));
+                final long msb = Longs.fromByteArray(Arrays.copyOfRange(digest, 0, 8));
+                final long lsb = Longs.fromByteArray(Arrays.copyOfRange(digest, 8, 16));
+                final String ret = new UUID(msb, lsb).toString();
+                if (ret.equals("...")) { // TODO: check for uuid of empty NodeState
+                    return ZeroMQEmptyNodeState.UUID_NULL.toString();
+                }
+                return ret;
+            } catch (UnsupportedEncodingException e) {
+                throw new IllegalStateException(e);
+            }
         }
     }
 

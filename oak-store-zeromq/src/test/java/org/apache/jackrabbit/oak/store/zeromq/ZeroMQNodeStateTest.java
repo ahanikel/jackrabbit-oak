@@ -58,7 +58,7 @@ public class ZeroMQNodeStateTest {
     public void setup() throws ZeroMQNodeState.ParseFailure {
         store = (ZeroMQNodeStore) fixture.createNodeStore();
         for (int i = NUM_NODESTATES - 1; i >= 0; --i) {
-            nodeStates[i] = ZeroMQNodeState.deSerialise(store, getSerialised(i));
+            nodeStates[i] = ZeroMQNodeState.deserialise(store, getSerialised(i));
             store.write(store.emptyNode, nodeStates[i]);
         }
     }
@@ -271,7 +271,7 @@ public class ZeroMQNodeStateTest {
         }
         final String s = ((ZeroMQNodeState) ns2).getSerialised();
         assertTrue(s.contains("[]"));
-        final NodeState ns3 = ZeroMQNodeState.deSerialise(null, s);
+        final NodeState ns3 = ZeroMQNodeState.deserialise(null, s);
         assertTrue(ns3.getProperty("bla").count() == 0);
     }
 }

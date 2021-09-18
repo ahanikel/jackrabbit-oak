@@ -23,6 +23,7 @@ import org.apache.jackrabbit.oak.store.zeromq.NodeStateAggregator;
 import org.apache.jackrabbit.oak.store.zeromq.log.LogfileNodeStateAggregator;
 
 import java.io.FileNotFoundException;
+import java.io.IOException;
 
 public class HttpBackendApplication extends Application<HttpBackendConfiguration> {
     private NodeStateAggregator aggregator;
@@ -45,7 +46,7 @@ public class HttpBackendApplication extends Application<HttpBackendConfiguration
             aggregatorThread = new Thread(aggregator, "NodeStateAggregator");
             aggregatorThread.setDaemon(true);
             aggregatorThread.start();
-        } catch (FileNotFoundException e) {
+        } catch (IOException e) {
             fatalException = e;
         }
     }

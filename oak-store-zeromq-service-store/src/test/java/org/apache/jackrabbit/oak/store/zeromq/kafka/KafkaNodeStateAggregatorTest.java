@@ -56,7 +56,7 @@ public class KafkaNodeStateAggregatorTest {
     }
 
     @Test
-    public void testAggregator() {
+    public void testAggregator() throws IOException {
         final File blobCacheDir = Files.createTempDir();
         RecordHandler recordHandler = new SimpleRecordHandler(blobCacheDir);
         for (String[] rec : consumerRecords) {

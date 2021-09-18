@@ -25,6 +25,7 @@ import org.apache.kafka.common.serialization.StringSerializer;
 import org.apache.kafka.streams.StreamsConfig;
 
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.util.Properties;
 
 /**
@@ -37,7 +38,7 @@ public class KafkaBackendStore extends ZeroMQBackendStore {
 
     public static class Builder extends ZeroMQBackendStore.Builder {
         @Override
-        public ZeroMQBackendStore build() {
+        public ZeroMQBackendStore build() throws IOException {
             withNodeStateAggregator(new KafkaNodeStateAggregator());
             return new KafkaBackendStore(this);
         }

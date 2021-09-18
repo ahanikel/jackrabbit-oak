@@ -18,25 +18,16 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq;
 
-import org.apache.jackrabbit.oak.api.Blob;
-import java.util.function.Consumer;
+public class Pair<U, V> {
+    public final U fst;
+    public final V snd;
 
-public interface RecordHandler {
-    class CommitDescriptor {
-        private final String journalId;
-
-        public CommitDescriptor(String desc) {
-            this.journalId = desc;
-        }
-
-        public String getJournalId() {
-            return journalId;
-        }
+    private Pair(U fst, V snd) {
+        this.fst = fst;
+        this.snd = snd;
     }
-    void handleRecord(String uuThreadId, String op, String value);
-    String getJournalHead(String journalName);
-    String readNodeState(String msg);
-    Blob getBlob(String reference);
-    void setOnCommit(Consumer<CommitDescriptor> onCommit);
-    void setOnNode(Runnable onNode);
+
+    public static <U, V> Pair of(U fst, V snd) {
+        return new Pair(fst, snd);
+    }
 }

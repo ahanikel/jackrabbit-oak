@@ -197,7 +197,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
 
                 final String sNode = read(uuid);
                 try {
-                    final ZeroMQNodeState ret = ZeroMQNodeState.deSerialise(this, sNode);
+                    final ZeroMQNodeState ret = ZeroMQNodeState.deserialise(this, sNode);
                     return ret;
                 } catch (ZeroMQNodeState.ParseFailure parseFailure) {
                     if ("Node not found".equals(sNode)) {
