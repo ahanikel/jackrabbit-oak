@@ -42,7 +42,7 @@ public class HttpBackendApplication extends Application<HttpBackendConfiguration
     @Override
     public void initialize(Bootstrap<HttpBackendConfiguration> bootstrap) {
         try {
-            aggregator = new LogfileNodeStateAggregator("/Users/axel/Documents/git/kafka-docker/quickstart-diff.log");
+            aggregator = new LogfileNodeStateAggregator("/Users/axel/Documents/git/kafka-docker/quickstart-diff.log", "/tmp/backendBlobs");
             aggregatorThread = new Thread(aggregator, "NodeStateAggregator");
             aggregatorThread.setDaemon(true);
             aggregatorThread.start();

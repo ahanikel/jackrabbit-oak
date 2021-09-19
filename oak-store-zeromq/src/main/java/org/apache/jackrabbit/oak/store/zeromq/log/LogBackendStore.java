@@ -48,9 +48,18 @@ public class LogBackendStore extends ZeroMQBackendStore {
             return this;
         }
 
+
+        @Override
+        public Builder initFromEnvironment() {
+            super.initFromEnvironment();
+            logFile = System.getenv("ZEROMQ_BACKEND_LOG");
+
+            return this;
+        }
+
         @Override
         public ZeroMQBackendStore build() throws IOException {
-            withNodeStateAggregator(new LogfileNodeStateAggregator(getLogFile()));
+            withNodeStateAggregator(new LogfileNodeStateAggregator(getLogFile(), getBlobCacheDir()));
             return new LogBackendStore(this);
         }
     }

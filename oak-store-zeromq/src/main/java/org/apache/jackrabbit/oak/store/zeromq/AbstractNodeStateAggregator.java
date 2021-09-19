@@ -31,10 +31,11 @@ public abstract class AbstractNodeStateAggregator implements NodeStateAggregator
 
     protected RecordHandler recordHandler;
     protected volatile boolean caughtup;
-    protected File blobCacheDir = new File("/tmp/backendBlobs");
+    protected File blobCacheDir;
     protected volatile boolean shutDown;
 
-    public AbstractNodeStateAggregator() {
+    public AbstractNodeStateAggregator(File blobCacheDir) {
+        this.blobCacheDir = blobCacheDir;
         blobCacheDir.mkdirs();
         shutDown = false;
     }

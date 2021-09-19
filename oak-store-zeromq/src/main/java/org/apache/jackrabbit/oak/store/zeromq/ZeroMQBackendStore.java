@@ -43,12 +43,14 @@ public abstract class ZeroMQBackendStore implements BackendStore {
     public static final String ZEROMQ_READER_URL = "ZEROMQ_READER_URL";
     public static final String ZEROMQ_WRITER_URL = "ZEROMQ_WRITER_URL";
     public static final String ZEROMQ_NTHREADS   = "ZEROMQ_NTHREADS";
+    public static final String ZEROMQ_BACKEND_BLOBCACHE = "ZEROMQ_BACKEND_BLOBCACHE";
 
     public static abstract class Builder {
         private NodeStateAggregator nodeStateAggregator;
         private String readerUrl;
         private String writerUrl;
         private int nThreads;
+        private String blobCacheDir;
 
         protected Builder() {}
 
@@ -88,6 +90,15 @@ public abstract class ZeroMQBackendStore implements BackendStore {
             return this;
         }
 
+        public String getBlobCacheDir() {
+            return blobCacheDir;
+        }
+
+        public Builder withBlobCacheDir(String blobCacheDir) {
+            this.blobCacheDir = blobCacheDir;
+            return this;
+        }
+
         public abstract ZeroMQBackendStore build() throws IOException;
 
         public Builder initFromEnvironment() {
@@ -103,6 +114,10 @@ public abstract class ZeroMQBackendStore implements BackendStore {
                 nThreads = Integer.parseInt(System.getenv(ZEROMQ_NTHREADS));
             } catch (NumberFormatException e) {
                 nThreads = 4;
+            }
+            blobCacheDir = System.getenv(ZEROMQ_BACKEND_BLOBCACHE);
+            if (blobCacheDir == null) {
+                blobCacheDir = "/tmp/backendBlobs";
             }
             return this;
         }

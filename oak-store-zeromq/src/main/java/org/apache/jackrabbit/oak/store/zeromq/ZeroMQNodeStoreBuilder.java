@@ -53,7 +53,7 @@ public class ZeroMQNodeStoreBuilder {
     private boolean logNodeStates;
     private String blobCacheDir;
 
-   ZeroMQNodeStoreBuilder() {
+   public ZeroMQNodeStoreBuilder() {
        journalId = "golden";
        clusterInstances = 1;
        writeBackJournal = false;
@@ -121,6 +121,7 @@ public class ZeroMQNodeStoreBuilder {
         return this;
     }
 
+    // zeromq://<journalid>?param=value...
     public ZeroMQNodeStoreBuilder initFromURI(URI uri) {
         if (!"zeromq".equals(uri.getScheme())) {
             throw new IllegalArgumentException("Expected protocol is 'zeromq' but I got " + uri.getScheme());
@@ -184,6 +185,14 @@ public class ZeroMQNodeStoreBuilder {
         if (params.containsKey(PARAM_BACKENDREADER_URL)) {
             try {
                 setBackendReaderURL(params.get(PARAM_BACKENDREADER_URL));
+            } catch (Exception e) {
+                log.warn(e.getMessage());
+                throw new IllegalArgumentException(e);
+            }
+        }
+        if (params.containsKey(PARAM_BACKENDWRITER_URL)) {
+            try {
+                setBackendWriterURL(params.get(PARAM_BACKENDWRITER_URL));
             } catch (Exception e) {
                 log.warn(e.getMessage());
                 throw new IllegalArgumentException(e);

@@ -24,6 +24,7 @@ import org.apache.jackrabbit.oak.store.zeromq.SimpleRecordHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -35,9 +36,10 @@ public class LogfileNodeStateAggregator extends AbstractNodeStateAggregator {
 
     private final LineReader reader;
 
-    public LogfileNodeStateAggregator(String filePath) throws IOException {
+    public LogfileNodeStateAggregator(String filePath, String blobCacheDir) throws IOException {
+        super(new File(blobCacheDir));
         caughtup = false;
-        recordHandler = new SimpleRecordHandler(blobCacheDir);
+        recordHandler = new SimpleRecordHandler(this.blobCacheDir);
         final InputStreamReader inputStreamReader = new InputStreamReader(new FileInputStream(filePath));
         reader = new LineReader(inputStreamReader);
     }

@@ -27,6 +27,7 @@ import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Collection;
@@ -43,7 +44,8 @@ public class KafkaNodeStateAggregator extends AbstractNodeStateAggregator {
     private final KafkaConsumer<String, String> consumer;
     private Iterator<ConsumerRecord<String, String>> records;
 
-    public KafkaNodeStateAggregator() throws IOException {
+    public KafkaNodeStateAggregator(File blobCacheDir) throws IOException {
+        super(blobCacheDir);
         caughtup = false;
 
         // Kafka consumer
