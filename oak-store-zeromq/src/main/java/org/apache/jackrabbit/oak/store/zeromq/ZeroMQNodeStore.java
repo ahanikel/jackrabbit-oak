@@ -671,12 +671,14 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         if (!remoteReads) {
             return null;
         }
+        reference = reference.toLowerCase();
         countBlobRead();
         final InputStream ret = new ZeroMQBlobInputStream(nodeStateReader, "blob " + reference);
         return ret;
     }
 
     private boolean hasBlob(String reference) {
+        reference = reference.toLowerCase();
         ZMQ.Socket socket = nodeStateReader.get();
         socket.send("hasblob " + reference);
         socket.recvStr(); // always "E"
@@ -758,10 +760,11 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         if (reference == null) {
             return null;
         }
+        reference = reference.toLowerCase();
         final Blob ret = blobCache.get(reference);
         if (ret == null ||
-            (!reference.equals("D41D8CD98F00B204E9800998ECF8427E")
-                && ret.getReference().equals("D41D8CD98F00B204E9800998ECF8427E"))) {
+            (!reference.equals("d41d8cd98f00b204e9800998ecf8427e")
+                && ret.getReference().equals("d41d8cd98f00b204e9800998ecf8427e"))) {
             final String msg = "Blob " + reference + " not found";
             log.warn(msg);
             return null;

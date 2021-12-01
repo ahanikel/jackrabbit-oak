@@ -80,8 +80,8 @@ public class ZeroMQBlob implements Blob {
                 fos.flush();
                 fos.close();
                 is.close();
-                reference = bytesToString(new ByteArrayInputStream(md.digest()));
-                file = new File(blobCacheDir, reference);
+                reference = bytesToString(new ByteArrayInputStream(md.digest())).toLowerCase();
+                file = getFileForUuid(blobCacheDir, reference);
                 synchronized (ZeroMQBlob.class) {
                     if (file.exists()) {
                         out.delete();
@@ -111,7 +111,7 @@ public class ZeroMQBlob implements Blob {
     */
     @Nullable
     public static ZeroMQBlob newInstance(File blobCacheDir, String reference) {
-        File destFile = new File(blobCacheDir, reference);
+        File destFile = getFileForUuid(blobCacheDir, reference);
         if (destFile.exists()) {
             return new ZeroMQBlob(reference, () -> destFile);
         }
@@ -120,7 +120,7 @@ public class ZeroMQBlob implements Blob {
 
     public static ZeroMQBlob newInstance(File blobCacheDir, String reference, File f) {
         try {
-            File destFile = new File(blobCacheDir, reference);
+            File destFile = getFileForUuid(blobCacheDir, reference);
             synchronized (ZeroMQBlob.class) {
                 if (destFile.exists()) {
                     f.delete();
@@ -149,6 +149,20 @@ public class ZeroMQBlob implements Blob {
         checkNotNull(is);
         InputStreamFileSupplier fileSupplier = new InputStreamFileSupplier(blobCacheDir, is);
         return new ZeroMQBlob(fileSupplier.getReference(), fileSupplier);
+    }
+
+    private static File getFileForUuid(File blobCacheDir, String uuid) {
+        uuid = uuid.toLowerCase();
+        final StringBuilder dirName = new StringBuilder();
+        dirName
+            .append(uuid.substring(0, 2))
+            .append('/')
+            .append(uuid.substring(2, 4))
+            .append('/')
+            .append(uuid.substring(4, 6));
+        final File dir = new File(blobCacheDir, dirName.toString());
+        dir.mkdirs();
+        return new File(dir, uuid);
     }
 
     @Override

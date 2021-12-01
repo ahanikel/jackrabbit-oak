@@ -109,21 +109,27 @@ public class SimpleBlobStore implements BlobStore {
     @Override
     public void putBytes(String uuid, byte[] bytes) throws IOException {
         try (OutputStream os = getOutputStream(uuid)) {
-            os.write(bytes);
+            if (os != null) {
+                os.write(bytes);
+            }
         }
     }
 
     @Override
     public void putString(String uuid, String string) throws IOException {
         try (OutputStream os = getOutputStream(uuid)) {
-            os.write(string.getBytes());
+            if (os != null) {
+                os.write(string.getBytes());
+            }
         }
     }
 
     @Override
     public void putInputStream(String uuid, InputStream is) throws IOException {
         try (OutputStream os = getOutputStream(uuid)) {
-            IOUtils.copy(is, os);
+            if (os != null) {
+                IOUtils.copy(is, os);
+            }
         }
     }
 
@@ -137,7 +143,7 @@ public class SimpleBlobStore implements BlobStore {
 
     @Override
     public long size() {
-        return blobDir.list().length - 1;
+        return 0;
     }
 
     private File getFileForUuid(String uuid) {
@@ -154,6 +160,11 @@ public class SimpleBlobStore implements BlobStore {
     }
 
     private OutputStream getOutputStream(String uuid) throws FileNotFoundException {
+        final File outputFile = getFileForUuid(uuid);
+        // TODO: write to temp file first
+        if (outputFile.exists()) {
+            return null;
+        }
         return new FileOutputStream(getFileForUuid(uuid));
     }
 }
