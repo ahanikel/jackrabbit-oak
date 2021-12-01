@@ -42,6 +42,7 @@ import org.apache.jackrabbit.oak.spi.descriptors.GenericDescriptors;
 import org.apache.jackrabbit.oak.spi.state.ConflictAnnotatingRebaseDiff;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
+import org.apache.jackrabbit.oak.spi.state.NodeStateDiff;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
 import org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardExecutor;
 import org.jetbrains.annotations.NotNull;
@@ -126,6 +127,10 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
     final Object mergeRootMonitor = new Object();
     final Object checkpointMonitor = new Object();
     final Object writeMonitor = new Object();
+    volatile String expectedRoot = null;
+
+    private Thread logProcessor;
+    private ZMQ.Socket journalSocket;
 
     private volatile String journalRoot;
     private volatile String checkpointRoot;
@@ -151,7 +156,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
     }
 
     ZeroMQNodeStore(ZeroMQNodeStoreBuilder builder) {
-        configure(builder.getJournalId(), builder.isWriteBackJournal(), builder.isWriteBackNodes(), builder.isRemoteReads(), builder.getInitJournal(), builder.getBackendReaderURL(), builder.getBackendWriterURL(), builder.isLogNodeStates(), builder.getBlobCacheDir());
+        configure(builder.getJournalId(), builder.isWriteBackJournal(), builder.isWriteBackNodes(), builder.isRemoteReads(), builder.getInitJournal(), builder.getBackendReaderURL(), builder.getBackendWriterURL(), builder.getJournalSocketURL(), builder.isLogNodeStates(), builder.getBlobCacheDir());
     }
 
     private void configure(
@@ -162,6 +167,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         String initJournal,
         String backendReaderURL,
         String backendWriterURL,
+        String journalSocketUrl,
         boolean logNodeStates,
         String blobCacheDir) {
 
@@ -224,6 +230,53 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
                     return null;
                 }
             });
+            logProcessor = new Thread("ZeroMQ Log Processor") {
+                public void run() {
+                    journalSocket = new ZeroMQSocketProvider(journalSocketUrl, context, SocketType.SUB).get();
+                    journalSocket.subscribe(journalId);
+                    while (!Thread.currentThread().isInterrupted()) {
+                        try {
+                            final String journalId = journalSocket.recvStr();
+                            // this test is necessary because the subscription only matches
+                            // the beginning of the string
+                            // e.g. golden-checkpoints matches, too.
+                            if (!journalId.equals(ZeroMQNodeStore.this.journalId)) {
+                                continue;
+                            }
+                            final String newUuid = journalSocket.recvStr();
+                            final String oldUuid = journalSocket.recvStr();
+                            log.info("Received {} {} ({})", journalId, newUuid, oldUuid);
+                            if (oldUuid.equals(journalRoot)) {
+                                journalRoot = newUuid;
+                            } else {
+                                try {
+                                    final NodeState after = readNodeState(newUuid);
+                                    final NodeState before = readNodeState(oldUuid);
+                                    final NodeBuilder builder = readNodeState(journalRoot).builder();
+                                    // TODO: when does a conflict lead to a CommitFailedException?
+                                    final NodeStateDiff diff = new ConflictAnnotatingRebaseDiff(builder);
+                                    after.compareAgainstBaseState(before, diff);
+                                    final ZeroMQNodeState newRoot = (ZeroMQNodeState) builder.getNodeState();
+                                    journalRoot = newRoot.getUuid();
+                                } catch (Throwable e) {
+                                }
+                            }
+                            if (expectedRoot != null && expectedRoot.equals(newUuid)) {
+                                log.info("Found our commit {}", newUuid);
+                                synchronized (expectedRoot) {
+                                    expectedRoot.notify();
+                                }
+                            }
+                        } catch (Throwable t) {
+                            try {
+                                Thread.sleep(100);
+                            } catch (InterruptedException e) {
+                            }
+                        }
+                    }
+                }
+            };
+            logProcessor.start();
         } else {
             final Map<String, ZeroMQNodeState> store = new ConcurrentHashMap<>(1000000);
             nodeStateCache = new NodeStateMemoryStore(store);
@@ -263,7 +316,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         // TODO: configure using OSGi config
         final ZeroMQNodeStoreBuilder builder = new ZeroMQNodeStoreBuilder();
         builder.initFromEnvironment();
-        configure(builder.getJournalId(), builder.isWriteBackJournal(), builder.isWriteBackNodes(), builder.isRemoteReads(), builder.getInitJournal(), builder.getBackendReaderURL(), builder.getBackendWriterURL(), builder.isLogNodeStates(), builder.getBlobCacheDir());
+        configure(builder.getJournalId(), builder.isWriteBackJournal(), builder.isWriteBackNodes(), builder.isRemoteReads(), builder.getInitJournal(), builder.getBackendReaderURL(), builder.getBackendWriterURL(), builder.getJournalSocketURL(), builder.isLogNodeStates(), builder.getBlobCacheDir());
 
         init();
         whiteboard = new OsgiWhiteboard(ctx.getBundleContext());
@@ -324,6 +377,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         builder.setChildNode("blobs");
         final NodeState newSuperRoot = builder.getNodeState();
         final ZeroMQNodeState zmqNewSuperRoot = (ZeroMQNodeState) newSuperRoot;
+        journalRoot = emptyNode.getUuid();
         setRoot(zmqNewSuperRoot.getUuid(), emptyNode.getUuid());
         setCheckpointRoot(emptyNode.getUuid());
     }
@@ -412,8 +466,16 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     private void setRoot(String uuid, String olduuid) {
         if (writeBackJournal) {
-            journalRoot = uuid;
             setRootRemote(null, uuid, olduuid);
+            expectedRoot = uuid;
+            synchronized (expectedRoot) {
+                try {
+                    expectedRoot.wait();
+                    expectedRoot = null;
+                } catch (InterruptedException e) {
+                    throw new IllegalStateException(e);
+                }
+            }
         }
     }
 

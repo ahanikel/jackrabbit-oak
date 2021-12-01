@@ -39,7 +39,7 @@ public class KafkaBackendStore extends ZeroMQBackendStore {
     public static class Builder extends ZeroMQBackendStore.Builder {
         @Override
         public ZeroMQBackendStore build() throws IOException {
-            withNodeStateAggregator(new KafkaNodeStateAggregator(new File(getBlobCacheDir())));
+            withNodeStateAggregator(new KafkaNodeStateAggregator(new File(getBlobCacheDir()), getJournalUrl()));
             return new KafkaBackendStore(this);
         }
     }

@@ -44,7 +44,7 @@ public class KafkaNodeStateAggregator extends AbstractNodeStateAggregator {
     private final KafkaConsumer<String, String> consumer;
     private Iterator<ConsumerRecord<String, String>> records;
 
-    public KafkaNodeStateAggregator(File blobCacheDir) throws IOException {
+    public KafkaNodeStateAggregator(File blobCacheDir, String journalUrl) throws IOException {
         super(blobCacheDir);
         caughtup = false;
 
@@ -60,7 +60,7 @@ public class KafkaNodeStateAggregator extends AbstractNodeStateAggregator {
         consumer = new KafkaConsumer<>(props);
         consumer.subscribe(Collections.singletonList(TOPIC), new HandleRebalance());
         records = null;
-        recordHandler = new SimpleRecordHandler(blobCacheDir);
+        recordHandler = new SimpleRecordHandler(blobCacheDir, journalUrl);
         recordHandler.setOnCommit((commitDescriptor) -> {
             try {
                 // TODO: this is quite expensive, perhaps we can commit every second or so instead of

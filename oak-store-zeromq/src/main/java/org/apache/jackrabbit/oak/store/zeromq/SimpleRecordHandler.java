@@ -23,6 +23,9 @@ import com.google.common.cache.CacheBuilder;
 import org.apache.jackrabbit.oak.api.Blob;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.zeromq.SocketType;
+import org.zeromq.ZContext;
+import org.zeromq.ZMQ;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -93,8 +96,9 @@ public class SimpleRecordHandler implements RecordHandler {
     private final Map<String, SimpleNodeState> nodeStates;
     private final Map<String, CurrentBlob> currentBlobMap;
     private final Cache<String, SimpleNodeState> cache;
+    private final ZMQ.Socket journalPublisher;
 
-    public SimpleRecordHandler(File blobDir) throws IOException {
+    public SimpleRecordHandler(File blobDir, String journalUrl) throws IOException {
         this.blobDir = blobDir;
         this.heads = new ConcurrentHashMap<>();
         this.checkpoints = new ConcurrentHashMap<>();
@@ -102,6 +106,13 @@ public class SimpleRecordHandler implements RecordHandler {
         nodeStates = new HashMap<>();
         currentBlobMap = new HashMap<>();
         cache = CacheBuilder.newBuilder().maximumSize(1000).build();
+        if (journalUrl != null) {
+            final ZContext context = new ZContext();
+            journalPublisher = context.createSocket(SocketType.PUB);
+            journalPublisher.bind(journalUrl);
+        } else {
+            journalPublisher = null;
+        }
     }
 
     public void setOnCommit(Consumer<CommitDescriptor> onCommit) {
@@ -359,13 +370,14 @@ public class SimpleRecordHandler implements RecordHandler {
                 if (expected == null) {
                     expected = ZeroMQEmptyNodeState.UUID_NULL.toString();
                 }
-                if (oldHead.equals(expected)) {
-                    heads.put(journalId, head);
-                    if (onCommit != null) {
-                        onCommit.accept(new CommitDescriptor(journalId));
-                    }
-                } else {
-                    log.info("Skipping new head for journal {} because expected previous head {} does not match the current head {}", journalId, expected, oldHead);
+                heads.put(journalId, head);
+                if (journalPublisher != null) {
+                    journalPublisher.sendMore(journalId);
+                    journalPublisher.sendMore(head);
+                    journalPublisher.send(oldHead);
+                }
+                if (onCommit != null) {
+                    onCommit.accept(new CommitDescriptor(journalId));
                 }
                 break;
             }

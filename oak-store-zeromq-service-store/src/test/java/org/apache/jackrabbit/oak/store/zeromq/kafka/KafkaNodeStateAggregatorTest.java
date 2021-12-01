@@ -58,7 +58,7 @@ public class KafkaNodeStateAggregatorTest {
     @Test
     public void testAggregator() throws IOException {
         final File blobCacheDir = Files.createTempDir();
-        RecordHandler recordHandler = new SimpleRecordHandler(blobCacheDir);
+        RecordHandler recordHandler = new SimpleRecordHandler(blobCacheDir, null);
         for (String[] rec : consumerRecords) {
             recordHandler.handleRecord(rec[0], rec[1], rec[2]);
         }
@@ -81,7 +81,7 @@ public class KafkaNodeStateAggregatorTest {
     @Ignore("Just for manual debugging")
     public void testDebug() throws IOException {
         final File blobCacheDir = Files.createTempDir();
-        final RecordHandler recordHandler = new SimpleRecordHandler(blobCacheDir);
+        final RecordHandler recordHandler = new SimpleRecordHandler(blobCacheDir, null);
         //final LineReader r = new LineReader(new FileReader("/var/folders/nr/scf5thc9157cz730xynsnh140000gp/T/logFile-1605835284401988811.log"));
         final LineReader r = new LineReader(new FileReader("/tmp/quickstart.log"));
         for (String line = r.readLine(); line != null; line = r.readLine()) {

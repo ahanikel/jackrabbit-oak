@@ -42,6 +42,7 @@ public abstract class ZeroMQBackendStore implements BackendStore {
     public static final Logger log = LoggerFactory.getLogger(ZeroMQBackendStore.class);
     public static final String ZEROMQ_READER_URL = "ZEROMQ_READER_URL";
     public static final String ZEROMQ_WRITER_URL = "ZEROMQ_WRITER_URL";
+    public static final String ZEROMQ_JOURNAL_URL = "ZEROMQ_JOURNAL_URL";
     public static final String ZEROMQ_NTHREADS   = "ZEROMQ_NTHREADS";
     public static final String ZEROMQ_BACKEND_BLOBCACHE = "ZEROMQ_BACKEND_BLOBCACHE";
 
@@ -49,6 +50,7 @@ public abstract class ZeroMQBackendStore implements BackendStore {
         private NodeStateAggregator nodeStateAggregator;
         private String readerUrl;
         private String writerUrl;
+        private String journalUrl;
         private int nThreads;
         private String blobCacheDir;
 
@@ -81,6 +83,15 @@ public abstract class ZeroMQBackendStore implements BackendStore {
             return this;
         }
 
+        public String getJournalUrl() {
+            return journalUrl;
+        }
+
+        public Builder withJournalUrl(String journalUrl) {
+            this.journalUrl = journalUrl;
+            return this;
+        }
+
         public int getNumThreads() {
             return nThreads;
         }
@@ -109,6 +120,10 @@ public abstract class ZeroMQBackendStore implements BackendStore {
             writerUrl = System.getenv(ZEROMQ_WRITER_URL);
             if (writerUrl == null) {
                 writerUrl = "tcp://*:8001";
+            }
+            journalUrl = System.getenv(ZEROMQ_JOURNAL_URL);
+            if (journalUrl == null) {
+                journalUrl = "tcp://*:9000";
             }
             try {
                 nThreads = Integer.parseInt(System.getenv(ZEROMQ_NTHREADS));

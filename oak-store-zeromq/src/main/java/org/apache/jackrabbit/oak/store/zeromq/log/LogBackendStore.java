@@ -59,7 +59,7 @@ public class LogBackendStore extends ZeroMQBackendStore {
 
         @Override
         public ZeroMQBackendStore build() throws IOException {
-            withNodeStateAggregator(new LogfileNodeStateAggregator(getLogFile(), getBlobCacheDir()));
+            withNodeStateAggregator(new LogfileNodeStateAggregator(getLogFile(), getBlobCacheDir(), getJournalUrl()));
             return new LogBackendStore(this);
         }
     }

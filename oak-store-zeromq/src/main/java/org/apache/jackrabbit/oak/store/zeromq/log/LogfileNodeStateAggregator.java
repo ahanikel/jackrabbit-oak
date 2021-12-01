@@ -36,10 +36,10 @@ public class LogfileNodeStateAggregator extends AbstractNodeStateAggregator {
 
     private final LineReader reader;
 
-    public LogfileNodeStateAggregator(String filePath, String blobCacheDir) throws IOException {
+    public LogfileNodeStateAggregator(String filePath, String blobCacheDir, String journalUrl) throws IOException {
         super(new File(blobCacheDir));
         caughtup = false;
-        recordHandler = new SimpleRecordHandler(this.blobCacheDir);
+        recordHandler = new SimpleRecordHandler(this.blobCacheDir, journalUrl);
         final InputStreamReader inputStreamReader = new InputStreamReader(new FileInputStream(filePath));
         reader = new LineReader(inputStreamReader);
     }
