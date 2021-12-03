@@ -210,11 +210,17 @@ public abstract class ZeroMQBackendStore implements BackendStore {
         try {
             msg = socket.recvStr();
         }  catch (ZMQException e) {
+            log.error(e.toString());
             socket.send("");
             return;
         }
         if (msg == null) {
             return; // timeout
+        }
+        if ("".equals(msg)) {
+            // out-of-line confirmation
+            socket.send("");
+            return;
         }
         String ret = null;
 
@@ -426,9 +432,6 @@ public abstract class ZeroMQBackendStore implements BackendStore {
                             requestRouter.sendMore("");
                             requestRouter.sendMore(verb);
                             requestRouter.send(payload);
-                            workerRouter.sendMore(workerId);
-                            workerRouter.sendMore(""); // delimiter
-                            workerRouter.send(""); // confirm
                             break;
                         case "E":
                             requestRouter.sendMore(requestId);
