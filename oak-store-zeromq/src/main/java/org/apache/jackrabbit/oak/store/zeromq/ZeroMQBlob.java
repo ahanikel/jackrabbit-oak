@@ -1,5 +1,6 @@
 package org.apache.jackrabbit.oak.store.zeromq;
 
+import com.google.common.primitives.Longs;
 import org.apache.jackrabbit.oak.api.Blob;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -15,6 +16,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.MessageDigest;
+import java.util.Arrays;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -80,7 +83,7 @@ public class ZeroMQBlob implements Blob {
                 fos.flush();
                 fos.close();
                 is.close();
-                reference = bytesToString(new ByteArrayInputStream(md.digest())).toLowerCase();
+                reference = uuidFromBytes(md.digest());
                 file = getFileForUuid(blobCacheDir, reference);
                 synchronized (ZeroMQBlob.class) {
                     if (file.exists()) {
@@ -187,22 +190,9 @@ public class ZeroMQBlob implements Blob {
         return this.reference;
     }
 
-    private static void appendInputStream(StringBuilder sb, InputStream is) {
-        final char[] hex = "0123456789ABCDEF".toCharArray();
-        int b;
-        try {
-            while ((b = is.read()) >= 0) {
-                sb.append(hex[b >> 4]);
-                sb.append(hex[b & 0x0f]);
-            }
-        } catch (IOException ex) {
-            throw new IllegalStateException(ex);
-        }
-    }
-
-    private static String bytesToString(InputStream is) {
-        final StringBuilder sb = new StringBuilder();
-        appendInputStream(sb, is);
-        return sb.toString();
+    private static String uuidFromBytes(byte[] bytes) {
+        final long msb = Longs.fromByteArray(Arrays.copyOfRange(bytes, 0, 8));
+        final long lsb = Longs.fromByteArray(Arrays.copyOfRange(bytes, 8, 16));
+        return new UUID(msb, lsb).toString();
     }
 }
