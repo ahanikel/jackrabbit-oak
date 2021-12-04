@@ -353,7 +353,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         checkpointRoot = readCPRootRemote();
         log.info("Journal root initialised with {}", uuid);
         journalRoot = uuid;
-        if ("undefined".equals(uuid) || ZeroMQEmptyNodeState.UUID_NULL.toString().equals(uuid)) {
+        if (ZeroMQEmptyNodeState.UUID_NULL.toString().equals(uuid)) {
             reset();
         }
         changeDispatcher = new ChangeDispatcher(getRoot());
