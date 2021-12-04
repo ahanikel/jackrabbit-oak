@@ -153,16 +153,7 @@ public class ZeroMQBlob implements Blob {
 
     private static File getFileForUuid(File blobCacheDir, String uuid) {
         uuid = uuid.toLowerCase();
-        final StringBuilder dirName = new StringBuilder();
-        dirName
-            .append(uuid.substring(0, 2))
-            .append('/')
-            .append(uuid.substring(2, 4))
-            .append('/')
-            .append(uuid.substring(4, 6));
-        final File dir = new File(blobCacheDir, dirName.toString());
-        dir.mkdirs();
-        return new File(dir, uuid);
+        return new File(blobCacheDir, uuid);
     }
 
     @Override

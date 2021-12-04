@@ -147,16 +147,7 @@ public class SimpleBlobStore implements BlobStore {
     }
 
     private File getFileForUuid(String uuid) {
-        final StringBuilder dirName = new StringBuilder();
-        dirName
-            .append(uuid.substring(0, 2))
-            .append('/')
-            .append(uuid.substring(2, 4))
-            .append('/')
-            .append(uuid.substring(4, 6));
-        final File dir = new File(blobDir, dirName.toString());
-        dir.mkdirs();
-        return new File(dir, uuid);
+        return new File(blobDir, uuid);
     }
 
     private OutputStream getOutputStream(String uuid) throws FileNotFoundException {
