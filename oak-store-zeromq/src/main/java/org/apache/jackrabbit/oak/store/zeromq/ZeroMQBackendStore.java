@@ -171,9 +171,8 @@ public abstract class ZeroMQBackendStore implements BackendStore {
             threadPool.execute(() -> {
                 log.info(Thread.currentThread().getName());
                 final ZMQ.Socket socket = context.createSocket(SocketType.REQ);
-                socket.setIdentity(("" + Thread.currentThread().getId()).getBytes());
+                socket.setIdentity(("reader-worker-" + Long.toHexString(Thread.currentThread().getId())).getBytes());
                 socket.connect("inproc://readerBackend");
-                socket.setReceiveTimeOut(1000);
                 socket.sendMore("H");
                 socket.send("");
                 while (!Thread.currentThread().isInterrupted()) {
