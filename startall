@@ -8,15 +8,15 @@ export writeBackNodes=true
 export remoteReads=true
 export customBlobStore=false
 export backendPrefix=localhost
-export blobendPrefix=localhost
-export journalPrefix=localhost
 export logNodeStates=false
 export blobCacheDir=/tmp/blobCacheDir
+export ZEROMQ_LEADER=true
 
 ./killaem
-#cp oak-store-zeromq/target/oak-store-zeromq-1.30.0.jar /Users/axel/Downloads/install.zeromq/15/
+rm -rf ~/Downloads/crx-quickstart
+rm -rf /tmp/blobs
+rm -rf ~/Downloads/blobs
 rm -rf /tmp/blobCacheDir
+rm -f /tmp/zmqBlob* || true
 
-(cd /Users/axel/Downloads &&
-    rm -rf crx-quickstart && rm -rf /tmp/blobs && rm -rf /Users/axel/Downloads/blobs && (rm -f /tmp/zmqBlob* || true) && mkdir crx-quickstart && cp -R install.zeromq crx-quickstart/install)
-(cd /Users/axel/Downloads && echo admin | java -Xmx8g '-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005' -Doak.queryLimitReads=10000000 -jar cq-quickstart-6.6.0-1.38.0.nosegment.jar -nofork -nobrowser -r author,crx3,crx3tar-nofds & )
+(cd /Users/axel/Downloads && echo admin | java -Xmx16g '-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005' -Doak.queryLimitReads=10000000 -jar cq-quickstart-6.6.0-1.38.0.nosegment.jar -nofork -nobrowser -r author,crx3,crx3tar-nofds & )
