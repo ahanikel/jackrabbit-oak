@@ -466,10 +466,10 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     private void setRoot(String uuid, String olduuid) {
         if (writeBackJournal) {
-            setRootRemote(null, uuid, olduuid);
-            expectedRoot = uuid;
             synchronized (expectedRoot) {
                 try {
+                    expectedRoot = uuid;
+                    setRootRemote(null, uuid, olduuid);
                     expectedRoot.wait();
                     expectedRoot = null;
                 } catch (InterruptedException e) {
