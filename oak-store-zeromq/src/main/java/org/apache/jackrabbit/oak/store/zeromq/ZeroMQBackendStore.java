@@ -33,6 +33,7 @@ import java.util.LinkedList;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Stack;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
@@ -214,10 +215,12 @@ public abstract class ZeroMQBackendStore implements BackendStore {
             return;
         }
         if (msg == null) {
+            log.warn("Timeout occurred on reader socket.");
             return; // timeout
         }
         if ("".equals(msg)) {
             // out-of-line confirmation
+            log.warn("Out-of-line confirmation occurred on reader socket.");
             socket.send("");
             return;
         }
@@ -243,6 +246,9 @@ public abstract class ZeroMQBackendStore implements BackendStore {
                         socket.send(buffer, 0, nBytes, 0);
                         do {
                             ret = socket.recvStr();
+                            if (ret == null) {
+                                log.warn("Timeout occurred on reader socket while waiting for confirmation");
+                            }
                         } while (ret == null);
                     }
                 } catch (Exception ioe) {
@@ -337,8 +343,8 @@ public abstract class ZeroMQBackendStore implements BackendStore {
         private ZMQ.Socket requestRouter;
         private ZMQ.Socket workerRouter;
         private final Stack<byte[]> available = new Stack<>();
-        private final Map<byte[], byte[]> busyByWorkerId = new HashMap<>();
-        private final Map<byte[], byte[]> busyByRequestId = new HashMap<>();
+        private final Map<byte[], byte[]> busyByWorkerId = new ConcurrentHashMap<>();
+        private final Map<byte[], byte[]> busyByRequestId = new ConcurrentHashMap<>();
         private ZMQ.Poller poller;
         private Queue<Pair<byte[], byte[]>> pending = new LinkedList<>();
 
@@ -363,7 +369,6 @@ public abstract class ZeroMQBackendStore implements BackendStore {
             workerRouter.bind(workerBindAddr);
             loop: while (!shutDown) {
                 try {
-                    handlePendingRequests();
                     poller.poll(100);
                     if (poller.pollin(0)) {
                         handleIncomingRequest();
@@ -391,27 +396,20 @@ public abstract class ZeroMQBackendStore implements BackendStore {
             byte[] requestId = requestRouter.recv(); // requester identity
             requestRouter.recvStr();                    // delimiter
             byte[] payload = requestRouter.recv();
-            pending.add(Pair.of(requestId, payload));
-        }
-
-        private void handlePendingRequests() {
-            while (!pending.isEmpty()) {
-                Pair<byte[], byte[]> request = pending.peek();
-                byte[] workerId = busyByRequestId.get(request.fst);
-                if (workerId == null) {
+            byte[] workerId = busyByRequestId.get(requestId);
+            if (workerId == null) {
+                synchronized (available) {
                     if (available.isEmpty()) {
-                        return;
-                    } else {
-                        workerId = available.pop();
-                        busyByWorkerId.put(workerId, request.fst);
-                        busyByRequestId.put(request.fst, workerId);
+                        available.wait();
                     }
+                    workerId = available.pop();
+                    busyByWorkerId.put(workerId, requestId);
+                    busyByRequestId.put(requestId, workerId);
                 }
-                pending.remove();
-                workerRouter.sendMore(workerId);
-                workerRouter.sendMore("");
-                workerRouter.send(request.snd);
             }
+            workerRouter.sendMore(workerId);
+            workerRouter.sendMore("");
+            workerRouter.send(payload);
         }
 
         private void handleWorkerRequest() {
@@ -439,21 +437,29 @@ public abstract class ZeroMQBackendStore implements BackendStore {
                             requestRouter.send(payload);
                             busyByWorkerId.remove(workerId);
                             busyByRequestId.remove(requestId);
-                            available.push(workerId);
+                            synchronized (available) {
+                                available.push(workerId);
+                                available.notify();
+                            }
                             break;
                         default:
                             log.error("Unknown worker verb {}", verb);
                     }
                     return;
                 }
-                if (available.contains(workerId)) {
-                    log.error("Spurious message from available worker: {}: {}", verb, payload);
-                    return;
+                synchronized (available) {
+                    if (available.contains(workerId)) {
+                        log.error("Spurious message from available worker: {}: {}", verb, payload);
+                        return;
+                    }
                 }
                 switch (verb) {
                     case "H":
                         log.info("New worker registered: {}", workerId);
-                        available.push(workerId);
+                        synchronized (available) {
+                            available.push(workerId);
+                            available.notify();
+                        }
                         break;
                     default:
                         log.error("Expected Hello message from new worker but got {}: {}", verb, payload);
