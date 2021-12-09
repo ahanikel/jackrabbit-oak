@@ -455,7 +455,7 @@ public abstract class ZeroMQBackendStore implements BackendStore {
                 }
                 switch (verb) {
                     case "H":
-                        log.info("New worker registered: {}", workerId);
+                        log.info("New worker registered: {}", new String(workerId));
                         synchronized (available) {
                             available.push(workerId);
                             available.notify();
