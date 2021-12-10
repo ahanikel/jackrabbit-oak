@@ -31,14 +31,14 @@ public class ZeroMQBlobInputStream extends InputStream {
     private int max = 0;
     private volatile boolean init = false;
     private volatile boolean error = false;
-    private final Supplier<ZMQ.Socket> blobReader;
-    private ZMQ.Socket reader;
+    private final Supplier<ZeroMQSocketProvider.Socket> blobReader;
+    private ZeroMQSocketProvider.Socket reader;
     private final String reference;
     private String verb = "";
 
     private static final Logger log = LoggerFactory.getLogger(ZeroMQBlobInputStream.class.getName());
 
-    ZeroMQBlobInputStream(Supplier<ZMQ.Socket> blobReader, String reference) {
+    ZeroMQBlobInputStream(Supplier<ZeroMQSocketProvider.Socket> blobReader, String reference) {
         this.blobReader = blobReader;
         this.reference = reference;
     }
@@ -88,6 +88,9 @@ public class ZeroMQBlobInputStream extends InputStream {
                 log.warn("Timeout while reading blob {}", reference);
             }
         } while (verb == null);
+        if (verb.equals("F")) {
+            throw new IllegalStateException("Got F");
+        }
         max = reader.recv(buffer, 0, buffer.length, 0);
         if (verb.equals("C")) {
             reader.send("");

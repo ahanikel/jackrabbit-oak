@@ -232,7 +232,8 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
             });
             logProcessor = new Thread("ZeroMQ Log Processor") {
                 public void run() {
-                    journalSocket = new ZeroMQSocketProvider(journalSocketUrl, context, SocketType.SUB).get();
+                    journalSocket = context.createSocket(SocketType.SUB);
+                    journalSocket.connect(journalSocketUrl);
                     journalSocket.subscribe(journalId);
                     while (!Thread.currentThread().isInterrupted()) {
                         try {
@@ -494,7 +495,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         while (true) {
             synchronized (mergeRootMonitor) {
                 try {
-                    final ZMQ.Socket socket = nodeStateWriter.get();
+                    final ZeroMQSocketProvider.Socket socket = nodeStateWriter.get();
                     socket.send(getUUThreadId() + " "
                                     + "journal" + " " + journalId + (type == null ? "" : "-" + type) + " "
                                     + uuid + " "
@@ -577,7 +578,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         }
         countNodeRead();
         StringBuilder msg;
-        final ZMQ.Socket socket = nodeStateReader.get();
+        final ZeroMQSocketProvider.Socket socket = nodeStateReader.get();
         while (true) {
             msg = new StringBuilder();
             try {
@@ -612,7 +613,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
     private void write(String event) {
         if (writeBackNodes) {
             try {
-                final ZMQ.Socket writer = nodeStateWriter.get();
+                final ZeroMQSocketProvider.Socket writer = nodeStateWriter.get();
                 writer.send(getUUThreadId() + " " + event);
                 log.trace(writer.recvStr()); // ignore
             } catch (Throwable t) {
@@ -682,7 +683,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     private boolean hasBlob(String reference) {
         reference = reference.toLowerCase();
-        ZMQ.Socket socket = nodeStateReader.get();
+        ZeroMQSocketProvider.Socket socket = nodeStateReader.get();
         socket.send("hasblob " + reference);
         socket.recvStr(); // always "E"
         final String ret = socket.recvStr();

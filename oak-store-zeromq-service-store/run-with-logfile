@@ -18,7 +18,7 @@ jar=~/Documents/git/jackrabbit-oak/oak-store-zeromq-service-store/target/oak-sto
 jarOpts="log test-diff-1.38.0.log"
 #jarOpts="server httpbackend.yaml"
 
-rm -rf /tmp/backendBlobs
+#rm -rf /tmp/backendBlobs
 
 ps auxww | grep java | grep oak-store-zeromq-service-store | awk '{print $2}' | xargs kill -9
 sleep 1

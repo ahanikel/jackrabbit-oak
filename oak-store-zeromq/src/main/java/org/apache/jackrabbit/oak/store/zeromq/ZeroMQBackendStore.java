@@ -46,6 +46,7 @@ public abstract class ZeroMQBackendStore implements BackendStore {
     public static final String ZEROMQ_JOURNAL_URL = "ZEROMQ_JOURNAL_URL";
     public static final String ZEROMQ_NTHREADS   = "ZEROMQ_NTHREADS";
     public static final String ZEROMQ_BACKEND_BLOBCACHE = "ZEROMQ_BACKEND_BLOBCACHE";
+    private static final int RECV_TIMEOUT = 10000;
 
     public static abstract class Builder {
         private NodeStateAggregator nodeStateAggregator;
@@ -171,16 +172,24 @@ public abstract class ZeroMQBackendStore implements BackendStore {
         for (int nThread = 0; nThread < builder.getNumThreads(); ++nThread) {
             threadPool.execute(() -> {
                 log.info(Thread.currentThread().getName());
-                final ZMQ.Socket socket = context.createSocket(SocketType.REQ);
+                ZMQ.Socket socket = context.createSocket(SocketType.REQ);
                 socket.setIdentity(("reader-worker-" + Long.toHexString(Thread.currentThread().getId())).getBytes());
                 socket.connect("inproc://readerBackend");
+                socket.setReceiveTimeOut(RECV_TIMEOUT);
                 socket.sendMore("H");
                 socket.send("");
                 while (!Thread.currentThread().isInterrupted()) {
                     try {
                         handleReaderService(socket);
-                    } catch (Throwable t) {
-                        log.error(t.toString());
+                    } catch (Exception e) {
+                        log.error(e.toString());
+                        socket.close();
+                        socket = context.createSocket(SocketType.REQ);
+                        socket.setIdentity(("reader-worker-" + Long.toHexString(Thread.currentThread().getId())).getBytes());
+                        socket.connect("inproc://readerBackend");
+                        socket.setReceiveTimeOut(RECV_TIMEOUT);
+                        socket.sendMore("F");
+                        socket.send("");
                     }
                 }
             });
@@ -205,72 +214,55 @@ public abstract class ZeroMQBackendStore implements BackendStore {
     }
 
     @Override
-    public void handleReaderService(ZMQ.Socket socket) {
+    public void handleReaderService(ZMQ.Socket socket) throws IOException {
         String msg;
-        try {
-            msg = socket.recvStr();
-        }  catch (ZMQException e) {
-            log.error(e.toString());
-            socket.send("");
-            return;
-        }
-        if (msg == null) {
-            log.warn("Timeout occurred on reader socket.");
-            return; // timeout
-        }
-        if ("".equals(msg)) {
-            // out-of-line confirmation
-            log.warn("Out-of-line confirmation occurred on reader socket.");
-            socket.send("");
-            return;
-        }
-        String ret = null;
+        String ret;
 
-        try {
-            if (msg.startsWith("journal ")) {
-                final String instance = msg.substring("journal ".length());
-                ret = builder.getNodeStateAggregator().getJournalHead(instance);
-            } else if (msg.startsWith("hasblob ")) {
-                final Blob blob = builder.getNodeStateAggregator().getBlob(msg.substring("hasblob ".length()));
-                ret = blob == null ? "false" : "true";
-            } else if (msg.startsWith("blob ")) {
-                byte[] buffer = new byte[1024 * 1024]; // not final because of fear it's not being GC'd
-                try {
-                    final Blob blob = builder.getNodeStateAggregator().getBlob(msg.substring("blob ".length()));
-                    if (blob == null) {
-                        throw new IllegalArgumentException(msg + " not found");
-                    }
-                    final InputStream is = blob.getNewStream();
-                    for (int nBytes = is.read(buffer); nBytes > 0; nBytes = is.read(buffer)) {
-                        socket.sendMore("C");
-                        socket.send(buffer, 0, nBytes, 0);
-                        do {
-                            ret = socket.recvStr();
-                            if (ret == null) {
-                                log.warn("Timeout occurred on reader socket while waiting for confirmation");
-                            }
-                        } while (ret == null);
-                    }
-                } catch (Exception ioe) {
-                    log.error(ioe.getMessage());
-                } finally {
-                    ret = "";
-                }
-            } else {
-                ret = builder.getNodeStateAggregator().readNodeState(msg);
-            }
-        } catch (Exception e) {
-            if (ret == null) {
-                log.error("Requested node not found: {}, exception: {}", msg, e.getMessage());
-            } else {
-                log.error(e.toString());
-            }
-        } finally {
+        msg = socket.recvStr();
+
+        if (msg == null) {
+            // timeout
+        } else if (msg.startsWith("journal ")) {
+            final String instance = msg.substring("journal ".length());
+            ret = builder.getNodeStateAggregator().getJournalHead(instance);
             socket.sendMore("E");
-            if (ret == null) {
-                ret = "";
-            }
             socket.send(ret);
+        } else if (msg.startsWith("hasblob ")) {
+            final Blob blob = builder.getNodeStateAggregator().getBlob(msg.substring("hasblob ".length()));
+            ret = blob == null ? "false" : "true";
+            socket.sendMore("E");
+            socket.send(ret);
+        } else if (msg.startsWith("blob ")) {
+            byte[] buffer = new byte[1024 * 1024]; // not final because of fear it's not being GC'd
+            final Blob blob = builder.getNodeStateAggregator().getBlob(msg.substring("blob ".length()));
+            if (blob == null) {
+                log.error("Requested blob not found: {}", msg);
+                socket.sendMore("N");
+                socket.send("");
+            } else {
+                final InputStream is = blob.getNewStream();
+                for (int nBytes = is.read(buffer); nBytes > 0; nBytes = is.read(buffer)) {
+                    socket.sendMore("C");
+                    socket.send(buffer, 0, nBytes, 0);
+                    ret = socket.recvStr();
+                    if (ret == null) {
+                        throw new IllegalStateException("Timeout while sending blob (no confirmation).");
+                    }
+                }
+            }
+        } else if (msg.equals("")) {
+            socket.sendMore("F");
+            socket.send("");
+        } else { // nodestate
+            ret = builder.getNodeStateAggregator().readNodeState(msg);
+            if (ret != null) {
+                socket.sendMore("E");
+                socket.send(ret);
+            } else {
+                log.error("Requested node not found: {}", msg);
+                socket.sendMore("N");
+                socket.send("");
+            }
         }
     }
 
@@ -409,7 +401,11 @@ public abstract class ZeroMQBackendStore implements BackendStore {
             }
             workerRouter.sendMore(workerId);
             workerRouter.sendMore("");
-            workerRouter.send(payload);
+            if (payload == null || payload.length == 0) {
+                workerRouter.send("OK");
+            } else {
+                workerRouter.send(payload);
+            }
         }
 
         private void handleWorkerRequest() {
@@ -431,6 +427,7 @@ public abstract class ZeroMQBackendStore implements BackendStore {
                             requestRouter.send(payload);
                             break;
                         case "E":
+                        case "F":
                             requestRouter.sendMore(requestId);
                             requestRouter.sendMore("");
                             requestRouter.sendMore(verb);
@@ -444,6 +441,12 @@ public abstract class ZeroMQBackendStore implements BackendStore {
                             break;
                         default:
                             log.error("Unknown worker verb {}", verb);
+                            busyByWorkerId.remove(workerId);
+                            busyByRequestId.remove(requestId);
+                            synchronized (available) {
+                                available.push(workerId);
+                                available.notify();
+                            }
                     }
                     return;
                 }
@@ -458,6 +461,15 @@ public abstract class ZeroMQBackendStore implements BackendStore {
                         log.info("New worker registered: {}", new String(workerId));
                         synchronized (available) {
                             available.push(workerId);
+                            available.notify();
+                        }
+                        break;
+                    case "F":
+                        busyByWorkerId.remove(workerId);
+                        synchronized (available) {
+                            if (!available.contains(workerId)) {
+                                available.push(workerId);
+                            }
                             available.notify();
                         }
                         break;
