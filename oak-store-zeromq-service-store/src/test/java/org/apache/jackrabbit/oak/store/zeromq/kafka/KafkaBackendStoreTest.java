@@ -41,7 +41,7 @@ public class KafkaBackendStoreTest {
 
     @Before
     public void testInit() throws IOException {
-        store = KafkaBackendStore.builder().build();
+        store = KafkaBackendStore.builder().initFromEnvironment().build();
         try {
             readerPort = Integer.parseInt(System.getenv(ZEROMQ_READER_URL));
         } catch (NumberFormatException e) {
