@@ -32,6 +32,7 @@ public class ZeroMQNodeStoreBuilder {
 
     private static final Logger log = LoggerFactory.getLogger(ZeroMQNodeStoreBuilder.class.getName());
 
+    public static final String PARAM_JOURNALID = "journalId";
     public static final String PARAM_CLUSTERINSTANCES = "clusterInstances";
     public static final String PARAM_BACKENDREADER_URL = "backendReaderURL";
     public static final String PARAM_BACKENDWRITER_URL = "backendWriterURL";
@@ -71,9 +72,16 @@ public class ZeroMQNodeStoreBuilder {
 
     public ZeroMQNodeStoreBuilder initFromEnvironment() {
         try {
-            clusterInstances = Integer.parseInt(System.getenv(PARAM_CLUSTERINSTANCES));
+            journalId = System.getenv(PARAM_JOURNALID);
         } catch (Exception e) {
             // ignore
+        }
+        if (journalId == null) {
+            journalId = "golden";
+        }
+        try {
+            clusterInstances = Integer.parseInt(System.getenv(PARAM_CLUSTERINSTANCES));
+        } catch (Exception e) {
         }
         try {
             writeBackJournal = Boolean.parseBoolean(System.getenv(PARAM_WRITEBACKJOURNAL));
