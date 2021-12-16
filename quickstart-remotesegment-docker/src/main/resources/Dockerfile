@@ -17,7 +17,7 @@ EXPOSE 4502
 EXPOSE 5005
 WORKDIR /root
 COPY ${license} ./
-COPY crx-quickstart ./crx-quickstart
+#COPY crx-quickstart ./crx-quickstart
 COPY ${slingarchive} ./
 #RUN mkdir -p crx-quickstart/install/15
 #COPY ${zeromqarchive} crx-quickstart/install/15/
