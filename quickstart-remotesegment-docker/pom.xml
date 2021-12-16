@@ -15,12 +15,12 @@
         <dkr.registry>${dockerRegistry-Host}</dkr.registry>
         <dkr.image.namespace>ahanikel</dkr.image.namespace>
         <dkr.image.name>${dkr.registry}/${dkr.image.namespace}/${project.artifactId}</dkr.image.name>
-        <quickstartdir>${HOME}/Downloads</quickstartdir>
+        <quickstartdir>${HOME}/mac/Downloads</quickstartdir>
         <quickstartfile>cq-quickstart-6.6.0-1.38.0.nosegment.jar</quickstartfile>
         <!--zeromqarchivedir>${HOME}/Documents/git/jackrabbit-oak/oak-store-zeromq/target</zeromqarchivedir-->
         <zeromqarchivedir>../oak-store-zeromq/target</zeromqarchivedir>
         <zeromqarchivefile>oak-store-zeromq-1.38.0.jar</zeromqarchivefile>
-        <licensedir>${HOME}/Downloads</licensedir>
+        <licensedir>${HOME}/mac/Downloads</licensedir>
         <licensefile>license.properties</licensefile>
     </properties>
 
@@ -40,12 +40,14 @@
                         <configuration>
                             <outputDirectory>${project.basedir}/target/docker</outputDirectory>
                             <resources>
+				    <!--
                                 <resource>
                                     <directory>${quickstartdir}</directory>
                                     <includes>
                                         <include>crx-quickstart/**</include>
                                     </includes>
                                 </resource>
+				    -->
                                 <resource>
                                     <!-- source files can use Maven variables; check the delimiter below -->
                                     <directory>${project.basedir}/src/main/resources</directory>
@@ -57,12 +59,14 @@
                                         <include>${quickstartfile}</include>
                                     </includes>
                                 </resource>
+				<!--
                                 <resource>
                                     <directory>${zeromqarchivedir}</directory>
                                     <includes>
                                         <include>${zeromqarchivefile}</include>
                                     </includes>
                                 </resource>
+				-->
                                 <resource>
                                     <directory>${licensedir}</directory>
                                     <includes>
