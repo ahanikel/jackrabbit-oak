@@ -28,6 +28,7 @@ import java.io.Closeable;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
@@ -250,6 +251,9 @@ public abstract class ZeroMQBackendStore implements BackendStore {
                     }
                 }
             }
+        } else if (msg.equals("OK")) {
+            socket.sendMore("F");
+            socket.send("");
         } else if (msg.equals("")) {
             socket.sendMore("F");
             socket.send("");
@@ -390,6 +394,10 @@ public abstract class ZeroMQBackendStore implements BackendStore {
             byte[] payload = requestRouter.recv();
             byte[] workerId = busyByRequestId.get(requestId);
             if (workerId == null) {
+                if (payload == null || payload.length == 0 || Arrays.equals(payload, "OK".getBytes())) {
+                    log.error("Confirmation message received for non-busy worker.");
+                    return;
+                }
                 synchronized (available) {
                     if (available.isEmpty()) {
                         available.wait();
@@ -428,6 +436,7 @@ public abstract class ZeroMQBackendStore implements BackendStore {
                             break;
                         case "E":
                         case "F":
+                        case "N":
                             requestRouter.sendMore(requestId);
                             requestRouter.sendMore("");
                             requestRouter.sendMore(verb);

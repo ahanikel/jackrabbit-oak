@@ -91,9 +91,12 @@ public class ZeroMQBlobInputStream extends InputStream {
         if (verb.equals("F")) {
             throw new IllegalStateException("Got F");
         }
+        if (verb.equals("N")) {
+            throw new IllegalStateException("Blob not found.");
+        }
         max = reader.recv(buffer, 0, buffer.length, 0);
         if (verb.equals("C")) {
-            reader.send("");
+            reader.send("OK");
         }
         if (max < 1) {
             log.trace("Received {}", reference);

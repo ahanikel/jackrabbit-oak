@@ -44,6 +44,7 @@ public class ZeroMQBlob implements Blob {
         private final File blobCacheDir;
         private static final ExecutorService readerThreads = Executors.newFixedThreadPool(10);
         private final CountDownLatch countDownLatch;
+        private volatile Exception exception = null;
 
         InputStreamFileSupplier(@NotNull File blobCacheDir, @NotNull InputStream is) {
             checkNotNull(blobCacheDir);
@@ -58,7 +59,11 @@ public class ZeroMQBlob implements Blob {
         public File get() {
             try {
                 countDownLatch.await();
+                if (exception != null) {
+                    throw new IllegalStateException(exception);
+                }
             } catch (InterruptedException e) {
+                throw new IllegalStateException(e);
             }
             return file;
         }
@@ -94,9 +99,10 @@ public class ZeroMQBlob implements Blob {
                 }
             } catch (Exception e) {
                 log.error(e.toString());
-                throw new IllegalStateException(e);
+                exception = e;
+            } finally {
+                countDownLatch.countDown();
             }
-            countDownLatch.countDown();
         }
 
         public String getReference() {

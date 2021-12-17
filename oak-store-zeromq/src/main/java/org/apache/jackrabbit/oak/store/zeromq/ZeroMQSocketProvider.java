@@ -90,33 +90,34 @@ public class ZeroMQSocketProvider implements Supplier<ZeroMQSocketProvider.Socke
         public byte[] recv() {
             byte[] msg = null;
             if (socket.getSocketType().equals(SocketType.REQ)) {
-                do {
-                    try {
-                        msg = socket.recv();
-                        if (msg == null) {
-                            socket.close();
-                            socket.connect(url);
-                            socket.setReceiveTimeOut(RECV_TIMEOUT);
-                            socket.send(lastMessage);
-                        }
-                    } catch (Exception e) {
-                        log.error(e.getMessage() + ". Continuing.");
-                        try {
-                            socket.close();
-                            socket.connect(url);
-                            socket.setReceiveTimeOut(RECV_TIMEOUT);
-                            socket.send(lastMessage);
-                        } catch (Exception e2) {
-                            log.error("Reusing socket did not work, throwing it away and creating a new one.");
-                            socket = context.createSocket(SocketType.REQ);
-                            socket.connect(url);
-                            socket.setReceiveTimeOut(RECV_TIMEOUT);
-                            socket.send(lastMessage);
-                        }
+                try {
+                    msg = socket.recv();
+                    if (msg == null) {
+                        socket.close();
+                        socket.connect(url);
+                        socket.setReceiveTimeOut(RECV_TIMEOUT);
+                        socket.send(lastMessage);
                     }
-                } while (msg == null);
+                } catch (Exception e) {
+                    log.error(e.getMessage() + ". Continuing.");
+                    try {
+                        socket.close();
+                        socket.connect(url);
+                        socket.setReceiveTimeOut(RECV_TIMEOUT);
+                        socket.send(lastMessage);
+                    } catch (Exception e2) {
+                        log.error("Reusing socket did not work, throwing it away and creating a new one.");
+                        socket = context.createSocket(SocketType.REQ);
+                        socket.connect(url);
+                        socket.setReceiveTimeOut(RECV_TIMEOUT);
+                        socket.send(lastMessage);
+                    }
+                }
             } else {
                 msg = socket.recv();
+            }
+            if (msg == null) {
+                log.error("Still getting no response anymore, giving up.");
             }
             return msg;
         }

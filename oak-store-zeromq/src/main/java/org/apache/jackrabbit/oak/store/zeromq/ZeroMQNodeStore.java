@@ -764,14 +764,24 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         if (reference == null) {
             return null;
         }
-        reference = reference.toLowerCase();
-        final Blob ret = blobCache.get(reference);
-        if (ret == null ||
-            (!reference.equals("d41d8cd98f00b204e9800998ecf8427e")
-                && ret.getReference().equals("d41d8cd98f00b204e9800998ecf8427e"))) {
-            final String msg = "Blob " + reference + " not found";
-            log.warn(msg);
-            return null;
+        Blob ret = null;
+        while (ret == null) {
+            try {
+                reference = reference.toLowerCase();
+                ret = blobCache.get(reference);
+                if (ret == null ||
+                    (!reference.equals("d41d8cd98f00b204e9800998ecf8427e")
+                        && ret.getReference().equals("d41d8cd98f00b204e9800998ecf8427e"))) {
+                    final String msg = "Blob " + reference + " not found";
+                    log.warn(msg);
+                    return null;
+                }
+            } catch (Exception e) {
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException interruptedException) {
+                }
+            }
         }
         return ret;
     }
