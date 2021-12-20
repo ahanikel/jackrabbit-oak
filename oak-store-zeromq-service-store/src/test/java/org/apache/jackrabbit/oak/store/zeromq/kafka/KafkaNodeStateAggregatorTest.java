@@ -28,6 +28,7 @@ import org.junit.Ignore;
 import org.junit.Test;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -64,9 +65,7 @@ public class KafkaNodeStateAggregatorTest {
         }
         Assert.assertEquals("TODO", recordHandler.readNodeState("617f9357-5dc5-0f26-8e80-ffef5c938022"));
         final byte[] hello = new byte[12];
-        final InputStream blobIs = recordHandler
-                .getBlob("8b3235b9ec9e796e0d343dded5f617a3")
-                .getNewStream();
+        final FileInputStream blobIs = recordHandler.getBlob("8b3235b9ec9e796e0d343dded5f617a3");
         int bytesRead;
         try {
             bytesRead = blobIs.read(hello);

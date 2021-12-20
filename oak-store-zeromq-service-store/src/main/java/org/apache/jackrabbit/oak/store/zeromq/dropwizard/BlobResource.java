@@ -9,6 +9,8 @@ import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
 import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.MediaType;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 
 @Path("/blob")
 @Produces(MediaType.APPLICATION_OCTET_STREAM)
@@ -21,8 +23,8 @@ public class BlobResource {
 
     @GET
     @Timed
-    public StreamRepresentation getBlob(@QueryParam("reference") String reference) {
-        final Blob ret = nodeStateAggregator.getBlob(reference);
+    public StreamRepresentation getBlob(@QueryParam("reference") String reference) throws FileNotFoundException {
+        final FileInputStream ret = nodeStateAggregator.getBlob(reference);
         return new StreamRepresentation(ret);
     }
 }

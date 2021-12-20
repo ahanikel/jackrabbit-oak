@@ -99,7 +99,7 @@ public class SimpleBlobStore implements BlobStore {
     }
 
     @Override
-    public InputStream getInputStream(String uuid) throws FileNotFoundException {
+    public FileInputStream getInputStream(String uuid) throws FileNotFoundException {
         if (uuid == null || uuid.length() < 6) {
             throw new FileNotFoundException("uuid: " + uuid);
         }
@@ -131,6 +131,11 @@ public class SimpleBlobStore implements BlobStore {
                 IOUtils.copy(is, os);
             }
         }
+    }
+
+    @Override
+    public void putTempFile(String uuid, File tempFile) {
+        tempFile.renameTo(getFileForUuid(uuid));
     }
 
     @Override

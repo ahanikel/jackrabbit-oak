@@ -21,19 +21,21 @@ import org.apache.jackrabbit.oak.commons.IOUtils;
 
 import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.core.StreamingOutput;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 
 public class StreamRepresentation implements StreamingOutput {
 
-    private final Blob blob;
+    private final FileInputStream blob;
 
-    public StreamRepresentation(Blob blob) {
+    public StreamRepresentation(FileInputStream blob) {
         this.blob = blob;
     }
 
     @Override
     public void write(OutputStream outputStream) throws IOException, WebApplicationException {
-        IOUtils.copy(blob.getNewStream(), outputStream);
+        blob.getChannel().position(0);
+        IOUtils.copy(blob, outputStream);
     }
 }

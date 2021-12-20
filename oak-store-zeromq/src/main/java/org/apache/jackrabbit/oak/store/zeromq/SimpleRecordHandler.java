@@ -20,7 +20,6 @@ package org.apache.jackrabbit.oak.store.zeromq;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
-import org.apache.jackrabbit.oak.api.Blob;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.zeromq.SocketType;
@@ -28,10 +27,11 @@ import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.io.UnsupportedEncodingException;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
@@ -47,7 +47,7 @@ public class SimpleRecordHandler implements RecordHandler {
     private static class CurrentBlob {
         private String ref;
         private File file;
-        private Blob found;
+        private FileInputStream found;
         private FileOutputStream fos;
 
         public CurrentBlob() {}
@@ -68,11 +68,11 @@ public class SimpleRecordHandler implements RecordHandler {
             this.file = file;
         }
 
-        public Blob getFound() {
+        public FileInputStream getFound() {
             return found;
         }
 
-        public void setFound(Blob found) {
+        public void setFound(FileInputStream found) {
             this.found = found;
         }
 
@@ -91,7 +91,6 @@ public class SimpleRecordHandler implements RecordHandler {
     private Runnable onNode;
     private int line = 0;
     private final Map<String, String> heads;
-    private final Map<String, String> checkpoints;
     private final SimpleBlobStore store;
     private final Map<String, SimpleNodeState> nodeStates;
     private final Map<String, CurrentBlob> currentBlobMap;
@@ -101,7 +100,6 @@ public class SimpleRecordHandler implements RecordHandler {
     public SimpleRecordHandler(File blobDir, String journalUrl) throws IOException {
         this.blobDir = blobDir;
         this.heads = new ConcurrentHashMap<>();
-        this.checkpoints = new ConcurrentHashMap<>();
         store = new SimpleBlobStore(blobDir);
         nodeStates = new HashMap<>();
         currentBlobMap = new HashMap<>();
@@ -268,25 +266,27 @@ public class SimpleRecordHandler implements RecordHandler {
                     log.error(msg);
                     throw new IllegalStateException(msg);
                 }
-                currentBlob.setFound(ZeroMQBlob.newInstance(blobDir, ref));
-                if (currentBlob.getFound() != null) {
-                    break;
-                }
-                currentBlob.setRef(ref);
-                for (int i = 0; ; ++i) {
-                    try {
-                        currentBlob.setFile(File.createTempFile("b64temp", ".dat", blobDir));
-                        currentBlob.setFos(new FileOutputStream(currentBlob.getFile()));
-                        break;
-                    } catch (IOException e) {
-                        if (i % 600 == 0) {
-                            log.error("Unable to create temp file, retrying every 100ms (#{}): {}", i, e.getMessage());
-                        }
+                try {
+                    currentBlob.setFound(store.getInputStream(ref));
+                    // the blob exists already if no exception occurred
+                } catch (FileNotFoundException e) {
+                    // the blob doesn't exist yet, build it
+                    currentBlob.setRef(ref);
+                    for (int i = 0; ; ++i) {
                         try {
-                            Thread.sleep(100);
-                        } catch (InterruptedException interruptedException) {
-                            log.info(interruptedException.getMessage());
+                            currentBlob.setFile(File.createTempFile("b64temp", ".dat", blobDir));
+                            currentBlob.setFos(new FileOutputStream(currentBlob.getFile()));
                             break;
+                        } catch (IOException ioe) {
+                            if (i % 600 == 0) {
+                                log.error("Unable to create temp file, retrying every 100ms (#{}): {}", i, e.getMessage());
+                            }
+                            try {
+                                Thread.sleep(100);
+                            } catch (InterruptedException interruptedException) {
+                                log.info(interruptedException.getMessage());
+                                break;
+                            }
                         }
                     }
                 }
@@ -351,8 +351,7 @@ public class SimpleRecordHandler implements RecordHandler {
                 }
                 try {
                     currentBlobFos.close();
-                    Blob blob = ZeroMQBlob.newInstance(blobDir, currentBlob.getRef(), currentBlob.getFile());
-                    log.trace("Created new blob {}", blob.getReference());
+                    store.putTempFile(currentBlob.getRef(), currentBlob.getFile());
                     currentBlobMap.remove(uuThreadId);
                 } catch (IOException e) {
                     currentBlobMap.remove(uuThreadId);
@@ -403,8 +402,8 @@ public class SimpleRecordHandler implements RecordHandler {
     }
 
     @Override
-    public Blob getBlob(String reference) {
-        return ZeroMQBlob.newInstance(blobDir, reference);
+    public FileInputStream getBlob(String reference) throws FileNotFoundException {
+        return store.getInputStream(reference);
     }
 
     private static class SimpleNodeState {

@@ -19,6 +19,9 @@
 package org.apache.jackrabbit.oak.store.zeromq;
 
 import org.apache.jackrabbit.oak.api.Blob;
+
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.util.function.Consumer;
 
 public interface RecordHandler {
@@ -36,7 +39,7 @@ public interface RecordHandler {
     void handleRecord(String uuThreadId, String op, String value);
     String getJournalHead(String journalName);
     String readNodeState(String msg);
-    Blob getBlob(String reference);
+    FileInputStream getBlob(String reference) throws FileNotFoundException;
     void setOnCommit(Consumer<CommitDescriptor> onCommit);
     void setOnNode(Runnable onNode);
 }

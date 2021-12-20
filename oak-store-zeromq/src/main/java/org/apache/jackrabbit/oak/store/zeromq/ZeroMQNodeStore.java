@@ -673,7 +673,7 @@ public class ZeroMQNodeStore implements NodeStore, Observable, Closeable, Garbag
         }
         reference = reference.toLowerCase();
         countBlobRead();
-        final InputStream ret = new ZeroMQBlobInputStream(nodeStateReader, "blob " + reference);
+        final InputStream ret = new ZeroMQBlobInputStream(nodeStateReader, reference);
         return ret;
     }
 

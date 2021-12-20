@@ -18,12 +18,12 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq;
 
-import org.apache.jackrabbit.oak.api.Blob;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.Closeable;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 
 public abstract class AbstractNodeStateAggregator implements NodeStateAggregator {
 
@@ -60,7 +60,7 @@ public abstract class AbstractNodeStateAggregator implements NodeStateAggregator
     }
 
     @Override
-    public Blob getBlob(String reference) {
+    public FileInputStream getBlob(String reference) throws FileNotFoundException {
         return recordHandler.getBlob(reference);
     }
 

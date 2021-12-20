@@ -25,14 +25,18 @@ import org.zeromq.ZMQ;
 import org.zeromq.ZMQException;
 
 import java.io.Closeable;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.channels.WritableByteChannel;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Stack;
+import java.util.StringTokenizer;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
@@ -223,28 +227,45 @@ public abstract class ZeroMQBackendStore implements BackendStore {
                 final String instance = msg.substring("journal ".length());
                 ret = builder.getNodeStateAggregator().getJournalHead(instance);
             } else if (msg.startsWith("hasblob ")) {
-                final Blob blob = builder.getNodeStateAggregator().getBlob(msg.substring("hasblob ".length()));
-                ret = blob == null ? "false" : "true";
-            } else if (msg.startsWith("blob ")) {
-                byte[] buffer = new byte[1024 * 1024]; // not final because of fear it's not being GC'd
                 try {
-                    final Blob blob = builder.getNodeStateAggregator().getBlob(msg.substring("blob ".length()));
-                    if (blob == null) {
-                        throw new IllegalArgumentException(msg + " not found");
-                    }
-                    final InputStream is = blob.getNewStream();
-                    for (int nBytes = is.read(buffer); nBytes > 0; nBytes = is.read(buffer)) {
-                        socket.sendMore("C");
-                        socket.send(buffer, 0, nBytes, 0);
-                        do {
-                            ret = socket.recvStr();
-                        } while (ret == null);
-                    }
-                } catch (Exception ioe) {
-                    log.error(ioe.getMessage());
-                } finally {
-                    ret = "";
+                    builder.getNodeStateAggregator().getBlob(msg.substring("hasblob ".length()));
+                    ret = "true";
+                } catch (FileNotFoundException fnf) {
+                    ret = "false";
                 }
+            } else if (msg.startsWith("blob ")) {
+                FileInputStream fis = null;
+                try {
+                    final StringTokenizer st = new StringTokenizer(msg);
+                    st.nextToken();
+                    final String reference = st.nextToken();
+                    final int offset = Integer.parseInt(st.nextToken());
+                    final int maxSize = Integer.parseInt(st.nextToken());
+                    final ByteBuffer buffer = ByteBuffer.allocate(Math.min(maxSize, 1024 * 1024));
+                    fis = builder.getNodeStateAggregator().getBlob(reference);
+                    int nRead = fis.getChannel().read(buffer, offset);
+                    if (nRead > 0) {
+                        buffer.limit(nRead);
+                        buffer.rewind();
+                        socket.sendMore("C");
+                        socket.sendByteBuffer(buffer, 0);
+                    } else {
+                        socket.sendMore("E");
+                        socket.send("");
+                    }
+                } catch (FileNotFoundException fnf) {
+                    socket.sendMore("N");
+                    socket.send("");
+                } catch (Exception e) {
+                    log.error(e.getMessage());
+                    socket.sendMore("F");
+                    socket.send("" + e.getMessage());
+                } finally {
+                    if (fis != null) {
+                        fis.close();
+                    }
+                }
+                return;
             } else {
                 ret = builder.getNodeStateAggregator().readNodeState(msg);
             }
@@ -254,13 +275,12 @@ public abstract class ZeroMQBackendStore implements BackendStore {
             } else {
                 log.error(e.toString());
             }
-        } finally {
-            socket.sendMore("E");
-            if (ret == null) {
-                ret = "";
-            }
-            socket.send(ret);
         }
+        socket.sendMore("E");
+        if (ret == null) {
+            ret = "";
+        }
+        socket.send(ret);
     }
 
     @Override
@@ -422,15 +442,9 @@ public abstract class ZeroMQBackendStore implements BackendStore {
                             log.error("Got Hello on busy connection");
                             break;
                         case "C":
-                            requestRouter.sendMore(requestId);
-                            requestRouter.sendMore("");
-                            requestRouter.sendMore(verb);
-                            requestRouter.send(payload);
-                            workerRouter.sendMore(workerId);
-                            workerRouter.sendMore(""); // delimiter
-                            workerRouter.send(""); // confirm
-                            break;
                         case "E":
+                        case "F":
+                        case "N":
                             requestRouter.sendMore(requestId);
                             requestRouter.sendMore("");
                             requestRouter.sendMore(verb);
@@ -470,6 +484,29 @@ public abstract class ZeroMQBackendStore implements BackendStore {
                 Thread.sleep(1000);
             } catch (InterruptedException e) {
             }
+        }
+    }
+
+    private static class SocketWriteChannel implements WritableByteChannel {
+
+        private final ZMQ.Socket socket;
+
+        public SocketWriteChannel(ZMQ.Socket socket) {
+            this.socket = socket;
+        }
+
+        @Override
+        public int write(ByteBuffer src) {
+            return socket.sendByteBuffer(src, 0);
+        }
+
+        @Override
+        public boolean isOpen() {
+            return true;
+        }
+
+        @Override
+        public void close() throws IOException {
         }
     }
 }

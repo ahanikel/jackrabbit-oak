@@ -18,6 +18,8 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq;
 
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -25,10 +27,13 @@ import java.io.InputStream;
 public interface BlobStore {
     byte[] getBytes(String uuid) throws IOException;
     String getString(String uuid) throws IOException;
-    InputStream getInputStream(String uuid) throws FileNotFoundException;
+    FileInputStream getInputStream(String uuid) throws FileNotFoundException;
     void putString(String uuid, String string) throws IOException;
     void putBytes(String uuid, byte[] bytes) throws IOException;
     void putInputStream(String uuid, InputStream is) throws IOException;
+
+    void putTempFile(String uuid, File tempFile);
+
     boolean hasBlob(String uuid);
     long size();
 }

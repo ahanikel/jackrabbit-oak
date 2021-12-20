@@ -29,6 +29,7 @@ public class ZeroMQBlobInputStream extends InputStream {
     byte[] buffer;
     private int cur = 0;
     private int max = 0;
+    private int offset = 0;
     private volatile boolean init = false;
     private volatile boolean error = false;
     private final Supplier<ZMQ.Socket> blobReader;
@@ -49,7 +50,6 @@ public class ZeroMQBlobInputStream extends InputStream {
             try {
                 init = true;
                 buffer = new byte[1024 * 1024]; // not final because of fear it's not being GC'd
-                reader.send(reference);
             } catch (Throwable t) {
                 log.error(t.getMessage());
                 error = true;
@@ -66,8 +66,12 @@ public class ZeroMQBlobInputStream extends InputStream {
         if (cur == max) {
             nextBunch();
         }
-        if (max < 1) {
+        if (max == 0) {
             return -1;
+        }
+        if (max < 0) {
+            error = true;
+            throw new IllegalStateException();
         }
         return 0x000000ff & buffer[cur++];
     }
@@ -76,28 +80,18 @@ public class ZeroMQBlobInputStream extends InputStream {
         if (reader != blobReader.get()) {
             throw new IllegalStateException("*** Reading thread has changed! ***");
         }
-        if (verb.equals("E")) {
-            verb = "";
-            max = -1;
-            cur = 0;
-            return;
-        }
-        int timeout = reader.getReceiveTimeOut();
-        reader.setReceiveTimeOut(1000);
-        do {
-            verb = reader.recvStr();
-            if (verb == null) {
-                log.warn("Timeout while reading blob {}", reference);
-            }
-        } while (verb == null);
+        reader.send("blob " + reference + " " + offset + " " + buffer.length);
+        verb = reader.recvStr();
         max = reader.recv(buffer, 0, buffer.length, 0);
-        reader.setReceiveTimeOut(timeout);
-        if (verb.equals("C")) {
-            reader.send("");
+        if (verb.equals("N")) {
+            log.error("Blob " + reference + " not found");
+            error = true;
+        } else if (verb.equals("F")) {
+            log.error("When fetching blob " + reference + ": " + new String(buffer, 0, max));
+            error = true;
+        } else {
+            offset += max;
+            cur = 0;
         }
-        if (max < 1) {
-            log.trace("Received {}", reference);
-        }
-        cur = 0;
     }
 }
