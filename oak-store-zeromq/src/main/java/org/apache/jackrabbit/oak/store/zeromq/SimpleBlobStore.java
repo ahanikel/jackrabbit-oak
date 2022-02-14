@@ -20,6 +20,7 @@ package org.apache.jackrabbit.oak.store.zeromq;
 
 import org.apache.jackrabbit.oak.commons.IOUtils;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -85,8 +86,8 @@ public class SimpleBlobStore implements BlobStore {
     }
 
     @Override
-    public byte[] getBytes(String uuid) throws IOException {
-        try (final InputStream is = getInputStream(uuid)) {
+    public byte[] getBytes(String ref) throws IOException {
+        try (final InputStream is = getInputStream(ref)) {
             final ByteArrayOutputStream bos = new ByteArrayOutputStream();
             IOUtils.copy(is, bos);
             return bos.toByteArray();
@@ -94,56 +95,62 @@ public class SimpleBlobStore implements BlobStore {
     }
 
     @Override
-    public String getString(String uuid) throws IOException {
-        return new String(getBytes(uuid));
+    public String getString(String ref) throws IOException {
+        return new String(getBytes(ref));
     }
 
     @Override
-    public FileInputStream getInputStream(String uuid) throws FileNotFoundException {
-        if (uuid == null || uuid.length() < 6) {
-            throw new FileNotFoundException("uuid: " + uuid);
+    public FileInputStream getInputStream(String ref) throws FileNotFoundException {
+        if (ref == null || ref.length() < 6) {
+            throw new FileNotFoundException("ref: " + ref);
         }
-        return new FileInputStream(getFileForUuid(uuid));
+        return new FileInputStream(getFileForRef(ref));
     }
 
-    @Override
-    public void putBytes(String uuid, byte[] bytes) throws IOException {
-        try (OutputStream os = getOutputStream(uuid)) {
-            if (os != null) {
-                os.write(bytes);
-            }
+    public File getFile(String ref) throws FileNotFoundException {
+        if (ref == null || ref.length() < 6) {
+            throw new FileNotFoundException("ref: " + ref);
         }
+        return getFileForRef(ref);
+    }
+    
+    @Override
+    public String putBytes(byte[] bytes) throws IOException {
+        return putInputStream(new ByteArrayInputStream(bytes));
     }
 
     @Override
-    public void putString(String uuid, String string) throws IOException {
-        try (OutputStream os = getOutputStream(uuid)) {
-            if (os != null) {
-                os.write(string.getBytes());
-            }
+    public String putString(String string) throws IOException {
+        return putBytes(string.getBytes());
+    }
+
+    @Override
+    public String putInputStream(InputStream is) throws IOException {
+        final File tempFile = getTempFile();
+        try (OutputStream os = new FileOutputStream(tempFile)) {
+            IOUtils.copy(is, os);
         }
+        return putTempFile(tempFile);
     }
 
     @Override
-    public void putInputStream(String uuid, InputStream is) throws IOException {
-        try (OutputStream os = getOutputStream(uuid)) {
-            if (os != null) {
-                IOUtils.copy(is, os);
-            }
-        }
+    public File getTempFile() throws IOException {
+        return File.createTempFile("b64temp", ".dat", blobDir);
     }
 
     @Override
-    public void putTempFile(String uuid, File tempFile) {
-        tempFile.renameTo(getFileForUuid(uuid));
+    public String putTempFile(File tempFile) {
+        final String ref = Util.getRefFromFile(tempFile);
+        tempFile.renameTo(getFileForRef(ref));
+        return ref;
     }
 
     @Override
-    public boolean hasBlob(String uuid) {
-        if (uuid == null || uuid.length() < 6) {
+    public boolean hasBlob(String ref) {
+        if (ref == null || ref.length() < 6) {
             return false;
         }
-        return getFileForUuid(uuid).exists();
+        return getFileForRef(ref).exists();
     }
 
     @Override
@@ -151,25 +158,16 @@ public class SimpleBlobStore implements BlobStore {
         return 0;
     }
 
-    private File getFileForUuid(String uuid) {
+    private File getFileForRef(String ref) {
         final StringBuilder dirName = new StringBuilder();
         dirName
-            .append(uuid.substring(0, 2))
+            .append(ref.substring(0, 2))
             .append('/')
-            .append(uuid.substring(2, 4))
+            .append(ref.substring(2, 4))
             .append('/')
-            .append(uuid.substring(4, 6));
+            .append(ref.substring(4, 6));
         final File dir = new File(blobDir, dirName.toString());
         dir.mkdirs();
-        return new File(dir, uuid);
-    }
-
-    private OutputStream getOutputStream(String uuid) throws FileNotFoundException {
-        final File outputFile = getFileForUuid(uuid);
-        // TODO: write to temp file first
-        if (outputFile.exists()) {
-            return null;
-        }
-        return new FileOutputStream(getFileForUuid(uuid));
+        return new File(dir, ref);
     }
 }

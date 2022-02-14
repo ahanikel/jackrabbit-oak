@@ -1,0 +1,154 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+package org.apache.jackrabbit.oak.store.zeromq;
+
+import org.apache.jackrabbit.oak.api.Blob;
+import org.apache.jackrabbit.oak.api.PropertyState;
+import org.apache.jackrabbit.oak.api.Type;
+import org.apache.jackrabbit.oak.plugins.memory.EmptyNodeState;
+import org.apache.jackrabbit.oak.spi.state.NodeState;
+import org.apache.jackrabbit.oak.spi.state.NodeStateDiff;
+
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+
+import static org.apache.jackrabbit.oak.store.zeromq.SafeEncode.safeEncode;
+
+public class SimpleNodeStateStore implements NodeStateStore {
+
+    private final BlobStore blobStore;
+
+    public SimpleNodeStateStore(BlobStore blobStore) {
+        this.blobStore = blobStore;
+    }
+
+    @Override
+    public String getNodeState(String ref) throws IOException {
+        return blobStore.getString(ref);
+    }
+
+    @Override
+    public boolean hasNodeState(String ref) throws IOException {
+        try {
+            return getNodeState(ref) != null;
+        } catch (FileNotFoundException e) {
+            return false;
+        }
+    }
+
+    private void writeLine(OutputStream os, StringBuilder args) throws IOException {
+        args.append('\n');
+        os.write(args.toString().getBytes());
+    }
+
+    private String serializePropertyState(BlobStore blobStore, PropertyState ps) throws IOException {
+        final StringBuilder sb = new StringBuilder();
+        sb
+            .append(safeEncode(ps.getName()))
+            .append(" <")
+            .append(ps.getType().toString())
+            .append("> ");
+        if (ps.getType().equals(Type.BINARY)) {
+            final Blob blob = ps.getValue(Type.BINARY);
+            final String ref = blobStore.putInputStream(blob.getNewStream());
+            sb.append(ref);
+        } else if (ps.getType().equals(Type.BINARIES)) {
+            sb.append('[');
+            final Iterable<Blob> blobs = ps.getValue(Type.BINARIES);
+            for (Blob blob : blobs) {
+                final String ref = blobStore.putInputStream(blob.getNewStream());
+                sb.append(ref);
+                sb.append(',');
+            }
+            if (sb.charAt(sb.length() - 1) == ',') {
+                sb.deleteCharAt(sb.length() - 1);
+            }
+            sb.append(']');
+        } else if (ps.isArray()) {
+            sb.append('[');
+            final Iterable<String> strings = ps.getValue(Type.STRINGS);
+            sb.append(String.join(",", strings));
+            sb.append(']');
+        } else {
+            sb.append(ps.getValue(Type.STRING));
+        }
+        return sb.toString();
+    }
+
+    @Override
+    public String putNodeState(NodeState ns) throws IOException {
+        final File tempFile = blobStore.getTempFile();
+        try (OutputStream os = new FileOutputStream(tempFile)) {
+            writeLine(os, new StringBuilder("n:"));
+            ns.compareAgainstBaseState(EmptyNodeState.EMPTY_NODE, new NodeStateDiff() {
+
+                @Override
+                public boolean propertyAdded(PropertyState after) {
+                    try {
+                        writeLine(os, new StringBuilder()
+                            .append("p+ ")
+                            .append(serializePropertyState(blobStore, after)));
+                        return true;
+                    } catch (IOException e) {
+                        throw new IllegalStateException(e);
+                    }
+                }
+
+                @Override
+                public boolean childNodeAdded(String name, NodeState after) {
+                    try {
+                        writeLine(os, new StringBuilder()
+                            .append("n+ ")
+                            .append(safeEncode(name))
+                            .append(' ')
+                            .append(putNodeState(after)));
+                        return true;
+                    } catch (IOException e) {
+                        throw new IllegalStateException(e);
+                    }
+                }
+
+                @Override
+                public boolean propertyChanged(PropertyState before, PropertyState after) {
+                    throw new IllegalStateException("This should not happen");
+                }
+
+                @Override
+                public boolean propertyDeleted(PropertyState before) {
+                    throw new IllegalStateException("This should not happen");
+                }
+
+                @Override
+                public boolean childNodeChanged(String name, NodeState before, NodeState after) {
+                    throw new IllegalStateException("This should not happen");
+                }
+
+                @Override
+                public boolean childNodeDeleted(String name, NodeState before) {
+                    throw new IllegalStateException("This should not happen");
+                }
+            });
+            writeLine(os, new StringBuilder("n!"));
+        }
+        return blobStore.putTempFile(tempFile);
+    }
+}

@@ -25,15 +25,13 @@ import java.io.IOException;
 import java.io.InputStream;
 
 public interface BlobStore {
-    byte[] getBytes(String uuid) throws IOException;
-    String getString(String uuid) throws IOException;
-    FileInputStream getInputStream(String uuid) throws FileNotFoundException;
-    void putString(String uuid, String string) throws IOException;
-    void putBytes(String uuid, byte[] bytes) throws IOException;
-    void putInputStream(String uuid, InputStream is) throws IOException;
-
-    void putTempFile(String uuid, File tempFile);
-
-    boolean hasBlob(String uuid);
-    long size();
+    byte[] getBytes(String ref) throws IOException;
+    String getString(String ref) throws IOException;
+    FileInputStream getInputStream(String ref) throws FileNotFoundException;
+    String putBytes(byte[] bytes) throws IOException;
+    String putString(String string) throws IOException;
+    String putInputStream(InputStream is) throws IOException;
+    File getTempFile() throws IOException;
+    String putTempFile(File tempFile);
+    boolean hasBlob(String ref);
 }
