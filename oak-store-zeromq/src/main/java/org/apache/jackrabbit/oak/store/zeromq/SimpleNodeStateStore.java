@@ -30,6 +30,9 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 
 import static org.apache.jackrabbit.oak.store.zeromq.SafeEncode.safeEncode;
 
@@ -55,9 +58,9 @@ public class SimpleNodeStateStore implements NodeStateStore {
         }
     }
 
-    private void writeLine(OutputStream os, StringBuilder args) throws IOException {
-        args.append('\n');
-        os.write(args.toString().getBytes());
+    private void writeLine(OutputStream os, String s) throws IOException {
+        os.write(s.getBytes());
+        os.write('\n');
     }
 
     private String serializePropertyState(BlobStore blobStore, PropertyState ps) throws IOException {
@@ -96,58 +99,65 @@ public class SimpleNodeStateStore implements NodeStateStore {
 
     @Override
     public String putNodeState(NodeState ns) throws IOException {
+        final List<String> children = new ArrayList<>();
+        final List<String> properties = new ArrayList<>();
+
+        ns.compareAgainstBaseState(EmptyNodeState.EMPTY_NODE, new NodeStateDiff() {
+
+            @Override
+            public boolean propertyAdded(PropertyState after) {
+                try {
+                    properties.add("p+ " + serializePropertyState(blobStore, after));
+                    return true;
+                } catch (IOException e) {
+                    throw new IllegalStateException(e);
+                }
+            }
+
+            @Override
+            public boolean childNodeAdded(String name, NodeState after) {
+                try {
+                    children.add("n+ " + safeEncode(name) + " " + putNodeState(after));
+                    return true;
+                } catch (IOException e) {
+                    throw new IllegalStateException(e);
+                }
+            }
+
+            @Override
+            public boolean propertyChanged(PropertyState before, PropertyState after) {
+                throw new IllegalStateException("This should not happen");
+            }
+
+            @Override
+            public boolean propertyDeleted(PropertyState before) {
+                throw new IllegalStateException("This should not happen");
+            }
+
+            @Override
+            public boolean childNodeChanged(String name, NodeState before, NodeState after) {
+                throw new IllegalStateException("This should not happen");
+            }
+
+            @Override
+            public boolean childNodeDeleted(String name, NodeState before) {
+                throw new IllegalStateException("This should not happen");
+            }
+        });
+
+        children.sort(Comparator.naturalOrder());
+        properties.sort(Comparator.naturalOrder());
+
         final File tempFile = blobStore.getTempFile();
         try (OutputStream os = new FileOutputStream(tempFile)) {
-            writeLine(os, new StringBuilder("n:"));
-            ns.compareAgainstBaseState(EmptyNodeState.EMPTY_NODE, new NodeStateDiff() {
-
-                @Override
-                public boolean propertyAdded(PropertyState after) {
-                    try {
-                        writeLine(os, new StringBuilder()
-                            .append("p+ ")
-                            .append(serializePropertyState(blobStore, after)));
-                        return true;
-                    } catch (IOException e) {
-                        throw new IllegalStateException(e);
-                    }
-                }
-
-                @Override
-                public boolean childNodeAdded(String name, NodeState after) {
-                    try {
-                        writeLine(os, new StringBuilder()
-                            .append("n+ ")
-                            .append(safeEncode(name))
-                            .append(' ')
-                            .append(putNodeState(after)));
-                        return true;
-                    } catch (IOException e) {
-                        throw new IllegalStateException(e);
-                    }
-                }
-
-                @Override
-                public boolean propertyChanged(PropertyState before, PropertyState after) {
-                    throw new IllegalStateException("This should not happen");
-                }
-
-                @Override
-                public boolean propertyDeleted(PropertyState before) {
-                    throw new IllegalStateException("This should not happen");
-                }
-
-                @Override
-                public boolean childNodeChanged(String name, NodeState before, NodeState after) {
-                    throw new IllegalStateException("This should not happen");
-                }
-
-                @Override
-                public boolean childNodeDeleted(String name, NodeState before) {
-                    throw new IllegalStateException("This should not happen");
-                }
-            });
-            writeLine(os, new StringBuilder("n!"));
+            writeLine(os, "n:");
+            for (String c : children) {
+                writeLine(os, c);
+            }
+            for (String p : properties) {
+                writeLine(os, p);
+            }
+            writeLine(os, "n!");
         }
         return blobStore.putTempFile(tempFile);
     }

@@ -25,6 +25,7 @@ import org.apache.jackrabbit.oak.exporter.NodeStateExportCommand;
 import org.apache.jackrabbit.oak.index.IndexCommand;
 import org.apache.jackrabbit.oak.run.commons.Command;
 import org.apache.jackrabbit.oak.run.commons.Modes;
+import org.apache.jackrabbit.oak.simple.ImportToSimpleCommand;
 
 public final class AvailableModes {
     // list of available Modes for the tool
@@ -49,6 +50,7 @@ public final class AvailableModes {
             .put("garbage", new GarbageCommand())
             .put("help", new HelpCommand())
             .put("history", new HistoryCommand())
+            .put("import-to-simple", new ImportToSimpleCommand())
             .put("index-merge", new IndexMergeCommand())
             .put(IndexCommand.NAME, new IndexCommand())
             .put(IOTraceCommand.NAME, new IOTraceCommand())

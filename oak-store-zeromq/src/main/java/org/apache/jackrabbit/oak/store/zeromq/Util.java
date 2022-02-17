@@ -31,6 +31,7 @@ public class Util {
             int nRead = is.read(buf);
             while (nRead > 0) {
                 md5.update(buf, 0, nRead);
+                nRead = is.read(buf);
             }
             return bytesToString(new ByteArrayInputStream(md5.digest()));
         } catch (NoSuchAlgorithmException | IOException e) {

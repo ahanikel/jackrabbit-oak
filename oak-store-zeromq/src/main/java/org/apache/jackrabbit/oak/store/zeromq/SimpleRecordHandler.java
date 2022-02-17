@@ -126,7 +126,7 @@ public class SimpleRecordHandler implements RecordHandler {
 
         ++line;
         if (line % 100000 == 0) {
-            log.info("We're at line {}, nodes so far: {}", line, store.size());
+            log.info("We're at line {}", line);
         }
 
         StringTokenizer tokens = new StringTokenizer(value);
