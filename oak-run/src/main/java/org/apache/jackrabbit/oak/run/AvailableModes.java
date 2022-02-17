@@ -26,6 +26,7 @@ import org.apache.jackrabbit.oak.index.IndexCommand;
 import org.apache.jackrabbit.oak.run.commons.Command;
 import org.apache.jackrabbit.oak.run.commons.Modes;
 import org.apache.jackrabbit.oak.simple.ImportToSimpleCommand;
+import org.apache.jackrabbit.oak.simple.SimpleBlobReaderServiceCommand;
 
 public final class AvailableModes {
     // list of available Modes for the tool
@@ -63,6 +64,7 @@ public final class AvailableModes {
             .put("repair", new RepairCommand())
             .put("resetclusterid", new ResetClusterIdCommand())
             .put("restore", new RestoreCommand())
+            .put("simple-blob-reader-service", new SimpleBlobReaderServiceCommand())
             .put("tarmkdiff", new FileStoreDiffCommand())
             .put(ThreadDumpCommand.THREADDUMP, new ThreadDumpCommand())
             .put("tika", new TikaCommand())

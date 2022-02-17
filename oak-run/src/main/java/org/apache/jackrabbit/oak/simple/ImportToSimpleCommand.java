@@ -21,6 +21,7 @@ package org.apache.jackrabbit.oak.simple;
 import com.google.common.base.Stopwatch;
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
+import org.apache.jackrabbit.oak.commons.IOUtils;
 import org.apache.jackrabbit.oak.run.cli.CommonOptions;
 import org.apache.jackrabbit.oak.run.cli.NodeStoreFixtureProvider;
 import org.apache.jackrabbit.oak.run.cli.Options;
@@ -28,8 +29,6 @@ import org.apache.jackrabbit.oak.run.commons.Command;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
 import org.apache.jackrabbit.oak.store.zeromq.SimpleBlobStore;
 import org.apache.jackrabbit.oak.store.zeromq.SimpleNodeStateStore;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -80,7 +79,7 @@ public class ImportToSimpleCommand implements Command {
         System.err.println("Nodestores are open, starting import.");
         final String newRoot = simple.putNodeState(sourceNodeStore.getRoot());
         try (OutputStream journalFile = new FileOutputStream(new File(destPath, "journal-golden"))) {
-            journalFile.write(newRoot.getBytes());
+            IOUtils.writeString(journalFile, newRoot);
         }
         System.err.println("New root is " + newRoot);
         System.err.println("Import finished successfully.");
