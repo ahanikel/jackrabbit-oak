@@ -20,11 +20,9 @@ package org.apache.jackrabbit.oak.simple;
 
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
-import org.apache.jackrabbit.oak.commons.IOUtils;
 import org.apache.jackrabbit.oak.run.cli.CommonOptions;
 import org.apache.jackrabbit.oak.run.cli.Options;
 import org.apache.jackrabbit.oak.run.commons.Command;
-import org.apache.jackrabbit.oak.store.zeromq.SimpleBlobStore;
 import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
@@ -32,11 +30,8 @@ import org.zeromq.ZMQException;
 
 import java.io.Closeable;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URI;
-import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -55,10 +50,10 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
         "Example:\n" + NAME + " /tmp/imported/log.txt";
 
     private File blobDir;
-    private SimpleBlobStore blobStore;
     private ZContext context;
     private ExecutorService threadPool;
-    private Router readerFrontend;
+    private Router writerFrontend;
+    private SimpleRecordHandler recordHandler;
 
     @Override
     public void execute(String... args) throws Exception {
@@ -78,23 +73,24 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
         final CommonOptions commonOptions = opts.getOptionBean(CommonOptions.class);
         final URI uri = commonOptions.getURI(0);
         blobDir = new File(uri.getPath());
-        blobStore = new SimpleBlobStore(blobDir);
         context = new ZContext();
         threadPool = Executors.newFixedThreadPool(5);
-        readerFrontend = new Router(context, "tcp://*:8000", "inproc://readerBackend");
-        readerFrontend.start();
+        writerFrontend = new Router(context, "tcp://*:8001", "inproc://writerBackend");
+        writerFrontend.start();
+
+        recordHandler = new SimpleRecordHandler(blobDir, "tcp://*:9000");
 
         for (int nThread = 0; nThread < 5; ++nThread) {
             threadPool.execute(() -> {
                 final ZMQ.Socket socket = context.createSocket(SocketType.REQ);
                 socket.setIdentity(("" + Thread.currentThread().getId()).getBytes());
-                socket.connect("inproc://readerBackend");
+                socket.connect("inproc://writerBackend");
                 socket.setReceiveTimeOut(1000);
                 socket.sendMore("H");
                 socket.send("");
                 while (!Thread.currentThread().isInterrupted()) {
                     try {
-                        handleReaderService(socket);
+                        handleWriterService(socket);
                     } catch (Throwable t) {
                         System.err.println(t.toString());
                     }
@@ -106,10 +102,10 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
             Thread.sleep(1000);
         };
         threadPool.shutdown();
-        readerFrontend.close();
+        writerFrontend.close();
     }
 
-    public void handleReaderService(ZMQ.Socket socket) {
+    public void handleWriterService(ZMQ.Socket socket) {
         String msg;
         try {
             msg = socket.recvStr();
@@ -123,48 +119,13 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
         String ret = null;
 
         try {
-            if (msg.startsWith("journal ")) {
-                final String instance = msg.substring("journal ".length());
-                ret = getJournalHead(instance);
-            } else if (msg.startsWith("hasblob ")) {
-                final String ref = msg.substring("hasblob ".length());
-                ret = blobStore.hasBlob(ref) ? "true" : "false";
-            } else if (msg.startsWith("blob ")) {
-                FileInputStream fis = null;
-                try {
-                    final StringTokenizer st = new StringTokenizer(msg);
-                    st.nextToken();
-                    final String reference = st.nextToken();
-                    final int offset = Integer.parseInt(st.nextToken());
-                    final int maxSize = Integer.parseInt(st.nextToken());
-                    final ByteBuffer buffer = ByteBuffer.allocate(Math.min(maxSize, 1024 * 1024));
-                    fis = blobStore.getInputStream(reference);
-                    int nRead = fis.getChannel().read(buffer, offset);
-                    if (nRead > 0) {
-                        buffer.limit(nRead);
-                        buffer.rewind();
-                        socket.sendMore("C");
-                        socket.sendByteBuffer(buffer, 0);
-                    } else {
-                        socket.sendMore("E");
-                        socket.send("");
-                    }
-                } catch (FileNotFoundException fnf) {
-                    socket.sendMore("N");
-                    socket.send("");
-                } catch (Exception e) {
-                    System.err.println(e.getMessage());
-                    socket.sendMore("F");
-                    socket.send("" + e.getMessage());
-                } finally {
-                    if (fis != null) {
-                        fis.close();
-                    }
-                }
-                return;
-            }
+            final StringTokenizer st = new StringTokenizer(msg);
+            final String uuThreadId = st.nextToken();
+            final String op = st.nextToken();
+            final String value = st.nextToken("");
+            recordHandler.handleRecord(uuThreadId, op, value);
         } catch (Exception e) {
-            final String errorMsg = String.format("An error occurred on: {}, exception: {}", msg, e.getMessage());
+            final String errorMsg = String.format("An error occurred on: %1$, exception: %2$", msg, e.getMessage());
             System.err.println(errorMsg);
             socket.sendMore("F");
             socket.send(errorMsg);
@@ -175,13 +136,6 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
             ret = "";
         }
         socket.send(ret);
-    }
-
-    private String getJournalHead(String journalName) throws IOException {
-        final File journalFile = new File(blobDir, "journal-" + journalName);
-        try (FileInputStream is = new FileInputStream(journalFile)) {
-            return IOUtils.readString(is);
-        }
     }
 
     private static class Router extends Thread implements Closeable {
@@ -300,7 +254,7 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
                     return;
                 }
                 if (available.contains(workerId)) {
-                    System.err.println(String.format("Spurious message from available worker: {}: {}", verb, payload));
+                    System.err.println(String.format("Spurious message from available worker: %1$: %2$", verb, payload));
                     return;
                 }
                 switch (verb) {
@@ -309,7 +263,7 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
                         available.push(workerId);
                         break;
                     default:
-                        System.err.println(String.format("Expected Hello message from new worker but got {}: {}", verb, payload));
+                        System.err.println(String.format("Expected Hello message from new worker but got %1$: %2$", verb, payload));
                 }
             } catch (Throwable t) {
                 System.err.println(t.toString());

@@ -33,5 +33,6 @@ public interface BlobStore {
     String putInputStream(InputStream is) throws IOException;
     File getTempFile() throws IOException;
     String putTempFile(File tempFile);
+    File getSpecificFile(String name);
     boolean hasBlob(String ref);
 }

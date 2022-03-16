@@ -22,6 +22,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.zeromq.ZMQ;
 
+import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.function.Supplier;
 
@@ -58,9 +60,9 @@ public class ZeroMQBlobInputStream extends InputStream {
     }
 
     @Override
-    public synchronized int read() {
+    public synchronized int read() throws IOException {
         if (error) {
-            return -1;
+            throw new IOException("A previous error condition makes this InputStream invalid.");
         }
         init();
         if (cur == max) {
@@ -76,7 +78,7 @@ public class ZeroMQBlobInputStream extends InputStream {
         return 0x000000ff & buffer[cur++];
     }
 
-    private void nextBunch() {
+    private void nextBunch() throws IOException {
         if (reader != blobReader.get()) {
             throw new IllegalStateException("*** Reading thread has changed! ***");
         }
@@ -84,11 +86,15 @@ public class ZeroMQBlobInputStream extends InputStream {
         verb = reader.recvStr();
         max = reader.recv(buffer, 0, buffer.length, 0);
         if (verb.equals("N")) {
-            log.error("Blob " + reference + " not found");
+            final String msg = "Blob " + reference + " not found";
+            log.error(msg);
             error = true;
+            throw new FileNotFoundException(msg);
         } else if (verb.equals("F")) {
-            log.error("When fetching blob " + reference + ": " + new String(buffer, 0, max));
+            final String msg = "When fetching blob " + reference + ": " + new String(buffer, 0, max);
+            log.error(msg);
             error = true;
+            throw new IOException(msg);
         } else {
             offset += max;
             cur = 0;

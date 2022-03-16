@@ -44,7 +44,7 @@ public final class ZeroMQEmptyNodeState extends ZeroMQNodeState {
         return new ZeroMQEmptyNodeState(ns, false);
     }
 
-    static final UUID UUID_NULL = new UUID(0L, 0L);
+    public static final UUID UUID_NULL = new UUID(0L, 0L);
 
     private final boolean exists;
 

@@ -27,7 +27,7 @@ public class Pair<U, V> {
         this.snd = snd;
     }
 
-    public static <U, V> Pair of(U fst, V snd) {
-        return new Pair(fst, snd);
+    public static <U, V> Pair<U, V> of(U fst, V snd) {
+        return new Pair<>(fst, snd);
     }
 }

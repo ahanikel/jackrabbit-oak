@@ -146,6 +146,11 @@ public class SimpleBlobStore implements BlobStore {
     }
 
     @Override
+    public File getSpecificFile(String name) {
+        return new File(blobDir, name);
+    }
+
+    @Override
     public boolean hasBlob(String ref) {
         if (ref == null || ref.length() < 6) {
             return false;
