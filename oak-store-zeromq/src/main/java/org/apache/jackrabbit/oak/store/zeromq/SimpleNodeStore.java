@@ -63,6 +63,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.FileAlreadyExistsException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -101,7 +102,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     private ZeroMQSocketProvider nodeStateReader;
     private ZeroMQSocketProvider nodeStateWriter;
     private KVStore<String, SimpleNodeState> nodeStateCache;
-    private KVStore<String, ZeroMQBlob> blobCache;
+    private KVStore<String, SimpleBlob> blobCache;
     private volatile ChangeDispatcher changeDispatcher;
 
     private final Object mergeRootMonitor = new Object();
@@ -122,6 +123,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     private final AtomicLong remoteReadBlobCounter = new AtomicLong();
     private final AtomicLong remoteWriteBlobCounter = new AtomicLong();
     private File blobCacheDir;
+    private SimpleBlobStore store;
 
     public SimpleNodeStore() {
     }
@@ -154,6 +156,11 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         this.initJournal = initJournal;
         this.blobCacheDir = new File(blobCacheDir);
         this.blobCacheDir.mkdirs();
+        try {
+            this.store = new SimpleBlobStore(this.blobCacheDir);
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
 
         nodeStateReader = new ZeroMQSocketProvider(backendReaderURL, context, SocketType.REQ);
         nodeStateWriter = new ZeroMQSocketProvider(backendWriterURL, context, SocketType.REQ);
@@ -163,25 +170,15 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                         .concurrencyLevel(10)
                         .maximumSize(200000).build();
 
-        nodeStateCache = new NodeStateCache<>(cache, uuid -> SimpleNodeState.get(this::read, uuid));
+        nodeStateCache = new NodeStateCache<>(cache, uuid -> SimpleNodeState.get(store, uuid));
 
         // TODO: this can probably be simplified similarly to the nodestates above.
-        final Cache<String, ZeroMQBlob> bCache =
+        final Cache<String, SimpleBlob> bCache =
                 CacheBuilder.newBuilder()
                         .concurrencyLevel(10)
                         .maximumSize(100).build();
-        blobCache = new NodeStateCache<>(bCache, reference -> {
-            try {
-                ZeroMQBlob ret = ZeroMQBlob.newInstance(this.blobCacheDir, reference);
-                if (ret == null) {
-                    ret = ZeroMQBlob.newInstance(this.blobCacheDir, reference, readBlob(reference));
-                }
-                return ret;
-            } catch (Throwable t) {
-                log.warn("Could not load blob: " + t);
-                return null;
-            }
-        });
+        blobCache = new NodeStateCache<>(bCache, reference -> new SimpleBlob(store, reference));
+
         logProcessor = new Thread("ZeroMQ Log Processor") {
             public void run() {
                 journalSocket = new ZeroMQSocketProvider(journalSocketUrl, context, SocketType.SUB).get();
@@ -536,7 +533,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         }
     }
 
-    private void writeBlob(ZeroMQBlob blob) {
+    private void writeBlob(SimpleBlob blob) {
         countBlobWritten();
         synchronized (writeMonitor) {
             try {
@@ -590,11 +587,11 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     }
 
     public NodeState rebase(@NotNull NodeBuilder builder, NodeState newBase) {
-        checkArgument(builder instanceof ZeroMQNodeBuilder);
+        checkArgument(builder instanceof SimpleNodeBuilder);
         NodeState head = checkNotNull(builder).getNodeState();
         NodeState base = builder.getBaseState();
         if (base != newBase) {
-            ((ZeroMQNodeBuilder) builder).reset(newBase);
+            ((SimpleNodeBuilder) builder).reset(newBase);
             head.compareAgainstBaseState(
                     base, new ConflictAnnotatingRebaseDiff(builder));
             head = builder.getNodeState();
@@ -612,32 +609,18 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     @Override
     @NotNull
     public Blob createBlob(InputStream inputStream) throws IOException {
-        final ZeroMQBlob blob = ZeroMQBlob.newInstance(blobCacheDir, inputStream);
-        if (!hasBlob(blob.getReference())) {
+        try {
+            final String ref = store.putInputStream(inputStream);
+            final SimpleBlob blob = new SimpleBlob(store, ref);
             writeBlob(blob);
-        }
-        if (blobCache.get(blob.getReference()) == null) {
             blobCache.put(blob.getReference(), blob);
+            return blob;
+        } catch (FileAlreadyExistsException e) {
+            final String ref = e.getMessage();
+            final SimpleBlob blob = new SimpleBlob(store, ref);
+            blobCache.put(blob.getReference(), blob);
+            return blob;
         }
-        return blob;
-    }
-
-    ZeroMQBlob createBlob(Blob blob) throws IOException {
-        ZeroMQBlob ret;
-        if (blob instanceof ZeroMQBlob) {
-            ret = (ZeroMQBlob) blob;
-            if (blobCache.get(ret.getReference()) == null) {
-                writeBlob(ret); // should not happen
-            }
-            blobCache.put(ret.getReference(), ret);
-            return ret;
-        }
-        ret = ZeroMQBlob.newInstance(blobCacheDir, blob.getNewStream());
-        if (getBlob(ret.getReference()) == null) {
-            writeBlob(ret);
-            blobCache.put(ret.getReference(), ret);
-        }
-        return ret;
     }
 
     @Override

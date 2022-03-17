@@ -466,7 +466,7 @@ public class SimpleRecordHandler implements RecordHandler {
                 try (FileOutputStream out = new FileOutputStream(f)) {
                     SimpleNodeState.serialise(out, children, properties);
                     final String ref = store.putTempFile(f);
-                    return SimpleNodeState.get(store::getInputStreamOrNull, ref);
+                    return SimpleNodeState.get(store, ref);
                 }
             }
         }

@@ -30,6 +30,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.FileAlreadyExistsException;
 
 public class SimpleBlobStore implements BlobStore {
 
@@ -108,15 +109,6 @@ public class SimpleBlobStore implements BlobStore {
         return new FileInputStream(getFileForRef(ref));
     }
 
-    @Nullable
-    public FileInputStream getInputStreamOrNull(String ref) {
-        try {
-            return getInputStream(ref);
-        } catch (FileNotFoundException e) {
-            return null;
-        }
-    }
-
     public File getFile(String ref) throws FileNotFoundException {
         if (ref == null || ref.length() < 6) {
             throw new FileNotFoundException("ref: " + ref);
@@ -149,8 +141,12 @@ public class SimpleBlobStore implements BlobStore {
     }
 
     @Override
-    public String putTempFile(File tempFile) {
+    public String putTempFile(File tempFile) throws FileAlreadyExistsException {
         final String ref = Util.getRefFromFile(tempFile);
+        if (hasBlob(ref)) {
+            tempFile.delete();
+            throw new FileAlreadyExistsException(ref);
+        }
         tempFile.renameTo(getFileForRef(ref));
         return ref;
     }

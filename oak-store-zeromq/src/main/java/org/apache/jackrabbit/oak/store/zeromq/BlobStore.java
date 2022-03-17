@@ -23,6 +23,7 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.FileAlreadyExistsException;
 
 public interface BlobStore {
     byte[] getBytes(String ref) throws IOException;
@@ -32,7 +33,7 @@ public interface BlobStore {
     String putString(String string) throws IOException;
     String putInputStream(InputStream is) throws IOException;
     File getTempFile() throws IOException;
-    String putTempFile(File tempFile);
+    String putTempFile(File tempFile) throws FileAlreadyExistsException;
     File getSpecificFile(String name);
     boolean hasBlob(String ref);
 }

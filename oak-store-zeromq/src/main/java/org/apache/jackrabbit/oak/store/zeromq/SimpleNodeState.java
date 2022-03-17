@@ -54,7 +54,7 @@ public class SimpleNodeState implements NodeState {
     public static final UUID UUID_NULL = new UUID(0L, 0L);
     public static final SimpleNodeState EMPTY = new SimpleNodeState(true);
 
-    private final Function<String, InputStream> loader;
+    private final SimpleBlobStore store;
     private final String ref;
     private Map<String, String> children;
     private Map<String, String> properties;
@@ -62,7 +62,7 @@ public class SimpleNodeState implements NodeState {
     private boolean exists;
 
     private SimpleNodeState(boolean exists) {
-        this.loader = null;
+        this.store = null;
         this.ref = UUID_NULL.toString();
         this.children = ImmutableMap.of();
         this.properties = ImmutableMap.of();
@@ -70,8 +70,8 @@ public class SimpleNodeState implements NodeState {
         this.exists = exists;
     }
 
-    private SimpleNodeState(Function<String, InputStream> loader, String ref) {
-        this.loader = loader;
+    private SimpleNodeState(SimpleBlobStore store, String ref) {
+        this.store = store;
         this.ref = ref;
         this.loaded = false;
         this.exists = true;
@@ -82,7 +82,7 @@ public class SimpleNodeState implements NodeState {
             synchronized (this) {
                 Pair<Map<String, String>, Map<String, String>> p;
                 try {
-                    p = deserialise(loader.apply(ref));
+                    p = deserialise(store.getInputStream(ref));
                 } catch (IOException e) {
                     throw new IllegalStateException(e);
                 }
@@ -115,8 +115,12 @@ public class SimpleNodeState implements NodeState {
         return ref;
     }
 
-    public static SimpleNodeState get(Function<String, InputStream> loader, String ref) {
-        return new SimpleNodeState(loader, ref);
+    public SimpleBlobStore getStore() {
+        return store;
+    }
+
+    public static SimpleNodeState get(SimpleBlobStore store, String ref) {
+        return new SimpleNodeState(store, ref);
     }
 
     public static void serialise(OutputStream os, Map<String, String> children, Map<String, String> properties) throws IOException {
@@ -267,7 +271,7 @@ public class SimpleNodeState implements NodeState {
     @Override
     public @NotNull NodeState getChildNode(@NotNull String name) throws IllegalArgumentException {
         ensureLoaded();
-        return get(loader, children.get(name));
+        return get(store, children.get(name));
     }
 
     @Override
@@ -312,7 +316,7 @@ public class SimpleNodeState implements NodeState {
 
             @Override
             public @NotNull SimpleNodeState getNodeState() {
-                return SimpleNodeState.get(loader, e1.getValue());
+                return SimpleNodeState.get(store, e1.getValue());
             }
         }).collect(Collectors.toList());
     }

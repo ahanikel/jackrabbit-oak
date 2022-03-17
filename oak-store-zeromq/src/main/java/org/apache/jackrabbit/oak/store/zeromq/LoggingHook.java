@@ -19,7 +19,6 @@ package org.apache.jackrabbit.oak.store.zeromq;
 
 import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.api.PropertyState;
-import org.apache.jackrabbit.oak.plugins.memory.EmptyNodeState;
 import org.apache.jackrabbit.oak.spi.commit.CommitHook;
 import org.apache.jackrabbit.oak.spi.commit.CommitInfo;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
@@ -92,13 +91,13 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
 
     @Override
     public boolean childNodeAdded(String name, NodeState after) {
-        writer.accept("n+ " + safeEncode(name) + " " + ((ZeroMQNodeState) after).getUuid());
+        writer.accept("n+ " + safeEncode(name) + " " + ((SimpleNodeState) after).getRef());
         return true;
     }
 
     @Override
     public boolean childNodeChanged(String name, NodeState before, NodeState after) {
-        writer.accept("n^ " + safeEncode(name) + " " + ((ZeroMQNodeState) after).getUuid() + " " + ((ZeroMQNodeState) before).getUuid());
+        writer.accept("n^ " + safeEncode(name) + " " + ((SimpleNodeState) after).getRef() + " " + ((SimpleNodeState) before).getRef());
         return true;
     }
 
@@ -113,8 +112,8 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
     // - if the value exceeds a certain limit, stores it as a blob and a reference to that blob
     // - uses the writer directly instead of going via a string
     private static String toString(final PropertyState ps) {
-        if (!(ps instanceof ZeroMQPropertyState)) {
-            final String msg = String.format("ps has class {}", ps.getClass().getName());
+        if (!(ps instanceof SimplePropertyState)) {
+            final String msg = String.format("ps has class %1$s", ps.getClass().getName());
             log.error(msg);
             throw new IllegalStateException(msg);
         }
@@ -198,7 +197,7 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
     @NotNull
     @Override
     public NodeState processCommit(NodeState before, NodeState after, @Nullable CommitInfo info) {
-        writer.accept("n: " + ((ZeroMQNodeState) after).getUuid() + " " + ((ZeroMQNodeState) before).getUuid());
+        writer.accept("n: " + ((SimpleNodeState) after).getRef() + " " + ((SimpleNodeState) before).getRef());
         try {
             after.compareAgainstBaseState(before, this);
         } catch (Throwable t) {
