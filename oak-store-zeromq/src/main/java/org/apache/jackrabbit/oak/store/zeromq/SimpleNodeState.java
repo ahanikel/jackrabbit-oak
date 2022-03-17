@@ -30,6 +30,7 @@ import org.apache.jackrabbit.oak.spi.state.NodeStateDiff;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -149,7 +150,10 @@ public class SimpleNodeState implements NodeState {
         writeLine(os, "n!");
     }
 
-    public static Pair<Map<String, String>, Map<String, String>> deserialise(InputStream is) throws IOException {
+    public static Pair<Map<String, String>, Map<String, String>> deserialise(@Nullable InputStream is) throws IOException {
+        if (is == null) {
+            throw new FileNotFoundException();
+        }
         final Map<String, String> children = new HashMap<>();
         final Map<String, String> properties = new HashMap<>();
         for (String line : IOUtils.readLines(is, Charset.defaultCharset())) {

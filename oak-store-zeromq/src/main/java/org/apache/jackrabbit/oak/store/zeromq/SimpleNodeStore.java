@@ -92,8 +92,8 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     private static final Logger log = LoggerFactory.getLogger(SimpleNodeStore.class.getName());
     public static final String ROOT_NODE_NAME = "root";
 
-    public static ZeroMQNodeStoreBuilder builder() {
-        return new ZeroMQNodeStoreBuilder();
+    public static SimpleNodeStoreBuilder builder() {
+        return new SimpleNodeStoreBuilder();
     }
 
     private ZContext context;
@@ -208,8 +208,8 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                                 // TODO: when does a conflict lead to a CommitFailedException?
                                 final NodeStateDiff diff = new ConflictAnnotatingRebaseDiff(builder);
                                 after.compareAgainstBaseState(before, diff);
-                                final ZeroMQNodeState newRoot = (ZeroMQNodeState) builder.getNodeState();
-                                journalRoot = newRoot.getUuid();
+                                final SimpleNodeState newRoot = (SimpleNodeState) builder.getNodeState();
+                                journalRoot = newRoot.getRef();
                             } catch (Throwable e) {
                                 // ignore
                             }
@@ -249,7 +249,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     public void activate(ComponentContext ctx) {
 
         // TODO: configure using OSGi config
-        final ZeroMQNodeStoreBuilder builder = new ZeroMQNodeStoreBuilder();
+        final SimpleNodeStoreBuilder builder = new SimpleNodeStoreBuilder();
         builder.initFromEnvironment();
         configure(
             builder.getJournalId(),

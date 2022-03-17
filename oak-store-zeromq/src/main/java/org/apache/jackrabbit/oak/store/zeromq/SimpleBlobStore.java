@@ -19,6 +19,7 @@
 package org.apache.jackrabbit.oak.store.zeromq;
 
 import org.apache.jackrabbit.oak.commons.IOUtils;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -105,6 +106,15 @@ public class SimpleBlobStore implements BlobStore {
             throw new FileNotFoundException("ref: " + ref);
         }
         return new FileInputStream(getFileForRef(ref));
+    }
+
+    @Nullable
+    public FileInputStream getInputStreamOrNull(String ref) {
+        try {
+            return getInputStream(ref);
+        } catch (FileNotFoundException e) {
+            return null;
+        }
     }
 
     public File getFile(String ref) throws FileNotFoundException {
