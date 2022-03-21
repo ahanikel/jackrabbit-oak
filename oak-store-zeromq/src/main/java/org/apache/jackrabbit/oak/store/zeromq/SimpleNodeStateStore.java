@@ -161,4 +161,8 @@ public class SimpleNodeStateStore implements NodeStateStore {
         }
         return blobStore.putTempFile(tempFile);
     }
+
+    public BlobStore getBlobStore() {
+        return blobStore;
+    }
 }

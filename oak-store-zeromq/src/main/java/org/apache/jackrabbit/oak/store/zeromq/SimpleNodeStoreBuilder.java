@@ -103,7 +103,7 @@ public class SimpleNodeStoreBuilder {
         return this;
     }
 
-    // simple://<journalId>?param=value...
+    // simple://<journalid>?param=value...
     public SimpleNodeStoreBuilder initFromURI(URI uri) {
         if (!"simple".equals(uri.getScheme())) {
             throw new IllegalArgumentException("Expected protocol is 'simple' but I got " + uri.getScheme());

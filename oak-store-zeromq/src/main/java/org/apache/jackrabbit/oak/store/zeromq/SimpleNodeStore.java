@@ -97,6 +97,9 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         return new SimpleNodeStoreBuilder();
     }
 
+    public SimpleNodeState EMPTY;
+    public SimpleNodeState MISSING;
+
     private ZContext context;
     private String journalId;
     private ZeroMQSocketProvider nodeStateReader;
@@ -123,7 +126,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     private final AtomicLong remoteReadBlobCounter = new AtomicLong();
     private final AtomicLong remoteWriteBlobCounter = new AtomicLong();
     private File blobCacheDir;
-    private SimpleBlobStore store;
+    private BlobStore store;
 
     public SimpleNodeStore() {
     }
@@ -157,10 +160,12 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         this.blobCacheDir = new File(blobCacheDir);
         this.blobCacheDir.mkdirs();
         try {
-            this.store = new SimpleBlobStore(this.blobCacheDir);
+            this.store = new RemoteBlobStore(this::read, this::write, new SimpleBlobStore(this.blobCacheDir));
         } catch (IOException e) {
             throw new IllegalStateException(e);
         }
+        this.EMPTY = SimpleNodeState.empty(store);
+        this.MISSING = SimpleNodeState.missing(store);
 
         nodeStateReader = new ZeroMQSocketProvider(backendReaderURL, context, SocketType.REQ);
         nodeStateWriter = new ZeroMQSocketProvider(backendWriterURL, context, SocketType.REQ);
@@ -170,14 +175,14 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                         .concurrencyLevel(10)
                         .maximumSize(200000).build();
 
-        nodeStateCache = new NodeStateCache<>(cache, uuid -> SimpleNodeState.get(store, uuid));
+        nodeStateCache = new NodeStateCache<>(cache, ref -> SimpleNodeState.get(store, ref));
 
         // TODO: this can probably be simplified similarly to the nodestates above.
         final Cache<String, SimpleBlob> bCache =
                 CacheBuilder.newBuilder()
                         .concurrencyLevel(10)
                         .maximumSize(100).build();
-        blobCache = new NodeStateCache<>(bCache, reference -> new SimpleBlob(store, reference));
+        blobCache = new NodeStateCache<>(bCache, ref -> new SimpleBlob(store, ref));
 
         logProcessor = new Thread("ZeroMQ Log Processor") {
             public void run() {
@@ -309,13 +314,13 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
      */
     public void reset() {
         emptyCaches();
-        final NodeBuilder builder = SimpleNodeState.EMPTY.builder();
+        final NodeBuilder builder = EMPTY.builder();
         builder.setChildNode(ROOT_NODE_NAME);
         builder.setChildNode("checkpoints");
         final SimpleNodeState newSuperRoot = (SimpleNodeState) builder.getNodeState();
-        journalRoot = SimpleNodeState.EMPTY.getRef(); // the new journalRoot is set by the log processor
-        setRoot(newSuperRoot.getRef(), SimpleNodeState.EMPTY.getRef());
-        setCheckpointRoot(SimpleNodeState.EMPTY.getRef());
+        journalRoot = EMPTY.getRef(); // the new journalRoot is set by the log processor
+        setRoot(newSuperRoot.getRef(), EMPTY.getRef());
+        setCheckpointRoot(EMPTY.getRef());
     }
 
     void emptyCaches() {
@@ -335,7 +340,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         while (true) {
             try {
                 nodeStateReader.get().send("journal " + journalId);
-                assert(nodeStateReader.get().recvStr().equals("E")); // verb, always "E"
+                nodeStateReader.get().recvStr().equals("E"); // verb, always "E"
                 msg = nodeStateReader.get().recvStr();
                 break;
             } catch (Throwable t) {
@@ -355,7 +360,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         while (true) {
             try {
                 nodeStateReader.get().send("journal " + journalId + "-checkpoints");
-                assert(nodeStateReader.get().recvStr().equals("E")); // verb, always "E"
+                nodeStateReader.get().recvStr().equals("E"); // verb, always "E"
                 msg = nodeStateReader.get().recvStr();
                 break;
             } catch (Throwable t) {
@@ -481,8 +486,8 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         if (log.isTraceEnabled()) {
             log.trace("{} n? {}", Thread.currentThread().getId(), ref);
         }
-        if (SimpleNodeState.EMPTY.getRef().equals(ref)) {
-            return SimpleNodeState.EMPTY;
+        if (EMPTY.getRef().equals(ref)) {
+            return EMPTY;
         }
         final SimpleNodeState ret = nodeStateCache.get(ref);
         if (ret == null) {
@@ -828,6 +833,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     }
 
     @Override
+    @Deprecated
     public boolean deleteChunks(List<String> chunkIds, long maxLastModifiedTime) {
         return false;
     }

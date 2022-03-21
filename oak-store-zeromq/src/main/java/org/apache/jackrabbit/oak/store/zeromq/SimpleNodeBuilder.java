@@ -39,7 +39,7 @@ public class SimpleNodeBuilder extends MemoryNodeBuilder {
     @Override
     public SimpleNodeState getNodeState() {
         final SimpleNodeState base = (SimpleNodeState) getBaseState();
-        final SimpleNodeStateStore snss = new SimpleNodeStateStore(base.getStore());
+        final SimpleNodeStateStore snss = new SimpleNodeStateStore(base.getStore()); // TODO: make that a SimpleNodeStateStore right away, which in turn provides a getStore() method.
         try {
             final String ref = snss.putNodeState(super.getNodeState());
             return SimpleNodeState.get(base.getStore(), ref);
@@ -56,8 +56,8 @@ public class SimpleNodeBuilder extends MemoryNodeBuilder {
     @Override
     public Blob createBlob(InputStream is) throws IOException {
         final SimpleNodeState base = (SimpleNodeState) getBaseState();
-        final SimpleBlobStore store = base.getStore();
-        final String ref = base.getStore().putInputStream(is);
+        final BlobStore store = base.getStore();
+        final String ref = store.putInputStream(is);
         return new SimpleBlob(store, ref);
     }
 }

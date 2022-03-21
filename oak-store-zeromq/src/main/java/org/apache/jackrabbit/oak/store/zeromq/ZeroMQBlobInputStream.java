@@ -33,7 +33,7 @@ public class ZeroMQBlobInputStream extends InputStream {
     private int max = 0;
     private int offset = 0;
     private volatile boolean init = false;
-    private volatile boolean error = false;
+    private volatile IOException error = null;
     private final Supplier<ZMQ.Socket> blobReader;
     private ZMQ.Socket reader;
     private final String reference;
@@ -42,6 +42,9 @@ public class ZeroMQBlobInputStream extends InputStream {
     private static final Logger log = LoggerFactory.getLogger(ZeroMQBlobInputStream.class.getName());
 
     ZeroMQBlobInputStream(Supplier<ZMQ.Socket> blobReader, String reference) {
+        if (reference == null || reference.length() < 6) {
+            throw new IllegalStateException("" + reference + " is not a reference.");
+        }
         this.blobReader = blobReader;
         this.reference = reference;
     }
@@ -49,20 +52,15 @@ public class ZeroMQBlobInputStream extends InputStream {
     private void init() {
         if (!init) {
             reader = blobReader.get();
-            try {
-                init = true;
-                buffer = new byte[1024 * 1024]; // not final because of fear it's not being GC'd
-            } catch (Throwable t) {
-                log.error(t.getMessage());
-                error = true;
-            }
+            init = true;
+            buffer = new byte[1024 * 1024]; // not final because of fear it's not being GC'd
         }
     }
 
     @Override
     public synchronized int read() throws IOException {
-        if (error) {
-            throw new IOException("A previous error condition makes this InputStream invalid.");
+        if (error != null) {
+            throw new IOException(error);
         }
         init();
         if (cur == max) {
@@ -72,13 +70,18 @@ public class ZeroMQBlobInputStream extends InputStream {
             return -1;
         }
         if (max < 0) {
-            error = true;
-            throw new IllegalStateException();
+            error = new IOException("max < 0");
+            throw (IOException) error;
         }
         return 0x000000ff & buffer[cur++];
     }
 
     private void nextBunch() throws IOException {
+        if (verb.equals("E")) {
+            max = 0;
+            cur = 0;
+            return;
+        }
         if (reader != blobReader.get()) {
             throw new IllegalStateException("*** Reading thread has changed! ***");
         }
@@ -88,13 +91,13 @@ public class ZeroMQBlobInputStream extends InputStream {
         if (verb.equals("N")) {
             final String msg = "Blob " + reference + " not found";
             log.error(msg);
-            error = true;
-            throw new FileNotFoundException(msg);
+            error = new FileNotFoundException(msg);
+            throw error;
         } else if (verb.equals("F")) {
             final String msg = "When fetching blob " + reference + ": " + new String(buffer, 0, max);
             log.error(msg);
-            error = true;
-            throw new IOException(msg);
+            error = new IOException(msg);
+            throw error;
         } else {
             offset += max;
             cur = 0;

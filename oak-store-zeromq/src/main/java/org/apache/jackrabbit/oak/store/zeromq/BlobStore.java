@@ -28,12 +28,13 @@ import java.nio.file.FileAlreadyExistsException;
 public interface BlobStore {
     byte[] getBytes(String ref) throws IOException;
     String getString(String ref) throws IOException;
-    FileInputStream getInputStream(String ref) throws FileNotFoundException;
+    FileInputStream getInputStream(String ref) throws FileNotFoundException, IOException;
     String putBytes(byte[] bytes) throws IOException;
     String putString(String string) throws IOException;
     String putInputStream(InputStream is) throws IOException;
     File getTempFile() throws IOException;
-    String putTempFile(File tempFile) throws FileAlreadyExistsException;
+    String putTempFile(File tempFile) throws IOException;
     File getSpecificFile(String name);
     boolean hasBlob(String ref);
+    long getLength(String ref) throws IOException;
 }

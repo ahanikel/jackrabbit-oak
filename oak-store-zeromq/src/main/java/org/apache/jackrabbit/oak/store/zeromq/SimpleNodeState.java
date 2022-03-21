@@ -43,7 +43,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.StringTokenizer;
 import java.util.UUID;
-import java.util.function.Function;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import static org.apache.jackrabbit.oak.store.zeromq.SafeEncode.safeDecode;
@@ -52,17 +53,24 @@ import static org.apache.jackrabbit.oak.store.zeromq.SafeEncode.safeEncode;
 public class SimpleNodeState implements NodeState {
 
     public static final UUID UUID_NULL = new UUID(0L, 0L);
-    public static final SimpleNodeState EMPTY = new SimpleNodeState(true);
 
-    private final SimpleBlobStore store;
+    public static final SimpleNodeState empty(BlobStore store) {
+        return new SimpleNodeState(store, true);
+    }
+
+    public static final SimpleNodeState missing(BlobStore store) {
+        return new SimpleNodeState(store, false);
+    }
+
+    private final BlobStore store;
     private final String ref;
     private Map<String, String> children;
     private Map<String, String> properties;
     private boolean loaded;
     private boolean exists;
 
-    private SimpleNodeState(boolean exists) {
-        this.store = null;
+    private SimpleNodeState(BlobStore store, boolean exists) {
+        this.store = store;
         this.ref = UUID_NULL.toString();
         this.children = ImmutableMap.of();
         this.properties = ImmutableMap.of();
@@ -70,7 +78,7 @@ public class SimpleNodeState implements NodeState {
         this.exists = exists;
     }
 
-    private SimpleNodeState(SimpleBlobStore store, String ref) {
+    private SimpleNodeState(BlobStore store, String ref) {
         this.store = store;
         this.ref = ref;
         this.loaded = false;
@@ -79,17 +87,22 @@ public class SimpleNodeState implements NodeState {
 
     private void ensureLoaded() {
         if (!loaded) {
-            synchronized (this) {
-                Pair<Map<String, String>, Map<String, String>> p;
-                try {
-                    p = deserialise(store.getInputStream(ref));
-                } catch (IOException e) {
-                    throw new IllegalStateException(e);
+            if (ref != null) {
+                synchronized (this) {
+                    Pair<Map<String, String>, Map<String, String>> p;
+                    try {
+                        p = deserialise(store.getInputStream(ref));
+                    } catch (IOException e) {
+                        throw new IllegalStateException(e);
+                    }
+                    children = p.fst;
+                    properties = p.snd;
                 }
-                children = p.fst;
-                properties = p.snd;
-                loaded = true;
+            } else {
+                children = ImmutableMap.of();
+                properties = ImmutableMap.of();
             }
+            loaded = true;
         }
     }
 
@@ -115,11 +128,11 @@ public class SimpleNodeState implements NodeState {
         return ref;
     }
 
-    public SimpleBlobStore getStore() {
+    public BlobStore getStore() {
         return store;
     }
 
-    public static SimpleNodeState get(SimpleBlobStore store, String ref) {
+    public static SimpleNodeState get(BlobStore store, String ref) {
         return new SimpleNodeState(store, ref);
     }
 
@@ -165,7 +178,7 @@ public class SimpleNodeState implements NodeState {
             String op = st.nextToken();
             switch(op) {
                 case "n+": children.put(safeDecode(st.nextToken()), st.nextToken()); break;
-                case "p+": properties.put(safeDecode(st.nextToken()), st.nextToken()); break;
+                case "p+": properties.put(safeDecode(st.nextToken()), line.substring(line.indexOf(' ') + 1)); break;
             }
         }
         return Pair.of(children, properties);
@@ -173,7 +186,7 @@ public class SimpleNodeState implements NodeState {
 
     @Override
     public boolean exists() {
-        return true;
+        return ref != null;
     }
 
     @Override
@@ -185,7 +198,12 @@ public class SimpleNodeState implements NodeState {
     @Override
     public @Nullable PropertyState getProperty(@NotNull String name) {
         ensureLoaded();
-        return SimplePropertyState.deserialise(properties.get(name));
+        try {
+            // TODO: cache this
+            return SimplePropertyState.deSerialise(store, properties.get(name));
+        } catch (SimplePropertyState.ParseFailure e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     @Override
@@ -255,11 +273,22 @@ public class SimpleNodeState implements NodeState {
     @Override
     public @NotNull Iterable<? extends PropertyState> getProperties() {
         ensureLoaded();
-        return
-            properties.values()
+        AtomicReference<Exception> error = new AtomicReference<>();
+        List<SimplePropertyState> ret = properties.entrySet()
             .stream()
-            .map(SimplePropertyState::deserialise)
+            .map(entry -> {
+                try {
+                    return SimplePropertyState.deSerialise(store, entry.getValue());
+                } catch (SimplePropertyState.ParseFailure e) {
+                    error.set(e);
+                    return null;
+                }
+            })
             .collect(Collectors.toList());
+        if (error.get() != null) {
+            throw new IllegalStateException(error.get());
+        }
+        return ret;
     }
 
     @Override
@@ -271,7 +300,11 @@ public class SimpleNodeState implements NodeState {
     @Override
     public @NotNull NodeState getChildNode(@NotNull String name) throws IllegalArgumentException {
         ensureLoaded();
-        return get(store, children.get(name));
+        final String childRef = children.get(name);
+        if (childRef != null) {
+            return get(store, children.get(name));
+        }
+        return SimpleNodeState.missing(store);
     }
 
     @Override

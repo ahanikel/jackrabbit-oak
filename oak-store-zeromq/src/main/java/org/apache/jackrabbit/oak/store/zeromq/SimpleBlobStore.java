@@ -164,6 +164,11 @@ public class SimpleBlobStore implements BlobStore {
         return getFileForRef(ref).exists();
     }
 
+    @Override
+    public long getLength(String ref) throws IOException {
+        return getFile(ref).length();
+    }
+
     private File getFileForRef(String ref) {
         final StringBuilder dirName = new StringBuilder();
         dirName

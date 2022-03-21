@@ -159,13 +159,19 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
     }
 
     public static void writeBlob(Blob b, Consumer<String> writer) throws IOException {
+        try (InputStream is = b.getNewStream()) {
+            writeBlob(b.getReference(), is, writer);
+        }
+    }
+
+    public static void writeBlob(String ref, InputStream is, Consumer<String> writer) throws IOException {
         synchronized (writer) {
             final int chunkSize = 256 * 1024;
             byte[] buffer = new byte[chunkSize]; // not final because of fear it's not being GC'd
             final Base64.Encoder b64 = Base64.getEncoder();
             String encoded;
-            writer.accept("b64+ " + b.getReference());
-            try (final InputStream is = b.getNewStream()) {
+            writer.accept("b64+ " + ref);
+            try  {
                 int nBytes;
                 while ((nBytes = is.read(buffer)) >= 0) {
                     if (nBytes < chunkSize) {
@@ -176,7 +182,8 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
                     } else {
                         encoded = b64.encodeToString(buffer);
                     }
-                    if (b.getReference().equals("2E79040765B71C748E4641664489CAD5")) {
+                    // TODO: check if we still need this
+                    if (ref.equals("2E79040765B71C748E4641664489CAD5")) {
                         // One could think that even though this message isn't exactly 16384 bytes long
                         // there is something special about this size.
                         // I guess it's 16384 when the zmq header is added.

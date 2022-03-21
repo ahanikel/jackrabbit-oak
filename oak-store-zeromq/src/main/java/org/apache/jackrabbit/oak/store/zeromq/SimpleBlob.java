@@ -5,14 +5,16 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.InvalidObjectException;
 
 public class SimpleBlob implements Blob {
 
-    private final SimpleBlobStore store;
+    private final BlobStore store;
     private final String ref;
 
-    public SimpleBlob(SimpleBlobStore store, String ref) {
+    public SimpleBlob(BlobStore store, String ref) {
         this.store = store;
         this.ref = ref;
     }
@@ -21,7 +23,7 @@ public class SimpleBlob implements Blob {
     public @NotNull InputStream getNewStream() {
         try {
             return store.getInputStream(ref);
-        } catch (FileNotFoundException e) {
+        } catch (IOException e) {
             throw new IllegalArgumentException(e);
         }
     }
@@ -29,8 +31,8 @@ public class SimpleBlob implements Blob {
     @Override
     public long length() {
         try {
-            return store.getFile(ref).length();
-        } catch (FileNotFoundException e) {
+            return store.getLength(ref);
+        } catch (IOException e) {
             throw new IllegalArgumentException(e);
         }
     }
