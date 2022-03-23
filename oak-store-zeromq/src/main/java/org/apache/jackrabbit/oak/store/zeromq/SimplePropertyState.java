@@ -69,7 +69,6 @@ public class SimplePropertyState implements PropertyState {
         }
 
         if (type.equals(Type.BINARY)) {
-            value = value.toLowerCase();
             Blob ret = new SimpleBlob(store, value);
             return (T) ret;
         }
@@ -505,9 +504,14 @@ public class SimplePropertyState implements PropertyState {
     public boolean equals(Object that) {
         if (that instanceof SimplePropertyState) {
             SimplePropertyState other = (SimplePropertyState) that;
+            if (this.type.equals(other.type) && this.stringValues.equals(other.stringValues)) {
+                return true;
+            }
+            /*
             if (this.getType().equals(Type.BINARY) && other.getType().equals(Type.BINARY)) {
                 return this.stringValues.get(0).equals(other.stringValues.get(0));
             }
+            */
         }
         if (that instanceof BinaryPropertyState) {
             BinaryPropertyState other = (BinaryPropertyState) that;
@@ -532,7 +536,7 @@ public class SimplePropertyState implements PropertyState {
         sb.append(getType());
         sb.append("> ");
         if (isArray()) {
-            sb.append("= [");
+            sb.append(" [");
             stringValues.forEach((String s)  -> {
                 if (type.equals(Type.BINARIES)) {
                     sb.append(s);
@@ -546,7 +550,7 @@ public class SimplePropertyState implements PropertyState {
         }
         else {
             try {
-                sb.append("= ");
+                sb.append(" ");
                 if (type.equals(Type.BINARY)) {
                     sb.append(stringValues.get(0));
                 }
@@ -608,7 +612,7 @@ public class SimplePropertyState implements PropertyState {
         p
             .parseRegexp(Parser.spaceSeparatedPattern, 1).assignToWithDecode(pName)
             .parseString("<")
-            .parseRegexp(Parser.propertyTypePattern, 4).assignTo(pType)
+            .parseRegexp(Parser.propertyTypePattern, 2).assignTo(pType)
             .parseRegexp(Parser.allTheRestPattern, 0).appendToValues(pValues);
         return new SimplePropertyState(store, pName.val(), pType.val(), pValues);
     }
@@ -649,7 +653,7 @@ public class SimplePropertyState implements PropertyState {
     private static class Parser {
         private static final Pattern tabSeparatedPattern = Pattern.compile("([^\\t]+\\t).*", Pattern.DOTALL);
         private static final Pattern spaceSeparatedPattern = Pattern.compile("([^ ]+ ).*", Pattern.DOTALL);
-        private static final Pattern propertyTypePattern = Pattern.compile("([^>]+> = ).*", Pattern.DOTALL);
+        private static final Pattern propertyTypePattern = Pattern.compile("([^>]+> ).*", Pattern.DOTALL);
         private static final Pattern allTheRestPattern = Pattern.compile("(.*)", Pattern.DOTALL);
 
         private String s;

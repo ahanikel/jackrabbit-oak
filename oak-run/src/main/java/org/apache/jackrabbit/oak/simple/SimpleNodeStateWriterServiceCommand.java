@@ -36,6 +36,7 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Queue;
 import java.util.Stack;
 import java.util.StringTokenizer;
@@ -122,10 +123,15 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
             final StringTokenizer st = new StringTokenizer(msg);
             final String uuThreadId = st.nextToken();
             final String op = st.nextToken();
-            final String value = st.nextToken("");
+            String value;
+            try {
+                value = st.nextToken("").substring(1);
+            } catch (NoSuchElementException e) {
+                value = "";
+            }
             recordHandler.handleRecord(uuThreadId, op, value);
         } catch (Exception e) {
-            final String errorMsg = String.format("An error occurred on: %1$, exception: %2$", msg, e.getMessage());
+            final String errorMsg = "An error occurred on: " + msg + ", exception: " + e.getMessage();
             System.err.println(errorMsg);
             socket.sendMore("F");
             socket.send(errorMsg);

@@ -25,7 +25,7 @@ import org.apache.jackrabbit.oak.run.cli.CommonOptions;
 import org.apache.jackrabbit.oak.run.cli.Options;
 import org.apache.jackrabbit.oak.run.commons.Command;
 import org.apache.jackrabbit.oak.store.zeromq.SimpleBlobStore;
-import org.apache.jackrabbit.oak.store.zeromq.ZeroMQEmptyNodeState;
+import org.apache.jackrabbit.oak.store.zeromq.SimpleNodeState;
 import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
@@ -36,8 +36,6 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.StringReader;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
@@ -191,7 +189,7 @@ public class SimpleBlobReaderServiceCommand implements Command {
         try (FileInputStream is = new FileInputStream(journalFile)) {
             return IOUtils.readString(is);
         } catch (FileNotFoundException e) {
-            return ZeroMQEmptyNodeState.UUID_NULL.toString();
+            return SimpleNodeState.UUID_NULL.toString();
         }
     }
 

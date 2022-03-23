@@ -26,12 +26,13 @@ public class Util {
     public static String getRefFromFile(File file) {
         try {
             MessageDigest md5 = MessageDigest.getInstance("MD5");
-            final InputStream is = new FileInputStream(file);
-            byte[] buf = new byte[1024*1024];
-            int nRead = is.read(buf);
-            while (nRead > 0) {
-                md5.update(buf, 0, nRead);
-                nRead = is.read(buf);
+            try (InputStream is = new FileInputStream(file)) {
+                byte[] buf = new byte[1024 * 1024];
+                int nRead = is.read(buf);
+                while (nRead > 0) {
+                    md5.update(buf, 0, nRead);
+                    nRead = is.read(buf);
+                }
             }
             return bytesToString(new ByteArrayInputStream(md5.digest()));
         } catch (NoSuchAlgorithmException | IOException e) {
@@ -49,6 +50,12 @@ public class Util {
             }
         } catch (IOException ex) {
             throw new IllegalStateException(ex);
+        } finally {
+            try {
+                is.close();
+            } catch (IOException e) {
+                // ignore
+            }
         }
     }
 

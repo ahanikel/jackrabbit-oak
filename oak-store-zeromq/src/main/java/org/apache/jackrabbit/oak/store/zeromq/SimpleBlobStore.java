@@ -131,6 +131,12 @@ public class SimpleBlobStore implements BlobStore {
         final File tempFile = getTempFile();
         try (OutputStream os = new FileOutputStream(tempFile)) {
             IOUtils.copy(is, os);
+        } finally {
+            try {
+                is.close();
+            } catch (IOException e) {
+                // ignore
+            }
         }
         return putTempFile(tempFile);
     }
@@ -141,13 +147,13 @@ public class SimpleBlobStore implements BlobStore {
     }
 
     @Override
-    public String putTempFile(File tempFile) throws FileAlreadyExistsException {
+    public String putTempFile(File tempFile) {
         final String ref = Util.getRefFromFile(tempFile);
         if (hasBlob(ref)) {
             tempFile.delete();
-            throw new FileAlreadyExistsException(ref);
+        } else {
+            tempFile.renameTo(getFileForRef(ref));
         }
-        tempFile.renameTo(getFileForRef(ref));
         return ref;
     }
 

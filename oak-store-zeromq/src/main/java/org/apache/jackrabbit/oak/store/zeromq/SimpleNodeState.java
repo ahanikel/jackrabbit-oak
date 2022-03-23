@@ -43,7 +43,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.StringTokenizer;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
@@ -66,6 +65,7 @@ public class SimpleNodeState implements NodeState {
     private final String ref;
     private Map<String, String> children;
     private Map<String, String> properties;
+    private Map<String, SimplePropertyState> propertiesDeSerialised;
     private boolean loaded;
     private boolean exists;
 
@@ -74,6 +74,7 @@ public class SimpleNodeState implements NodeState {
         this.ref = UUID_NULL.toString();
         this.children = ImmutableMap.of();
         this.properties = ImmutableMap.of();
+        this.propertiesDeSerialised = ImmutableMap.of();
         this.loaded = true;
         this.exists = exists;
     }
@@ -87,7 +88,10 @@ public class SimpleNodeState implements NodeState {
 
     private void ensureLoaded() {
         if (!loaded) {
-            if (ref != null) {
+            if (ref == null || ref.equals(UUID_NULL.toString())) {
+                children = ImmutableMap.of();
+                properties = ImmutableMap.of();
+            } else {
                 synchronized (this) {
                     Pair<Map<String, String>, Map<String, String>> p;
                     try {
@@ -98,10 +102,8 @@ public class SimpleNodeState implements NodeState {
                     children = p.fst;
                     properties = p.snd;
                 }
-            } else {
-                children = ImmutableMap.of();
-                properties = ImmutableMap.of();
             }
+            propertiesDeSerialised = new HashMap<>();
             loaded = true;
         }
     }
@@ -171,17 +173,37 @@ public class SimpleNodeState implements NodeState {
         if (is == null) {
             throw new FileNotFoundException();
         }
-        final Map<String, String> children = new HashMap<>();
-        final Map<String, String> properties = new HashMap<>();
-        for (String line : IOUtils.readLines(is, Charset.defaultCharset())) {
-            StringTokenizer st = new StringTokenizer(line);
-            String op = st.nextToken();
-            switch(op) {
-                case "n+": children.put(safeDecode(st.nextToken()), st.nextToken()); break;
-                case "p+": properties.put(safeDecode(st.nextToken()), line.substring(line.indexOf(' ') + 1)); break;
+        try {
+            final Map<String, String> children = new HashMap<>();
+            final Map<String, String> properties = new HashMap<>();
+            for (String line : IOUtils.readLines(is, Charset.defaultCharset())) {
+                if (line.equals("")) {
+                    continue;
+                }
+                StringTokenizer st = new StringTokenizer(line);
+                String op;
+                try {
+                    op = st.nextToken();
+                } catch (Exception e) {
+                    throw e;
+                }
+                switch (op) {
+                    case "n+":
+                        children.put(safeDecode(st.nextToken()), st.nextToken());
+                        break;
+                    case "p+":
+                        properties.put(safeDecode(st.nextToken()), line.substring(line.indexOf(' ') + 1));
+                        break;
+                }
+            }
+            return Pair.of(children, properties);
+        } finally {
+            try {
+                is.close();
+            } catch (IOException e) {
+                // ignore
             }
         }
-        return Pair.of(children, properties);
     }
 
     @Override
@@ -198,9 +220,16 @@ public class SimpleNodeState implements NodeState {
     @Override
     public @Nullable PropertyState getProperty(@NotNull String name) {
         ensureLoaded();
+        if (!hasProperty(name)) {
+            return null;
+        }
         try {
-            // TODO: cache this
-            return SimplePropertyState.deSerialise(store, properties.get(name));
+            if (propertiesDeSerialised.containsKey(name)) {
+                return propertiesDeSerialised.get(name);
+            }
+            SimplePropertyState ret = SimplePropertyState.deSerialise(store, properties.get(name));
+            propertiesDeSerialised.put(name, ret);
+            return ret;
         } catch (SimplePropertyState.ParseFailure e) {
             throw new IllegalStateException(e);
         }
@@ -361,6 +390,9 @@ public class SimpleNodeState implements NodeState {
 
     @Override
     public boolean compareAgainstBaseState(NodeState base, NodeStateDiff diff) {
+        if (base instanceof SimpleNodeState && this.ref.equals(((SimpleNodeState) base).ref)) {
+            return true;
+        }
         return AbstractNodeState.compareAgainstBaseState(this, base, diff);
     }
 

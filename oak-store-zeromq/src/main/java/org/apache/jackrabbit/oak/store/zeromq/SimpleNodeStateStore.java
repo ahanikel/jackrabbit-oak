@@ -72,14 +72,22 @@ public class SimpleNodeStateStore implements NodeStateStore {
             .append("> ");
         if (ps.getType().equals(Type.BINARY)) {
             final Blob blob = ps.getValue(Type.BINARY);
-            final String ref = blobStore.putInputStream(blob.getNewStream());
-            sb.append(ref);
+            if (blob instanceof SimpleBlob) {
+                sb.append(blob.getReference());
+            } else {
+                final String ref = blobStore.putInputStream(blob.getNewStream());
+                sb.append(ref);
+            }
         } else if (ps.getType().equals(Type.BINARIES)) {
             sb.append('[');
             final Iterable<Blob> blobs = ps.getValue(Type.BINARIES);
             for (Blob blob : blobs) {
-                final String ref = blobStore.putInputStream(blob.getNewStream());
-                sb.append(ref);
+                if (blob instanceof SimpleBlob) {
+                    sb.append(blob.getReference());
+                } else {
+                    final String ref = blobStore.putInputStream(blob.getNewStream());
+                    sb.append(ref);
+                }
                 sb.append(',');
             }
             if (sb.charAt(sb.length() - 1) == ',') {
@@ -89,16 +97,26 @@ public class SimpleNodeStateStore implements NodeStateStore {
         } else if (ps.isArray()) {
             sb.append('[');
             final Iterable<String> strings = ps.getValue(Type.STRINGS);
-            sb.append(String.join(",", strings));
+            for (String s : strings) {
+                sb.append(SafeEncode.safeEncode(s));
+                sb.append(',');
+            }
+            if (sb.charAt(sb.length() - 1) == ',') {
+                sb.deleteCharAt(sb.length() - 1);
+            }
             sb.append(']');
         } else {
-            sb.append(ps.getValue(Type.STRING));
+            sb.append(SafeEncode.safeEncode(ps.getValue(Type.STRING)));
         }
         return sb.toString();
     }
 
     @Override
     public String putNodeState(NodeState ns) throws IOException {
+        if (ns instanceof SimpleNodeState) {
+            return ((SimpleNodeState) ns).getRef();
+        }
+
         final List<String> children = new ArrayList<>();
         final List<String> properties = new ArrayList<>();
 

@@ -24,7 +24,6 @@ import org.apache.jackrabbit.oak.commons.IOUtils;
 import org.apache.jackrabbit.oak.store.zeromq.Pair;
 import org.apache.jackrabbit.oak.store.zeromq.SimpleBlobStore;
 import org.apache.jackrabbit.oak.store.zeromq.SimpleNodeState;
-import org.apache.jackrabbit.oak.store.zeromq.ZeroMQEmptyNodeState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.zeromq.SocketType;
@@ -135,22 +134,20 @@ public class SimpleRecordHandler {
                 } else {
                     final String oldId = tokens.nextToken();
                     final SimpleMutableNodeState oldNode;
-                    if (oldId.equals(ZeroMQEmptyNodeState.UUID_NULL.toString())) {
+                    if (oldId.equals(SimpleNodeState.UUID_NULL.toString())) {
                         oldNode = new SimpleMutableNodeState(oldId);
                     } else {
                         try {
                             oldNode = cache.get(oldId, () -> {
-                                final FileInputStream oldNodeSer;
-                                try {
-                                    oldNodeSer = store.getInputStream(oldId);
+                                try (FileInputStream oldNodeSer = store.getInputStream(oldId)) {
+                                    try {
+                                        return SimpleMutableNodeState.deserialise(oldId, oldNodeSer);
+                                    } catch (IOException e) {
+                                        log.error(e.getMessage() + " when trying to fetch node " + oldId);
+                                        throw new IllegalStateException(e);
+                                    }
                                 } catch (IOException e) {
                                     log.error("Node not found: " + oldId);
-                                    throw new IllegalStateException(e);
-                                }
-                                try {
-                                    return SimpleMutableNodeState.deserialise(oldId, oldNodeSer);
-                                } catch (IOException e) {
-                                    log.error(e.getMessage() + " when trying to fetch node " + oldId);
                                     throw new IllegalStateException(e);
                                 }
                             });
@@ -339,6 +336,11 @@ public class SimpleRecordHandler {
                 final CurrentBlob currentBlob = currentBlobMap.get(uuThreadId);
                 if (currentBlob.getFound() != null) {
                     currentBlobMap.remove(uuThreadId);
+                    try {
+                        currentBlob.getFound().close();
+                    } catch (IOException e) {
+                        // ignore
+                    }
                     break;
                 }
                 final OutputStream currentBlobFos = currentBlob.getFos();

@@ -508,11 +508,16 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         }
     }
 
-    private void write(String event) {
+    private synchronized void write(String event) {
         try {
             final ZMQ.Socket writer = nodeStateWriter.get();
             writer.send(getUUThreadId() + " " + event);
-            log.trace(writer.recvStr()); // ignore
+            final String msg = writer.recvStr();
+            if (!msg.equals("E")) {
+                log.error("{}: {}", msg, writer.recvStr());
+            } else {
+                writer.recvStr().equals("");
+            }
         } catch (Throwable t) {
             log.error(t.getMessage());
         }

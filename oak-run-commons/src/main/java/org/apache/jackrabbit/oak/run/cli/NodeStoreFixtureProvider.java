@@ -19,13 +19,6 @@
 
 package org.apache.jackrabbit.oak.run.cli;
 
-import java.io.File;
-import java.io.IOException;
-import java.net.URI;
-import java.util.Map;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
-
 import com.codahale.metrics.ConsoleReporter;
 import com.codahale.metrics.Counting;
 import com.codahale.metrics.MetricRegistry;
@@ -42,8 +35,13 @@ import org.apache.jackrabbit.oak.spi.whiteboard.Registration;
 import org.apache.jackrabbit.oak.spi.whiteboard.Tracker;
 import org.apache.jackrabbit.oak.spi.whiteboard.Whiteboard;
 import org.apache.jackrabbit.oak.stats.StatisticsProvider;
-import org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeStore;
-import org.apache.jackrabbit.oak.store.zeromq.ZeroMQNodeStoreBuilder;
+
+import java.io.File;
+import java.io.IOException;
+import java.net.URI;
+import java.util.Map;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 
 import static java.lang.management.ManagementFactory.getPlatformMBeanServer;
 import static java.util.Collections.emptyMap;
@@ -128,11 +126,6 @@ public class NodeStoreFixtureProvider {
                 if (blobStore == null) {
                     blobStore = dns.getBlobStore();
                 }
-                break;
-            }
-            case "zeromq": {
-                store = ZeroMQNodeStore.builder().initFromURI(uri).build();
-                blobStore = null;
                 break;
             }
             default: {
