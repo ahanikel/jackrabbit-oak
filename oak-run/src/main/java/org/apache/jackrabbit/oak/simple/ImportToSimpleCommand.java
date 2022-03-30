@@ -22,10 +22,13 @@ import com.google.common.base.Stopwatch;
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
 import org.apache.jackrabbit.oak.commons.IOUtils;
+import org.apache.jackrabbit.oak.plugins.memory.MemoryNodeStore;
 import org.apache.jackrabbit.oak.run.cli.CommonOptions;
 import org.apache.jackrabbit.oak.run.cli.NodeStoreFixtureProvider;
 import org.apache.jackrabbit.oak.run.cli.Options;
 import org.apache.jackrabbit.oak.run.commons.Command;
+import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
+import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
 import org.apache.jackrabbit.oak.store.zeromq.SimpleBlobStore;
 import org.apache.jackrabbit.oak.store.zeromq.SimpleNodeStateStore;
@@ -77,11 +80,15 @@ public class ImportToSimpleCommand implements Command {
         final SimpleNodeStateStore simple = new SimpleNodeStateStore(blobStore);
         final NodeStore sourceNodeStore = NodeStoreFixtureProvider.create(source, opts, true).getStore();
         System.err.println("Nodestores are open, starting import.");
-        final String newRoot = simple.putNodeState(sourceNodeStore.getRoot());
+        final NodeStore memoryStore = new MemoryNodeStore();
+        NodeBuilder builder = memoryStore.getRoot().builder();
+        builder.setChildNode("root", sourceNodeStore.getRoot());
+        final NodeState newSuperRoot = builder.getNodeState();
+        final String newHead = simple.putNodeState(newSuperRoot);
         try (OutputStream journalFile = new FileOutputStream(new File(destPath, "journal-golden"))) {
-            IOUtils.writeString(journalFile, newRoot);
+            IOUtils.writeString(journalFile, newHead);
         }
-        System.err.println("New root is " + newRoot);
+        System.err.println("New root is " + newHead);
         System.err.println("Import finished successfully.");
     }
 }

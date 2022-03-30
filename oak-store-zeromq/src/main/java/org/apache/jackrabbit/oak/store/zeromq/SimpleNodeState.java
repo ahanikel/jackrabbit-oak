@@ -208,7 +208,7 @@ public class SimpleNodeState implements NodeState {
 
     @Override
     public boolean exists() {
-        return ref != null;
+        return exists;
     }
 
     @Override

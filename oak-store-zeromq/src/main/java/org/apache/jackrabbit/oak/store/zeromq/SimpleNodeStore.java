@@ -216,9 +216,9 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                                 // ignore
                             }
                         }
-                        if (expectedRoot != null && expectedRoot.equals(newUuid)) {
+                        synchronized (expectedRoot) {
+                            if (expectedRoot != null && expectedRoot.equals(newUuid)) {
                             log.info("Found our commit {}", newUuid);
-                            synchronized (expectedRoot) {
                                 expectedRoot.notify();
                             }
                         }
@@ -397,9 +397,9 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     }
 
     private void setRoot(String uuid, String oldUuid) {
-        setRootRemote(null, uuid, oldUuid);
         expectedRoot = uuid;
         synchronized (expectedRoot) {
+            setRootRemote(null, uuid, oldUuid);
             try {
                 expectedRoot.wait();
                 expectedRoot = null;
@@ -425,6 +425,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                                     + uuid + " "
                                     + oldUuid
                     );
+                    socket.recvStr(); // ignore
                     socket.recvStr(); // ignore
                     break;
                 } catch (Throwable t) {
@@ -509,17 +510,25 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     }
 
     private synchronized void write(String event) {
-        try {
-            final ZMQ.Socket writer = nodeStateWriter.get();
-            writer.send(getUUThreadId() + " " + event);
-            final String msg = writer.recvStr();
-            if (!msg.equals("E")) {
-                log.error("{}: {}", msg, writer.recvStr());
-            } else {
-                writer.recvStr().equals("");
+        while (true) {
+            try {
+                final ZMQ.Socket writer = nodeStateWriter.get();
+                writer.send(getUUThreadId() + " " + event);
+                final String msg = writer.recvStr();
+                if (!msg.equals("E")) {
+                    log.error("{}: {}", msg, writer.recvStr());
+                } else {
+                    writer.recvStr(); // ignore, should be ""
+                }
+                break;
+            } catch (Throwable t) {
+                log.error(t.getMessage());
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    // ignore
+                }
             }
-        } catch (Throwable t) {
-            log.error(t.getMessage());
         }
     }
 
