@@ -26,6 +26,7 @@ import org.apache.jackrabbit.oak.index.IndexCommand;
 import org.apache.jackrabbit.oak.run.commons.Command;
 import org.apache.jackrabbit.oak.run.commons.Modes;
 import org.apache.jackrabbit.oak.simple.ImportToSimpleCommand;
+import org.apache.jackrabbit.oak.simple.SerialiseNodeStoreCommand;
 import org.apache.jackrabbit.oak.simple.SimpleBlobReaderServiceCommand;
 import org.apache.jackrabbit.oak.simple.SimpleNodeStateWriterServiceCommand;
 
@@ -65,6 +66,7 @@ public final class AvailableModes {
             .put("repair", new RepairCommand())
             .put("resetclusterid", new ResetClusterIdCommand())
             .put("restore", new RestoreCommand())
+            .put(SerialiseNodeStoreCommand.NAME, new SerialiseNodeStoreCommand())
             .put("simple-blob-reader-service", new SimpleBlobReaderServiceCommand())
             .put("simple-blob-writer-service", new SimpleNodeStateWriterServiceCommand())
             .put("tarmkdiff", new FileStoreDiffCommand())
