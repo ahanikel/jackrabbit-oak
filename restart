@@ -16,7 +16,7 @@ done 2>/dev/null
 
 #export initJournal=56c15a45-bdbc-9afa-f0b3-1d707b8a15ef
 
-YJP_ARGS="-Dorg.apache.sling.launcher.bootdelegation=com.yourkit.api,com.yourkit.runtime,com.yourkit.util -Xbootclasspath/a:/Users/axel/Downloads/YourKit-Java-Profiler-2016.02.app/Contents/Resources/lib/yjp-controller-api-redist.jar -agentpath:/Users/axel/Downloads/YourKit-Java-Profiler-2016.02.app/Contents/Resources/bin/mac/libyjpagent.jnilib"
+YJP_ARGS="-Dorg.apache.sling.launcher.bootdelegation=com.yourkit.api,com.yourkit.runtime,com.yourkit.util -Xbootclasspath/a:/Users/ahanikel/Downloads/YourKit-Java-Profiler-2016.02.app/Contents/Resources/lib/yjp-controller-api-redist.jar -agentpath:/Users/ahanikel/Downloads/YourKit-Java-Profiler-2016.02.app/Contents/Resources/bin/mac/libyjpagent.jnilib"
 
 DEBUG='-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005'
 
@@ -34,6 +34,6 @@ rm -rf ~/Downloads/crx-quickstart
 #cp -pR ~/Downloads/crx-quickstart.test-1.38.0 ~/Downloads/crx-quickstart
 rm -rf /tmp/blobCacheDir
 
-#(cd /Users/axel/Downloads && java -Xmx16g $DEBUG -Doak.queryLimitReads=10000000 -Dorg.apache.sling.launchpad.startupmode=restart -jar cq-quickstart-6.6.0-1.38.0.nosegment.jar -nofork -nobrowser -r author,crx3,crx3tar-nofds) &
-(cd /Users/axel/Downloads && java -Xmx16g $DEBUG -Doak.queryLimitReads=10000000 -jar cq-quickstart-6.6.0-1.38.0.nosegment.jar -nofork -nobrowser -r author,crx3,crx3tar-nofds) &
+#(cd /Users/ahanikel/Downloads && java -Xmx16g $DEBUG -Doak.queryLimitReads=10000000 -Dorg.apache.sling.launchpad.startupmode=restart -jar cq-quickstart-6.6.0-1.38.0.nosegment.jar -nofork -nobrowser -r author,crx3,crx3tar-nofds) &
+(cd /Users/ahanikel/Downloads && java -Xmx16g $DEBUG -Doak.queryLimitReads=10000000 -jar cq-quickstart-6.6.0-1.38.0.nosegment.jar -nofork -nobrowser -r author,crx3,crx3tar-nofds) &
 
