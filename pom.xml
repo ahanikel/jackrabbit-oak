@@ -81,9 +81,8 @@
     <module>oak-benchmarks-lucene</module>
     <module>oak-benchmarks-solr</module>
     <module>oak-benchmarks-elastic</module>
-      <module>oak-run-elastic</module>
+    <module>oak-run-elastic</module>
     <module>oak-store-zeromq</module>
-    <module>oak-store-zeromq-service-store</module>
   </modules>
 
   <scm>
