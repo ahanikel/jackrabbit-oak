@@ -4,17 +4,20 @@ import org.apache.jackrabbit.oak.api.Blob;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InvalidObjectException;
 
 public class SimpleBlob implements Blob {
 
-    private final BlobStore store;
+    private final SimpleNodeStore store;
     private final String ref;
 
-    public SimpleBlob(BlobStore store, String ref) {
+    @NotNull
+    public static SimpleBlob get(SimpleNodeStore store, String ref) {
+        return new SimpleBlob(store, ref);
+    }
+
+    private SimpleBlob(SimpleNodeStore store, String ref) {
         this.store = store;
         this.ref = ref;
     }
@@ -22,18 +25,18 @@ public class SimpleBlob implements Blob {
     @Override
     public @NotNull InputStream getNewStream() {
         try {
-            return store.getInputStream(ref);
+            return store.getRemoteBlobStore().getInputStream(ref);
         } catch (IOException e) {
-            throw new IllegalArgumentException(e);
+            throw new IllegalStateException(e);
         }
     }
 
     @Override
     public long length() {
         try {
-            return store.getLength(ref);
+            return store.getRemoteBlobStore().getLength(ref);
         } catch (IOException e) {
-            throw new IllegalArgumentException(e);
+            throw new IllegalStateException(e);
         }
     }
 

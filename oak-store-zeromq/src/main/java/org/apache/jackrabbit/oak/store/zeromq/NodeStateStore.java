@@ -45,5 +45,5 @@ public interface NodeStateStore {
      * @param ns the nodestate to be saved.
      * @return the reference which uniquely identifies the stored nodestate.
      */
-    String putNodeState(NodeState ns) throws IOException;
+    SimpleNodeState putNodeState(NodeState ns) throws IOException;
 }

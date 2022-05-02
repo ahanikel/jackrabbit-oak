@@ -30,12 +30,12 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
+import java.util.*;
 
 import static org.apache.jackrabbit.oak.store.zeromq.SafeEncode.safeEncode;
 
+// this class is only used by ImportToSimpleCommand and should be replaced
+// by SimpleNodeStateDiffGenerator, if possible
 public class SimpleNodeStateStore implements NodeStateStore {
 
     private final BlobStore blobStore;
@@ -112,20 +112,28 @@ public class SimpleNodeStateStore implements NodeStateStore {
     }
 
     @Override
-    public String putNodeState(NodeState ns) throws IOException {
+    public SimpleNodeState putNodeState(NodeState ns) throws IOException {
+        return putNodeState(ns, null);
+    }
+
+    public SimpleNodeState putNodeState(NodeState ns, SimpleNodeStore simpleNodeStore) throws IOException {
         if (ns instanceof SimpleNodeState) {
-            return ((SimpleNodeState) ns).getRef();
+            return (SimpleNodeState) ns;
         }
 
         final List<String> children = new ArrayList<>();
         final List<String> properties = new ArrayList<>();
+        final Map<String, String> childrenMap = new HashMap<>();
+        final Map<String, String> propertiesMap = new HashMap<>();
 
         ns.compareAgainstBaseState(EmptyNodeState.EMPTY_NODE, new NodeStateDiff() {
 
             @Override
             public boolean propertyAdded(PropertyState after) {
                 try {
-                    properties.add("p+ " + serializePropertyState(blobStore, after));
+                    String ps = serializePropertyState(blobStore, after);
+                    properties.add("p+ " + ps);
+                    propertiesMap.put(after.getName(), ps);
                     return true;
                 } catch (IOException e) {
                     throw new IllegalStateException(e);
@@ -135,7 +143,9 @@ public class SimpleNodeStateStore implements NodeStateStore {
             @Override
             public boolean childNodeAdded(String name, NodeState after) {
                 try {
-                    children.add("n+ " + safeEncode(name) + " " + putNodeState(after));
+                    SimpleNodeState child = putNodeState(after, simpleNodeStore);
+                    children.add("n+ " + safeEncode(name) + " " + child.getRef());
+                    childrenMap.put(name, child.getRef());
                     return true;
                 } catch (IOException e) {
                     throw new IllegalStateException(e);
@@ -177,7 +187,8 @@ public class SimpleNodeStateStore implements NodeStateStore {
             }
             writeLine(os, "n!");
         }
-        return blobStore.putTempFile(tempFile);
+        String ref = blobStore.putTempFile(tempFile);
+        return SimpleNodeState.get(simpleNodeStore, ref, childrenMap, propertiesMap);
     }
 
     public BlobStore getBlobStore() {

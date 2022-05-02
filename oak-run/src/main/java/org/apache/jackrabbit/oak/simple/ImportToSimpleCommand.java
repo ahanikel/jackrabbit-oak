@@ -84,7 +84,7 @@ public class ImportToSimpleCommand implements Command {
         NodeBuilder builder = memoryStore.getRoot().builder();
         builder.setChildNode("root", sourceNodeStore.getRoot());
         final NodeState newSuperRoot = builder.getNodeState();
-        final String newHead = simple.putNodeState(newSuperRoot);
+        final String newHead = simple.putNodeState(newSuperRoot).getRef();
         try (OutputStream journalFile = new FileOutputStream(new File(destPath, "journal-golden"))) {
             IOUtils.writeString(journalFile, newHead);
         }

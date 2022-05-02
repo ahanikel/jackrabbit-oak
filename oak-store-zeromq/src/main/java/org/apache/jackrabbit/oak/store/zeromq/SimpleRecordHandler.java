@@ -93,7 +93,6 @@ public class SimpleRecordHandler implements RecordHandler {
     private int line = 0;
     private final Map<String, String> heads;
     private final SimpleBlobStore store;
-    private final NodeStateStore nodeStateStore;
     private final Map<String, SimpleNodeStateBuilder> nodeStates;
     private final Map<String, CurrentBlob> currentBlobMap;
     private final Cache<String, SimpleNodeStateBuilder> cache;
@@ -103,7 +102,6 @@ public class SimpleRecordHandler implements RecordHandler {
         this.blobDir = blobDir;
         this.heads = new ConcurrentHashMap<>();
         store = new SimpleBlobStore(blobDir);
-        nodeStateStore = new SimpleNodeStateStore(store);
         nodeStates = new HashMap<>();
         currentBlobMap = new HashMap<>();
         cache = CacheBuilder.newBuilder().maximumSize(1000).build();
@@ -466,7 +464,7 @@ public class SimpleRecordHandler implements RecordHandler {
                 try (FileOutputStream out = new FileOutputStream(f)) {
                     SimpleNodeState.serialise(out, children, properties);
                     final String ref = store.putTempFile(f);
-                    return SimpleNodeState.get(store, ref);
+                    return SimpleNodeState.get(null, ref);
                 }
             }
         }

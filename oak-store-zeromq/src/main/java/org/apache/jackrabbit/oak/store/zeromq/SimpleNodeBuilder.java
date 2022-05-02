@@ -27,6 +27,9 @@ import java.io.IOException;
 import java.io.InputStream;
 
 public class SimpleNodeBuilder extends MemoryNodeBuilder {
+
+    private SimpleNodeState nodestate = null;
+
     public SimpleNodeBuilder(@NotNull NodeState base) {
         super(base);
         assert(base instanceof SimpleNodeState);
@@ -37,12 +40,23 @@ public class SimpleNodeBuilder extends MemoryNodeBuilder {
     }
 
     @Override
+    protected void updated() {
+        nodestate = null;
+    }
+
+    @Override
+    @NotNull
     public SimpleNodeState getNodeState() {
+        if (nodestate != null) {
+            return nodestate;
+        }
         final SimpleNodeState base = (SimpleNodeState) getBaseState();
-        final SimpleNodeStateStore snss = new SimpleNodeStateStore(base.getStore()); // TODO: make that a SimpleNodeStateStore right away, which in turn provides a getStore() method.
+        final NodeState after = super.getNodeState();
+        final SimpleNodeStateDiffGenerator diff = new SimpleNodeStateDiffGenerator(base);
+        after.compareAgainstBaseState(base, diff);
         try {
-            final String ref = snss.putNodeState(super.getNodeState());
-            return SimpleNodeState.get(base.getStore(), ref);
+            nodestate = diff.getNodeState();
+            return nodestate;
         } catch (IOException e) {
             throw new IllegalStateException(e);
         }
@@ -56,8 +70,6 @@ public class SimpleNodeBuilder extends MemoryNodeBuilder {
     @Override
     public Blob createBlob(InputStream is) throws IOException {
         final SimpleNodeState base = (SimpleNodeState) getBaseState();
-        final BlobStore store = base.getStore();
-        final String ref = store.putInputStream(is);
-        return new SimpleBlob(store, ref);
+        return base.getStore().putInputStream(is);
     }
 }

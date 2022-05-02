@@ -51,7 +51,7 @@ public class SimplePropertyState implements PropertyState {
     private static final DateFormat dateParser = new SimpleDateFormat(
             "yyyy-MM-dd'T'HH:mm:ss.SSSXXX");
 
-    private final BlobStore store;
+    private final SimpleNodeStore store;
 
     private final String name;
 
@@ -69,7 +69,7 @@ public class SimplePropertyState implements PropertyState {
         }
 
         if (type.equals(Type.BINARY)) {
-            Blob ret = new SimpleBlob(store, value);
+            Blob ret = SimpleBlob.get(store, value);
             return (T) ret;
         }
 
@@ -94,7 +94,7 @@ public class SimplePropertyState implements PropertyState {
         }
     }
 
-    private SimplePropertyState(BlobStore store, String name, String type, List<String> stringValues) {
+    private SimplePropertyState(SimpleNodeStore store, String name, String type, List<String> stringValues) {
         this.store = store;
         this.name = name;
         this.type = Type.fromString(type);
@@ -102,7 +102,7 @@ public class SimplePropertyState implements PropertyState {
         this.values = null;
     }
 
-    private <T> SimplePropertyState(BlobStore store, String name, Type<T> type, T value) {
+    private <T> SimplePropertyState(SimpleNodeStore store, String name, Type<T> type, T value) {
         this.store = store;
         this.name = name;
         this.type = type;
@@ -122,7 +122,7 @@ public class SimplePropertyState implements PropertyState {
         }
     }
 
-    private SimplePropertyState(BlobStore store, PropertyState ps) {
+    private SimplePropertyState(SimpleNodeStore store, PropertyState ps) {
         this.store = store;
         this.name = ps.getName();
         this.type = ps.getType();
@@ -135,8 +135,7 @@ public class SimplePropertyState implements PropertyState {
                         .equals(Type.BINARY)) {
                     Blob blob = (Blob) ps.getValue(type.getBaseType(), i);
                     try {
-                        final String ref = store.putInputStream(blob.getNewStream()); // ensure blob exists in the blobstore
-                        blob = new SimpleBlob(store, ref);
+                        blob = store.putInputStream(blob.getNewStream()); // ensure blob exists in the blobstore
                     }
                     catch (IOException ex) {
                         throw new IllegalStateException(ex);
@@ -154,8 +153,7 @@ public class SimplePropertyState implements PropertyState {
             if (type.equals(Type.BINARY)) {
                 Blob blob = (Blob) ps.getValue(type);
                 try {
-                    final String ref = store.putInputStream(blob.getNewStream()); // ensure blob exists in the blobstore
-                    blob = new SimpleBlob(store, ref);
+                    blob = store.putInputStream(blob.getNewStream()); // ensure blob exists in the blobstore
                 }
                 catch (IOException ex) {
                     throw new IllegalStateException(ex);
@@ -183,14 +181,14 @@ public class SimplePropertyState implements PropertyState {
         return serialised;
     }
 
-    static SimplePropertyState fromPropertyState(BlobStore store, PropertyState p) {
+    static SimplePropertyState fromPropertyState(SimpleNodeStore store, PropertyState p) {
         if (p instanceof SimplePropertyState) {
             return (SimplePropertyState) p;
         }
         return new SimplePropertyState(store, p);
     }
 
-    static <T> List<String> fromValueToInternal(BlobStore store, String name, Type<T> type, T value) {
+    static <T> List<String> fromValueToInternal(SimpleNodeStore store, String name, Type<T> type, T value) {
         final List<String> ret = new ArrayList<>();
         switch (type.tag()) {
             case PropertyType.STRING:
@@ -217,7 +215,7 @@ public class SimplePropertyState implements PropertyState {
                                 if (v instanceof SimpleBlob) {
                                     ref = v.getReference();
                                 } else {
-                                    ref = store.putInputStream(v.getNewStream());
+                                    ref = store.putInputStream(v.getNewStream()).getReference();
                                 }
                                 ret.add(ref);
                             } catch (IOException e) {
@@ -230,7 +228,7 @@ public class SimplePropertyState implements PropertyState {
                             if (value instanceof SimpleBlob) {
                                 ref = ((Blob) value).getReference();
                             } else {
-                                ref = store.putInputStream(((Blob) value).getNewStream());
+                                ref = store.putInputStream(((Blob) value).getNewStream()).getReference();
                             }
                             ret.add(ref);
                         } catch (IOException e) {
@@ -241,7 +239,7 @@ public class SimplePropertyState implements PropertyState {
                     if (type.isArray()) {
                         for (byte[] v : (Iterable<byte[]>) value) {
                             try {
-                                final String ref = store.putBytes(v);
+                                final String ref = store.putBytes(v).getReference();
                                 ret.add(ref);
                             } catch (IOException e) {
                                 throw new IllegalStateException(e);
@@ -249,7 +247,7 @@ public class SimplePropertyState implements PropertyState {
                         }
                     } else {
                         try {
-                            final String ref = store.putBytes((byte[]) value);
+                            final String ref = store.putBytes((byte[]) value).getReference();
                             ret.add(ref);
                         } catch (IOException e) {
                             throw new IllegalStateException(e);
@@ -299,12 +297,12 @@ public class SimplePropertyState implements PropertyState {
         return ret;
     }
 
-    static SimplePropertyState fromValue(BlobStore store, String name, Type type, Object value) {
+    static SimplePropertyState fromValue(SimpleNodeStore store, String name, Type type, Object value) {
         final List<String> props = fromValueToInternal(store, name, type, value);
         return new SimplePropertyState(store, name, type.toString(), props);
     }
 
-    static SimplePropertyState fromValue(BlobStore store, String name, Object value) {
+    static SimplePropertyState fromValue(SimpleNodeStore store, String name, Object value) {
         if (value instanceof String) {
             final List<String> props = fromValueToInternal(store, name, Type.STRING, (String) value);
             return new SimplePropertyState(store, name, Type.STRING.toString(), props);
@@ -316,8 +314,8 @@ public class SimplePropertyState implements PropertyState {
         if (value instanceof byte[]) {
             Blob blob;
             try {
-                final String ref = store.putBytes((byte[]) value);
-                blob = new SimpleBlob(store, ref);
+                final String ref = store.putBytes((byte[]) value).getReference();
+                blob = SimpleBlob.get(store, ref);
             } catch (IOException e) {
                 throw new IllegalStateException(e);
             }
@@ -603,7 +601,7 @@ public class SimplePropertyState implements PropertyState {
         }
     }
 
-    public static SimplePropertyState deSerialise(BlobStore store, String s) throws ParseFailure {
+    public static SimplePropertyState deSerialise(SimpleNodeStore store, String s) throws ParseFailure {
         final Parser parser = new Parser(s);
         FinalVar<String> pName = new FinalVar<>();
         FinalVar<String> pType = new FinalVar<>();

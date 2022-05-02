@@ -126,7 +126,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     private final AtomicLong remoteReadBlobCounter = new AtomicLong();
     private final AtomicLong remoteWriteBlobCounter = new AtomicLong();
     private File blobCacheDir;
-    private BlobStore store;
+    private BlobStore remoteBlobStore;
 
     public SimpleNodeStore() {
     }
@@ -160,12 +160,12 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         this.blobCacheDir = new File(blobCacheDir);
         this.blobCacheDir.mkdirs();
         try {
-            this.store = new RemoteBlobStore(this::read, this::write, new SimpleBlobStore(this.blobCacheDir));
+            this.remoteBlobStore = new RemoteBlobStore(this::read, this::write, new SimpleBlobStore(this.blobCacheDir));
         } catch (IOException e) {
             throw new IllegalStateException(e);
         }
-        this.EMPTY = SimpleNodeState.empty(store);
-        this.MISSING = SimpleNodeState.missing(store);
+        this.EMPTY = SimpleNodeState.empty(this);
+        this.MISSING = SimpleNodeState.missing(this);
 
         nodeStateReader = new ZeroMQSocketProvider(backendReaderURL, context, SocketType.REQ);
         nodeStateWriter = new ZeroMQSocketProvider(backendWriterURL, context, SocketType.REQ);
@@ -175,14 +175,13 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                         .concurrencyLevel(10)
                         .maximumSize(200000).build();
 
-        nodeStateCache = new NodeStateCache<>(cache, ref -> SimpleNodeState.get(store, ref));
+        nodeStateCache = new NodeStateCache<>(cache, ref -> SimpleNodeState.get(this, ref));
 
-        // TODO: this can probably be simplified similarly to the nodestates above.
         final Cache<String, SimpleBlob> bCache =
                 CacheBuilder.newBuilder()
                         .concurrencyLevel(10)
                         .maximumSize(100).build();
-        blobCache = new NodeStateCache<>(bCache, ref -> new SimpleBlob(store, ref));
+        blobCache = new NodeStateCache<>(bCache, ref -> SimpleBlob.get(this, ref));
 
         logProcessor = new Thread("ZeroMQ Log Processor") {
             public void run() {
@@ -490,11 +489,12 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         if (EMPTY.getRef().equals(ref)) {
             return EMPTY;
         }
-        final SimpleNodeState ret = nodeStateCache.get(ref);
-        if (ret == null) {
+        try {
+            return nodeStateCache.get(ref);
+        } catch (Exception e) {
             log.warn("Node not found: {} ", ref);
         }
-        return ret;
+        return null;
     }
 
     private InputStream read(String uuid) {
@@ -532,28 +532,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         }
     }
 
-    // TODO: will be used by SimpleNodeBuilder
-    void write(SimpleNodeState before, SimpleNodeState after) {
-        final String newUuid = after.getRef();
-        if (nodeStateCache.isCached(newUuid)) {
-            return;
-        }
-        nodeStateCache.put(newUuid, after);
-        countNodeWritten();
-        synchronized (writeMonitor) {
-            loggingHook.processCommit(before, after, null);
-        }
-    }
-
-    private void countNodeWritten() {
-        final long c = remoteWriteNodeCounter.incrementAndGet();
-        if (c % 1000 == 0) {
-            log.info("Remote nodes written: {}", c);
-        }
-    }
-
     private void writeBlob(SimpleBlob blob) {
-        countBlobWritten();
         synchronized (writeMonitor) {
             try {
                 LoggingHook.writeBlob(blob, this::write);
@@ -561,40 +540,13 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                 log.error(t.getMessage());
             }
         }
+        countBlobWritten();
     }
 
     private void countBlobWritten() {
         final long c = remoteWriteBlobCounter.incrementAndGet();
         if (c % 1000 == 0) {
             log.info("Remote blobs written: {}", c);
-        }
-    }
-
-    private InputStream readBlob(String reference) {
-        reference = reference.toLowerCase(); // TODO: check
-        countBlobRead();
-        return new ZeroMQBlobInputStream(nodeStateReader, reference);
-    }
-
-    private boolean hasBlob(String reference) {
-        reference = reference.toLowerCase(); // TODO: check
-        ZMQ.Socket socket = nodeStateReader.get();
-        socket.send("hasblob " + reference);
-        socket.recvStr(); // always "E"
-        final String ret = socket.recvStr();
-        if ("true".equals(ret)) {
-            return true;
-        } else if ("false".equals(ret)) {
-            return false;
-        } else {
-            throw new IllegalStateException("hasBlob returned " + ret);
-        }
-    }
-
-    private void countBlobRead() {
-        final long c = remoteReadBlobCounter.incrementAndGet();
-        if (c % 1000 == 0) {
-            log.info("Remote blobs read: {}", c);
         }
     }
 
@@ -607,13 +559,14 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     public NodeState rebase(@NotNull NodeBuilder builder, NodeState newBase) {
         checkArgument(builder instanceof SimpleNodeBuilder);
-        NodeState head = checkNotNull(builder).getNodeState();
-        NodeState base = builder.getBaseState();
-        if (base != newBase) {
+        checkArgument(newBase instanceof SimpleNodeState);
+        SimpleNodeState head = (SimpleNodeState) checkNotNull(builder).getNodeState();
+        SimpleNodeState base = (SimpleNodeState) builder.getBaseState();
+        if (!base.equals(newBase)) {
             ((SimpleNodeBuilder) builder).reset(newBase);
             head.compareAgainstBaseState(
                     base, new ConflictAnnotatingRebaseDiff(builder));
-            head = builder.getNodeState();
+            head = (SimpleNodeState) builder.getNodeState();
         }
         return head;
     }
@@ -629,34 +582,33 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     @NotNull
     public Blob createBlob(InputStream inputStream) throws IOException {
         try {
-            final String ref = store.putInputStream(inputStream);
-            final SimpleBlob blob = new SimpleBlob(store, ref);
+            final String ref = remoteBlobStore.putInputStream(inputStream);
+            final SimpleBlob blob = SimpleBlob.get(this, ref);
             writeBlob(blob);
             blobCache.put(blob.getReference(), blob);
             return blob;
         } catch (FileAlreadyExistsException e) {
             final String ref = e.getMessage();
-            final SimpleBlob blob = new SimpleBlob(store, ref);
+            final SimpleBlob blob = SimpleBlob.get(this, ref);
             blobCache.put(blob.getReference(), blob);
             return blob;
         }
     }
 
     @Override
+    @Nullable
     public Blob getBlob(@NotNull String reference) {
         if (reference == null) {
             return null;
         }
         reference = reference.toLowerCase(); // TODO: check
-        final Blob ret = blobCache.get(reference);
-        if (ret == null ||
-            (!reference.equals("d41d8cd98f00b204e9800998ecf8427e") // TODO: check
-                && ret.getReference().equals("d41d8cd98f00b204e9800998ecf8427e"))) {
+        try {
+            return blobCache.get(reference);
+        } catch (Exception e) {
             final String msg = "Blob " + reference + " not found";
             log.warn(msg);
-            return null;
         }
-        return ret;
+        return null;
     }
 
     @Override
@@ -896,6 +848,20 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     @Override
     public InputStream getInputStream(String blobId) {
         return getBlob(blobId).getNewStream();
+    }
+
+    public BlobStore getRemoteBlobStore() {
+        return remoteBlobStore;
+    }
+
+    public SimpleBlob putInputStream(InputStream is) throws IOException {
+        final String ref = remoteBlobStore.putInputStream(is);
+        return blobCache.get(ref);
+    }
+
+    public SimpleBlob putBytes(byte[] bytes) throws IOException {
+        final String ref = remoteBlobStore.putBytes(bytes);
+        return blobCache.get(ref);
     }
 
     @Override

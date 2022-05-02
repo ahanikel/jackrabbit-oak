@@ -53,23 +53,23 @@ public class SimpleNodeState implements NodeState {
 
     public static final UUID UUID_NULL = new UUID(0L, 0L);
 
-    public static final SimpleNodeState empty(BlobStore store) {
+    public static final SimpleNodeState empty(SimpleNodeStore store) {
         return new SimpleNodeState(store, true);
     }
 
-    public static final SimpleNodeState missing(BlobStore store) {
+    public static final SimpleNodeState missing(SimpleNodeStore store) {
         return new SimpleNodeState(store, false);
     }
 
-    private final BlobStore store;
+    private final SimpleNodeStore store;
     private final String ref;
     private Map<String, String> children;
     private Map<String, String> properties;
     private Map<String, SimplePropertyState> propertiesDeSerialised;
-    private boolean loaded;
+    private volatile boolean loaded;
     private boolean exists;
 
-    private SimpleNodeState(BlobStore store, boolean exists) {
+    private SimpleNodeState(SimpleNodeStore store, boolean exists) {
         this.store = store;
         this.ref = UUID_NULL.toString();
         this.children = ImmutableMap.of();
@@ -79,32 +79,44 @@ public class SimpleNodeState implements NodeState {
         this.exists = exists;
     }
 
-    private SimpleNodeState(BlobStore store, String ref) {
+    private SimpleNodeState(SimpleNodeStore store, String ref) {
         this.store = store;
         this.ref = ref;
         this.loaded = false;
         this.exists = true;
     }
 
+    private SimpleNodeState(SimpleNodeStore store, String ref, Map<String, String> children, Map<String, String> properties) {
+        this.store = store;
+        this.ref = ref;
+        this.children = children;
+        this.properties = properties;
+        this.propertiesDeSerialised = new HashMap<>();
+        this.loaded = true;
+        this.exists = true;
+    }
+
     private void ensureLoaded() {
         if (!loaded) {
-            if (ref == null || ref.equals(UUID_NULL.toString())) {
-                children = ImmutableMap.of();
-                properties = ImmutableMap.of();
-            } else {
-                synchronized (this) {
-                    Pair<Map<String, String>, Map<String, String>> p;
-                    try {
-                        p = deserialise(store.getInputStream(ref));
-                    } catch (IOException e) {
-                        throw new IllegalStateException(e);
+            synchronized (this) {
+                if (!loaded) {
+                    if (ref == null || ref.equals(UUID_NULL.toString())) {
+                        children = ImmutableMap.of();
+                        properties = ImmutableMap.of();
+                    } else {
+                        Pair<Map<String, String>, Map<String, String>> p;
+                        try {
+                            p = deserialise(store.getInputStream(ref));
+                        } catch (IOException e) {
+                            throw new IllegalStateException(e);
+                        }
+                        children = p.fst;
+                        properties = p.snd;
                     }
-                    children = p.fst;
-                    properties = p.snd;
+                    propertiesDeSerialised = new HashMap<>();
+                    loaded = true;
                 }
             }
-            propertiesDeSerialised = new HashMap<>();
-            loaded = true;
         }
     }
 
@@ -130,12 +142,16 @@ public class SimpleNodeState implements NodeState {
         return ref;
     }
 
-    public BlobStore getStore() {
+    public SimpleNodeStore getStore() {
         return store;
     }
 
-    public static SimpleNodeState get(BlobStore store, String ref) {
+    public static SimpleNodeState get(SimpleNodeStore store, String ref) {
         return new SimpleNodeState(store, ref);
+    }
+
+    public static SimpleNodeState get(SimpleNodeStore store, String ref, Map<String, String> children, Map<String, String> properties) {
+        return new SimpleNodeState(store, ref, children, properties);
     }
 
     public static void serialise(OutputStream os, Map<String, String> children, Map<String, String> properties) throws IOException {
@@ -331,7 +347,7 @@ public class SimpleNodeState implements NodeState {
         ensureLoaded();
         final String childRef = children.get(name);
         if (childRef != null) {
-            return get(store, children.get(name));
+            return store.readNodeState(childRef);
         }
         return SimpleNodeState.missing(store);
     }
@@ -394,6 +410,16 @@ public class SimpleNodeState implements NodeState {
             return true;
         }
         return AbstractNodeState.compareAgainstBaseState(this, base, diff);
+    }
+
+    Map<String, String> getChildrenMap() {
+        ensureLoaded();
+        return children;
+    }
+
+    Map<String, String> getPropertiesMap() {
+        ensureLoaded();
+        return properties;
     }
 
     private static void writeLine(OutputStream os, String s) throws IOException {
