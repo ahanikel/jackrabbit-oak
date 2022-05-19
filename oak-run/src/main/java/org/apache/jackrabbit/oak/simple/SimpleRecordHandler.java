@@ -24,10 +24,9 @@ import org.apache.jackrabbit.oak.commons.IOUtils;
 import org.apache.jackrabbit.oak.store.zeromq.Pair;
 import org.apache.jackrabbit.oak.store.zeromq.SimpleBlobStore;
 import org.apache.jackrabbit.oak.store.zeromq.SimpleNodeState;
+import org.apache.jackrabbit.oak.store.zeromq.SimpleRequestResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.zeromq.SocketType;
-import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
 
 import java.io.File;
@@ -40,12 +39,15 @@ import java.io.OutputStream;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.StringTokenizer;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 
 public class SimpleRecordHandler {
 
     private static final Logger log = LoggerFactory.getLogger(SimpleRecordHandler.class);
+    private static final String JOURNAL_TOPIC = SimpleRequestResponse.Topic.JOURNAL.toString();
 
     private static class CurrentBlob {
         private String ref;
@@ -95,29 +97,31 @@ public class SimpleRecordHandler {
     private final Map<String, SimpleMutableNodeState> nodeStates;
     private final Map<String, CurrentBlob> currentBlobMap;
     private final Cache<String, SimpleMutableNodeState> cache;
+    private final Cache<String, Long> lastMessageSeen;
     private final ZMQ.Socket journalPublisher;
 
-    public SimpleRecordHandler(File blobDir, String journalUrl) throws IOException {
+    public SimpleRecordHandler(File blobDir, ZMQ.Socket journalPublisher) throws IOException {
         this.blobDir = blobDir;
         store = new SimpleBlobStore(blobDir);
         nodeStates = new HashMap<>();
         currentBlobMap = new HashMap<>();
         cache = CacheBuilder.newBuilder().maximumSize(1000).build();
-        if (journalUrl != null) {
-            final ZContext context = new ZContext();
-            journalPublisher = context.createSocket(SocketType.PUB);
-            journalPublisher.bind(journalUrl);
-        } else {
-            journalPublisher = null;
-        }
+        lastMessageSeen = CacheBuilder.newBuilder().expireAfterWrite(10, TimeUnit.MINUTES).build();
+        this.journalPublisher = journalPublisher;
     }
 
-    public void handleRecord(String uuThreadId, String op, String value) {
+    public synchronized void handleRecord(String uuThreadId, long msgid, String op, String value) {
 
         ++line;
         if (line % 100000 == 0) {
             log.info("We're at line {}", line);
         }
+
+        Long lastMsgId = lastMessageSeen.getIfPresent(uuThreadId);
+        if (lastMsgId != null && lastMsgId.longValue() >= msgid) {
+            return;
+        }
+        lastMessageSeen.put(uuThreadId, msgid);
 
         StringTokenizer tokens = new StringTokenizer(value);
 
@@ -156,6 +160,7 @@ public class SimpleRecordHandler {
                         }
                     }
                     newNode = oldNode.clone(newUuid);
+                    newNode.setMsgIdLastSeen(msgid);
                 }
                 nodeStates.put(uuThreadId, newNode);
                 break;
@@ -377,6 +382,7 @@ public class SimpleRecordHandler {
                     throw new IllegalStateException(e);
                 }
                 if (journalPublisher != null) {
+                    journalPublisher.sendMore(JOURNAL_TOPIC);
                     journalPublisher.sendMore(journalId);
                     journalPublisher.sendMore(head);
                     journalPublisher.send(oldHead);
@@ -396,6 +402,7 @@ public class SimpleRecordHandler {
         private Map<String, String> properties;
         private volatile boolean serialised = false;
         private final boolean skip;
+        private long msgIdLastSeen;
 
         private SimpleMutableNodeState(String uuid) {
             this.uuid = uuid;
@@ -475,6 +482,14 @@ public class SimpleRecordHandler {
             if (false && serialised) {
                 throw new IllegalStateException("NodeState is immutable");
             }
+        }
+
+        private long getMsgIdLastSeen() {
+            return msgIdLastSeen;
+        }
+
+        private void setMsgIdLastSeen(long msgIdLastSeen) {
+            this.msgIdLastSeen = msgIdLastSeen;
         }
     }
 }

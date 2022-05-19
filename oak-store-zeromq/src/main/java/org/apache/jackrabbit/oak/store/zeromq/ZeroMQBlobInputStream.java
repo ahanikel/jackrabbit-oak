@@ -20,12 +20,10 @@ package org.apache.jackrabbit.oak.store.zeromq;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.zeromq.ZMQ;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.function.Supplier;
 
 public class ZeroMQBlobInputStream extends InputStream {
     byte[] buffer;
@@ -34,14 +32,13 @@ public class ZeroMQBlobInputStream extends InputStream {
     private int offset = 0;
     private volatile boolean init = false;
     private volatile IOException error = null;
-    private final Supplier<ZMQ.Socket> blobReader;
-    private ZMQ.Socket reader;
+    private final SimpleRequestResponse blobReader;
     private final String reference;
     private String verb = "";
 
     private static final Logger log = LoggerFactory.getLogger(ZeroMQBlobInputStream.class.getName());
 
-    ZeroMQBlobInputStream(Supplier<ZMQ.Socket> blobReader, String reference) {
+    ZeroMQBlobInputStream(SimpleRequestResponse blobReader, String reference) {
         if (reference == null || reference.length() < 6) {
             throw new IllegalStateException("" + reference + " is not a reference.");
         }
@@ -51,7 +48,6 @@ public class ZeroMQBlobInputStream extends InputStream {
 
     private void init() {
         if (!init) {
-            reader = blobReader.get();
             init = true;
             buffer = new byte[1024 * 1024]; // not final because of fear it's not being GC'd
         }
@@ -82,12 +78,8 @@ public class ZeroMQBlobInputStream extends InputStream {
             cur = 0;
             return;
         }
-        if (reader != blobReader.get()) {
-            throw new IllegalStateException("*** Reading thread has changed! ***");
-        }
-        reader.send("blob " + reference + " " + offset + " " + buffer.length);
-        verb = reader.recvStr();
-        max = reader.recv(buffer, 0, buffer.length, 0);
+        verb = blobReader.requestString("blob " + reference + " " + offset + " " + buffer.length);
+        max = blobReader.receiveMore(buffer, 0, buffer.length, 0);
         if (verb.equals("N")) {
             final String msg = "Blob " + reference + " not found";
             log.error(msg);

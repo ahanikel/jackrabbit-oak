@@ -38,7 +38,6 @@ public class SimpleNodeStoreTest {
             .setBackendReaderURL("tcp://localhost:8000")
             .setBackendWriterURL("tcp://localhost:8001")
             .setJournalId("golden")
-            .setJournalSocketURL("tcp://localhost:9000")
             .setBlobCacheDir("/tmp/blobcache")
             .build();
     }

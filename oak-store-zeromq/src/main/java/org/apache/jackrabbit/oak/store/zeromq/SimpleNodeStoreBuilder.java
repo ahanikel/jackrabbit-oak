@@ -36,21 +36,18 @@ public class SimpleNodeStoreBuilder {
     public static final String PARAM_BACKEND_WRITER_URL = "backendWriterURL";
     public static final String PARAM_INIT_JOURNAL = "initJournal";
     private static final String PARAM_BLOB_CACHE_DIR = "blobCacheDir";
-    private static final String PARAM_JOURNAL_SOCKET_URL = "journalSocketURL";
 
     private String journalId;
     private String backendReaderURL;
     private String backendWriterURL;
     private String initJournal;
     private String blobCacheDir;
-    private String journalSocketURL;
 
     public SimpleNodeStoreBuilder() {
        journalId = "golden";
        initJournal = null;
        backendReaderURL = "tcp://localhost:8000";
        backendWriterURL = "tcp://localhost:8001";
-       journalSocketURL = "tcp://localhost:9000";
        blobCacheDir = "/tmp/blobCacheDir";
     }
 
@@ -83,14 +80,6 @@ public class SimpleNodeStoreBuilder {
         }
         if (backendWriterURL == null) {
             backendWriterURL = "tcp://localhost:8001";
-        }
-        try {
-            journalSocketURL = System.getenv(PARAM_JOURNAL_SOCKET_URL);
-        } catch (Exception e) {
-            // ignore
-        }
-        if (journalSocketURL == null) {
-            journalSocketURL = "tcp://localhost:9000";
         }
         try {
             blobCacheDir = System.getenv(PARAM_BLOB_CACHE_DIR);
@@ -148,14 +137,6 @@ public class SimpleNodeStoreBuilder {
                 throw new IllegalArgumentException(e);
             }
         }
-        if (params.containsKey(PARAM_JOURNAL_SOCKET_URL)) {
-            try {
-                setJournalSocketURL(params.get(PARAM_JOURNAL_SOCKET_URL));
-            } catch (Exception e) {
-                log.warn(e.getMessage());
-                throw new IllegalArgumentException(e);
-            }
-        }
         if (params.containsKey(PARAM_BLOB_CACHE_DIR)) {
             try {
                 setBlobCacheDir(params.get(PARAM_BLOB_CACHE_DIR));
@@ -193,10 +174,6 @@ public class SimpleNodeStoreBuilder {
         return backendWriterURL;
     }
 
-    public String getJournalSocketURL() {
-        return journalSocketURL;
-    }
-
     public SimpleNodeStoreBuilder setBackendReaderURL(String backendReaderURL) {
         this.backendReaderURL = backendReaderURL;
         return this;
@@ -204,11 +181,6 @@ public class SimpleNodeStoreBuilder {
 
     public SimpleNodeStoreBuilder setBackendWriterURL(String backendWriterURL) {
         this.backendWriterURL = backendWriterURL;
-        return this;
-    }
-
-    public SimpleNodeStoreBuilder setJournalSocketURL(String journalSocketURL) {
-        this.journalSocketURL = journalSocketURL;
         return this;
     }
 

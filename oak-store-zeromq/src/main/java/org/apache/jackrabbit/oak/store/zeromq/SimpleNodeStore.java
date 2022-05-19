@@ -92,9 +92,6 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     private static final Logger log = LoggerFactory.getLogger(SimpleNodeStore.class.getName());
     public static final String ROOT_NODE_NAME = "root";
-    private static final String READER_TOPIC = "read";
-    private static final String WRITER_TOPIC = "write";
-    private static final String JOURNAL_TOPIC = "journal";
 
     public static SimpleNodeStoreBuilder builder() {
         return new SimpleNodeStoreBuilder();
@@ -105,8 +102,8 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     private ZContext context;
     private String journalId;
-    private ZeroMQSocketProvider nodeStateReader;
-    private ZeroMQSocketProvider nodeStateWriter;
+    private SimpleRequestResponse nodeStateReader;
+    private SimpleRequestResponse nodeStateWriter;
     private KVStore<String, SimpleNodeState> nodeStateCache;
     private KVStore<String, SimpleBlob> blobCache;
     private volatile ChangeDispatcher changeDispatcher;
@@ -140,7 +137,6 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
             builder.getInitJournal(),
             builder.getBackendReaderURL(),
             builder.getBackendWriterURL(),
-            builder.getJournalSocketURL(),
             builder.getBlobCacheDir());
     }
 
@@ -149,7 +145,6 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         String initJournal,
         String backendReaderURL,
         String backendWriterURL,
-        String journalSocketUrl,
         String blobCacheDir) {
 
         if (configured) {
@@ -170,8 +165,8 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         this.EMPTY = SimpleNodeState.empty(this);
         this.MISSING = SimpleNodeState.missing(this);
 
-        nodeStateReader = new ZeroMQSocketProvider(backendReaderURL, context, SocketType.REQ);
-        nodeStateWriter = new ZeroMQSocketProvider(backendWriterURL, context, SocketType.REQ);
+        nodeStateReader = new SimpleRequestResponse(SimpleRequestResponse.Topic.READ, backendWriterURL, backendReaderURL);
+        nodeStateWriter = new SimpleRequestResponse(SimpleRequestResponse.Topic.WRITE, backendWriterURL, backendReaderURL);
 
         final Cache<String, SimpleNodeState> cache =
                 CacheBuilder.newBuilder()
@@ -188,8 +183,8 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
 
         logProcessor = new Thread("ZeroMQ Log Processor") {
             public void run() {
-                journalSocket = new ZeroMQSocketProvider(journalSocketUrl, context, SocketType.SUB).get();
-                journalSocket.subscribe(journalId);
+                journalSocket = new ZeroMQSocketProvider(backendReaderURL, context, SocketType.SUB).get();
+                journalSocket.subscribe(SimpleRequestResponse.Topic.JOURNAL.toString());
                 while (!Thread.currentThread().isInterrupted()) {
                     try {
                         final String journalId = journalSocket.recvStr();
@@ -260,7 +255,6 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
             builder.getInitJournal(),
             builder.getBackendReaderURL(),
             builder.getBackendWriterURL(),
-            builder.getJournalSocketURL(),
             builder.getBlobCacheDir());
 
         init();
@@ -341,12 +335,11 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         String msg;
         while (true) {
             try {
-                nodeStateReader.get().send("journal " + journalId);
-                nodeStateReader.get().recvStr().equals("E"); // verb, always "E"
-                msg = nodeStateReader.get().recvStr();
+                nodeStateReader.requestString("journal " + journalId).equals("E"); // verb, always "E"
+                msg = nodeStateReader.receiveMore();
                 break;
-            } catch (Throwable t) {
-                log.warn(t.toString());
+            } catch (Exception e) {
+                log.warn(e.toString());
                 try {
                     Thread.sleep(100);
                 } catch (InterruptedException ex) {
@@ -361,9 +354,8 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         String msg;
         while (true) {
             try {
-                nodeStateReader.get().send("journal " + journalId + "-checkpoints");
-                nodeStateReader.get().recvStr().equals("E"); // verb, always "E"
-                msg = nodeStateReader.get().recvStr();
+                nodeStateReader.requestString("journal " + journalId + "-checkpoints").equals("E"); // verb, always "E"
+                msg = nodeStateReader.receiveMore();
                 break;
             } catch (Throwable t) {
                 log.warn(t.toString());
@@ -421,17 +413,14 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         while (true) {
             synchronized (mergeRootMonitor) {
                 try {
-                    final ZMQ.Socket socket = nodeStateWriter.get();
-                    socket.send(WRITER_TOPIC + " "
-                                    + getUUThreadId() + " "
-                                    + "journal" + " " + journalId + (type == null ? "" : "-" + type) + " "
+                    nodeStateWriter.requestString(
+                                    "journal" + " " + journalId + (type == null ? "" : "-" + type) + " "
                                     + uuid + " "
                                     + oldUuid
                     );
-                    // TODO: wait for confirmation
                     break;
-                } catch (Throwable t) {
-                    log.warn(t.toString());
+                } catch (Exception e1) {
+                    log.warn(e1.toString());
                     try {
                         Thread.sleep(100);
                     } catch (InterruptedException e) {
@@ -515,17 +504,16 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     private synchronized void write(String event) {
         while (true) {
             try {
-                final ZMQ.Socket writer = nodeStateWriter.get();
-                writer.send(getUUThreadId() + " " + event);
-                final String msg = writer.recvStr();
+                final String msg = nodeStateWriter.requestString(event);
                 if (!msg.equals("E")) {
-                    log.error("{}: {}", msg, writer.recvStr());
+                    log.error("lastReq: {}", nodeStateWriter.getLastReq());
+                    log.error("{}: {}", msg, nodeStateWriter.receiveMore());
                 } else {
-                    writer.recvStr(); // ignore, should be ""
+                    nodeStateWriter.receiveMore(); // ignore, should be ""
                 }
                 break;
-            } catch (Throwable t) {
-                log.error(t.getMessage());
+            } catch (Exception e1) {
+                log.error(e1.getMessage());
                 try {
                     Thread.sleep(1000);
                 } catch (InterruptedException e) {
