@@ -25,6 +25,7 @@ import org.apache.jackrabbit.oak.index.merge.IndexStoreCommand;
 import org.apache.jackrabbit.oak.index.merge.IndexStoreStatsCommand;
 import org.apache.jackrabbit.oak.run.commons.Command;
 import org.apache.jackrabbit.oak.run.commons.Modes;
+import org.apache.jackrabbit.oak.simple.CommHubCommand;
 import org.apache.jackrabbit.oak.simple.ImportToSimpleCommand;
 import org.apache.jackrabbit.oak.simple.SerialiseNodeStoreCommand;
 import org.apache.jackrabbit.oak.simple.SimpleBlobReaderServiceCommand;
@@ -62,6 +63,7 @@ public final class AvailableModes {
         builder.put("garbage", new GarbageCommand());
         builder.put("help", new HelpCommand());
         builder.put("history", new HistoryCommand());
+        builder.put("import-to-simple", new ImportToSimpleCommand());
         builder.put("index-diff", new IndexDiffCommand());
         builder.put("index-merge", new IndexMergeCommand());
         builder.put(IndexStoreCommand.NAME, new IndexStoreCommand());
@@ -77,6 +79,10 @@ public final class AvailableModes {
         builder.put("repair", new RepairCommand());
         builder.put("resetclusterid", new ResetClusterIdCommand());
         builder.put("restore", new RestoreCommand());
+        builder.put(SerialiseNodeStoreCommand.NAME, new SerialiseNodeStoreCommand());
+        builder.put("simple-blob-reader-service", new SimpleBlobReaderServiceCommand());
+        builder.put("simple-blob-writer-service", new SimpleNodeStateWriterServiceCommand());
+        builder.put(CommHubCommand.NAME, new CommHubCommand());
         builder.put("tarmkdiff", new FileStoreDiffCommand());
         builder.put(ThreadDumpCommand.THREADDUMP, new ThreadDumpCommand());
         builder.put("tika", new TikaCommand());
