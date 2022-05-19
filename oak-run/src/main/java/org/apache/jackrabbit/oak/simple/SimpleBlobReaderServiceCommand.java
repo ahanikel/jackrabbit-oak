@@ -26,6 +26,7 @@ import org.apache.jackrabbit.oak.run.cli.Options;
 import org.apache.jackrabbit.oak.run.commons.Command;
 import org.apache.jackrabbit.oak.store.zeromq.SimpleBlobStore;
 import org.apache.jackrabbit.oak.store.zeromq.SimpleNodeState;
+import org.apache.jackrabbit.oak.store.zeromq.SimpleRequestResponse;
 import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
@@ -53,11 +54,12 @@ public class SimpleBlobReaderServiceCommand implements Command {
 
     public static final String NAME = "simple-blob-reader-service";
 
-    private static final String summary = "Serves the contents of a simple blobstore via ZeroMQ REP\n" +
+    private static final String summary = "Serves the contents of a simple blobstore\n" +
         "Example:\n" +
         "simple-blob-reader-service simple:///tmp/imported";
 
-    private static final String READER_TOPIC = "read";
+    private static final String READER_REQ_TOPIC = SimpleRequestResponse.Topic.READ.toString() + "-req";
+    private static final String READER_REP_TOPIC = SimpleRequestResponse.Topic.READ.toString() + "-rep";
 
     private File blobDir;
     private SimpleBlobStore blobStore;
@@ -119,7 +121,8 @@ public class SimpleBlobReaderServiceCommand implements Command {
         try {
             msg = socket.recvStr();
         } catch (ZMQException e) {
-            socket.send("");
+            socket.sendMore("F");
+            socket.send(e.getMessage());
             return;
         }
         if (msg == null) {
@@ -239,11 +242,11 @@ public class SimpleBlobReaderServiceCommand implements Command {
             poller = context.createPoller(2);
             poller.register(requestSubscriber, ZMQ.Poller.POLLIN);
             poller.register(workerRouter, ZMQ.Poller.POLLIN);
-            requestSubscriber.subscribe(READER_TOPIC);
+            requestSubscriber.subscribe(READER_REQ_TOPIC);
             requestSubscriber.connect(requestSubConnectAddr);
             requestPublisher.connect(requestPubConnectAddr);
             workerRouter.bind(workerBindAddr);
-            loop:
+
             while (!shutDown) {
                 try {
                     handlePendingRequests();
@@ -253,14 +256,13 @@ public class SimpleBlobReaderServiceCommand implements Command {
                     } else if (poller.pollin(1)) {
                         handleWorkerRequest();
                     } else {
-                        continue loop;
+                        continue;
                     }
-                } catch (Throwable t) {
-                    if (t instanceof InterruptedException) {
+                } catch (Exception e) {
+                    if (e instanceof InterruptedException) {
                         shutDown = true;
-                    } else {
-                        System.err.println(t.getMessage());
                     }
+                    System.err.println(e.getMessage());
                 }
             }
             requestPublisher.close();
@@ -272,12 +274,10 @@ public class SimpleBlobReaderServiceCommand implements Command {
         }
 
         private void handleIncomingRequest() {
-            byte[] request = requestSubscriber.recv();
-            int startRequestId = READER_TOPIC.length() + 1;
-            int endRequestId;
-            for (endRequestId = startRequestId; endRequestId < request.length && request[endRequestId] != ' '; ++endRequestId);
-            byte[] requestId = Arrays.copyOfRange(request, startRequestId, endRequestId);
-            byte[] payload = Arrays.copyOfRange(request, endRequestId + 1, request.length);
+            byte[] requestId = requestSubscriber.recv();
+            requestSubscriber.recv(); // msgid, ignore for now because read requests are idempotent anyway
+            requestId = Arrays.copyOfRange(requestId, READER_REQ_TOPIC.length() + 1, requestId.length);
+            byte[] payload = requestSubscriber.recv();
             pending.add(Pair.of(requestId, payload));
         }
 
@@ -302,47 +302,43 @@ public class SimpleBlobReaderServiceCommand implements Command {
         }
 
         private void handleWorkerRequest() {
-            try {
-                byte[] workerId = workerRouter.recv();      // worker identity
-                workerRouter.recvStr();                     // delimiter
-                String verb = workerRouter.recvStr();       // verb (H = Hello, C = Continuation, E = End)
-                byte[] payload = workerRouter.recv();
-                byte[] requestId = busyByWorkerId.get(workerId);
-                if (requestId != null) {
-                    switch (verb) {
-                        case "H":
-                            System.err.println("Got Hello on busy connection");
-                            break;
-                        case "C":
-                        case "E":
-                        case "F":
-                        case "N":
-                            requestPublisher.sendMore(verb);
-                            requestPublisher.send(READER_TOPIC + " " + new String(requestId) + " " + new String(payload)); // TODO: inefficient
-                            busyByWorkerId.remove(workerId);
-                            busyByRequestId.remove(requestId);
-                            available.push(workerId);
-                            break;
-                        default:
-                            System.err.println("Unknown worker verb " + verb);
-                    }
-                    return;
-                }
-                if (available.contains(workerId)) {
-                    System.err.println(String.format("Spurious message from available worker: {}: {}", verb, payload));
-                    return;
-                }
+            byte[] workerId = workerRouter.recv();      // worker identity
+            workerRouter.recvStr();                     // delimiter
+            String verb = workerRouter.recvStr();       // verb (H = Hello, C = Continuation, E = End)
+            byte[] payload = workerRouter.recv();
+            byte[] requestId = busyByWorkerId.get(workerId);
+            if (requestId != null) {
                 switch (verb) {
                     case "H":
-                        System.err.println("New worker registered: " + new String(workerId));
+                        System.err.println("Got Hello on busy connection");
+                        break;
+                    case "C":
+                    case "E":
+                    case "F":
+                    case "N":
+                        requestPublisher.sendMore(READER_REP_TOPIC + " " + new String(requestId));
+                        requestPublisher.sendMore(verb);
+                        requestPublisher.send(payload);
+                        busyByWorkerId.remove(workerId);
+                        busyByRequestId.remove(requestId);
                         available.push(workerId);
                         break;
                     default:
-                        System.err.println(String.format("Expected Hello message from new worker but got {}: {}", verb, payload));
+                        System.err.println("Unknown worker verb " + verb);
                 }
-            } catch (Throwable t) {
-                System.err.println(t.toString());
-                throw t;
+                return;
+            }
+            if (available.contains(workerId)) {
+                System.err.println(String.format("Spurious message from available worker: {}: {}", verb, payload));
+                return;
+            }
+            switch (verb) {
+                case "H":
+                    System.err.println("New worker registered: " + new String(workerId));
+                    available.push(workerId);
+                    break;
+                default:
+                    System.err.println(String.format("Expected Hello message from new worker but got {}: {}", verb, payload));
             }
         }
 

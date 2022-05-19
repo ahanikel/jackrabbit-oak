@@ -18,17 +18,12 @@
 
 YJP_ARGS="-Dorg.apache.sling.launcher.bootdelegation=com.yourkit.api,com.yourkit.runtime,com.yourkit.util -Xbootclasspath/a:/Users/ahanikel/Downloads/YourKit-Java-Profiler-2016.02.app/Contents/Resources/lib/yjp-controller-api-redist.jar -agentpath:/Users/ahanikel/Downloads/YourKit-Java-Profiler-2016.02.app/Contents/Resources/bin/mac/libyjpagent.jnilib"
 
-DEBUG='-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5006'
+DEBUG='-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005'
 
-export clusterInstances=1
-export writeBackJournal=true
-export writeBackNodes=true
-export remoteReads=true
-export customBlobStore=false
-export backendPrefix=localhost
-export logNodeStates=false
+export journalId=golden
+export backendReaderURL="tcp://comm-hub:8000"
+export backendWriterURL="tcp://comm-hub:8001"
 export blobCacheDir=/tmp/blobCacheDir-1
-export ZEROMQ_LEADER=true
 
 rm -rf ~/Downloads/inst-1
 rm -rf /tmp/blobCacheDir-1
