@@ -23,6 +23,7 @@ import joptsimple.OptionSet;
 import org.apache.jackrabbit.oak.run.cli.CommonOptions;
 import org.apache.jackrabbit.oak.run.cli.Options;
 import org.apache.jackrabbit.oak.run.commons.Command;
+import org.apache.jackrabbit.oak.store.zeromq.SimpleRequestResponse;
 import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
@@ -32,6 +33,7 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -51,11 +53,13 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
     private static final String summary = "Serves the contents of a simple blobstore via ZeroMQ REP\n" +
         "Example:\n" + NAME + " /tmp/imported/log.txt";
 
-    private static final String WRITER_TOPIC = "write";
-    private static final String JOURNAL_TOPIC = "journal";
+    private static final String WRITER_REQ_TOPIC = SimpleRequestResponse.Topic.WRITE.toString() + "-req";
+    private static final String WRITER_REP_TOPIC = SimpleRequestResponse.Topic.WRITE.toString() + "-rep";
+    private static final String SUBSCRIBER_URL_DEFAULT = "tcp://comm-hub:8000";
+    private static final String PUBLISHER_URL_DEFAULT = "tcp://comm-hub:8001";
+    private static final String WORKER_URL = "inproc://writerBackend";
 
     private File blobDir;
-    private ZContext context;
     private ExecutorService threadPool;
     private Router writerFrontend;
     private SimpleRecordHandler recordHandler;
@@ -78,26 +82,36 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
         final CommonOptions commonOptions = opts.getOptionBean(CommonOptions.class);
         final URI uri = commonOptions.getURI(0);
         blobDir = new File(uri.getPath());
-        context = new ZContext();
+        final ZContext context = new ZContext();
         threadPool = Executors.newFixedThreadPool(5);
-        writerFrontend = new Router(context, "tcp://comm-hub:8000", "tcp://comm-hub:8001", "inproc://writerBackend");
+        final ZMQ.Socket requestSubscriber = context.createSocket(SocketType.SUB);
+        requestSubscriber.setBacklog(100000);
+        final ZMQ.Socket requestPublisher = context.createSocket(SocketType.PUB);
+        requestPublisher.setBacklog(100000);
+        requestSubscriber.subscribe(WRITER_REQ_TOPIC);
+        requestSubscriber.connect(SUBSCRIBER_URL_DEFAULT);
+        requestPublisher.connect(PUBLISHER_URL_DEFAULT);
+        final ZMQ.Socket workerRouter = context.createSocket(SocketType.ROUTER);
+        workerRouter.setBacklog(100000);
+        workerRouter.bind(WORKER_URL);
+        writerFrontend = new Router(requestPublisher, requestSubscriber, workerRouter);
         writerFrontend.start();
 
-        recordHandler = new SimpleRecordHandler(blobDir, "tcp://*:9000");
+        recordHandler = new SimpleRecordHandler(blobDir, requestPublisher);
 
         for (int nThread = 0; nThread < 5; ++nThread) {
             threadPool.execute(() -> {
                 final ZMQ.Socket socket = context.createSocket(SocketType.REQ);
                 socket.setIdentity(("" + Thread.currentThread().getId()).getBytes());
-                socket.connect("inproc://writerBackend");
+                socket.connect(WORKER_URL);
                 socket.setReceiveTimeOut(1000);
                 socket.sendMore("H");
                 socket.send("");
                 while (!Thread.currentThread().isInterrupted()) {
                     try {
                         handleWriterService(socket);
-                    } catch (Throwable t) {
-                        System.err.println(t.toString());
+                    } catch (Exception e) {
+                        System.err.println(e);
                     }
                 }
             });
@@ -124,8 +138,13 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
         String ret = null;
 
         try {
-            final StringTokenizer st = new StringTokenizer(msg);
-            final String uuThreadId = st.nextToken();
+            final String uuThreadId = msg;
+            ByteBuffer buf = ByteBuffer.allocate(Long.BYTES);
+            socket.recvByteBuffer(buf, 0);
+            buf.rewind();
+            final long msgid = buf.getLong();
+            msg = socket.recvStr();
+           final StringTokenizer st = new StringTokenizer(msg);
             final String op = st.nextToken();
             String value;
             try {
@@ -133,7 +152,7 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
             } catch (NoSuchElementException e) {
                 value = "";
             }
-            recordHandler.handleRecord(uuThreadId, op, value);
+            recordHandler.handleRecord(uuThreadId, msgid, op, value);
         } catch (Exception e) {
             final String errorMsg = "An error occurred on: " + msg + ", exception: " + e.getMessage();
             System.err.println(errorMsg);
@@ -149,45 +168,31 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
     }
 
     private static class Router extends Thread implements Closeable {
-        private final ZContext context;
-        private final String requestSubConnectAddr;
-        private final String requestPubConnectAddr;
-        private final String workerBindAddr;
         private volatile boolean shutDown;
-        private ZMQ.Socket requestSubscriber;
-        private ZMQ.Socket requestPublisher;
-        private ZMQ.Socket workerRouter;
+        private final ZMQ.Socket requestSubscriber;
+        private final ZMQ.Socket requestPublisher;
+        private final ZMQ.Socket workerRouter;
         private final Stack<byte[]> available = new Stack<>();
         private final Map<byte[], byte[]> busyByWorkerId = new HashMap<>();
         private final Map<byte[], byte[]> busyByRequestId = new HashMap<>();
-        private ZMQ.Poller poller;
-        private Queue<Pair<byte[], byte[]>> pending = new LinkedList<>();
+        private Queue<Pair<Pair<byte[], byte[]>, byte[]>> pending = new LinkedList<>();
 
-        public Router(ZContext context, String requestSubConnectAddr, String requestPubConnectAddr, String workerBindAddr) {
+        public Router(ZMQ.Socket requestPublisher, ZMQ.Socket requestSubscriber, ZMQ.Socket workerRouter) {
             super("Backend Router");
-            this.context = context;
-            this.requestSubConnectAddr = requestSubConnectAddr;
-            this.requestPubConnectAddr = requestPubConnectAddr;
-            this.workerBindAddr = workerBindAddr;
+            this.requestPublisher = requestPublisher;
+            this.requestSubscriber = requestSubscriber;
+            this.workerRouter = workerRouter;
         }
 
         @Override
         public void run() {
             shutDown = false;
-            requestSubscriber = context.createSocket(SocketType.SUB);
-            requestSubscriber.setBacklog(100000);
-            requestPublisher = context.createSocket(SocketType.PUB);
-            requestPublisher.setBacklog(100000);
-            workerRouter = context.createSocket(SocketType.ROUTER);
-            workerRouter.setBacklog(100000);
-            poller = context.createPoller(2);
+
+            final ZContext context = new ZContext();
+            final ZMQ.Poller poller = context.createPoller(2);
             poller.register(requestSubscriber, ZMQ.Poller.POLLIN);
             poller.register(workerRouter, ZMQ.Poller.POLLIN);
-            requestSubscriber.subscribe(WRITER_TOPIC);
-            requestSubscriber.connect(requestSubConnectAddr);
-            requestPublisher.connect(requestPubConnectAddr);
-            workerRouter.bind(workerBindAddr);
-            loop:
+
             while (!shutDown) {
                 try {
                     handlePendingRequests();
@@ -197,14 +202,13 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
                     } else if (poller.pollin(1)) {
                         handleWorkerRequest();
                     } else {
-                        continue loop;
+                        continue;
                     }
-                } catch (Throwable t) {
-                    if (t instanceof InterruptedException) {
+                } catch (Exception e) {
+                    if (e instanceof InterruptedException) {
                         shutDown = true;
-                    } else {
-                        System.err.println(t.getMessage());
                     }
+                    System.err.println(e.getMessage());
                 }
             }
             requestPublisher.close();
@@ -216,31 +220,31 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
         }
 
         private void handleIncomingRequest() throws InterruptedException {
-            byte[] request = requestSubscriber.recv();
-            int startRequestId = WRITER_TOPIC.length() + 1;
-            int endRequestId;
-            for (endRequestId = startRequestId; endRequestId < request.length && request[endRequestId] != ' '; ++endRequestId);
-            byte[] requestId = Arrays.copyOfRange(request, startRequestId, endRequestId);
-            byte[] payload = Arrays.copyOfRange(request, endRequestId + 1, request.length);
-            pending.add(Pair.of(requestId, payload));
+            byte[] requestId = requestSubscriber.recv();
+            byte[] msgid = requestSubscriber.recv();
+            requestId = Arrays.copyOfRange(requestId, WRITER_REQ_TOPIC.length() + 1, requestId.length);
+            byte[] payload = requestSubscriber.recv();
+            pending.add(Pair.of(Pair.of(requestId, msgid), payload));
         }
 
         private void handlePendingRequests() {
             while (!pending.isEmpty()) {
-                Pair<byte[], byte[]> request = pending.peek();
-                byte[] workerId = busyByRequestId.get(request.fst);
+                Pair<Pair<byte[], byte[]>, byte[]> request = pending.peek();
+                byte[] workerId = busyByRequestId.get(request.fst.fst);
                 if (workerId == null) {
                     if (available.isEmpty()) {
                         return;
                     } else {
                         workerId = available.pop();
-                        busyByWorkerId.put(workerId, request.fst);
-                        busyByRequestId.put(request.fst, workerId);
+                        busyByWorkerId.put(workerId, request.fst.fst);
+                        busyByRequestId.put(request.fst.fst, workerId);
                     }
                 }
                 pending.remove();
                 workerRouter.sendMore(workerId);
                 workerRouter.sendMore("");
+                workerRouter.sendMore(request.fst.fst);
+                workerRouter.sendMore(request.fst.snd);
                 workerRouter.send(request.snd);
             }
         }
@@ -261,8 +265,9 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
                         case "E":
                         case "F":
                         case "N":
+                            requestPublisher.sendMore(WRITER_REP_TOPIC + " " + new String(requestId));
                             requestPublisher.sendMore(verb);
-                            requestPublisher.send(WRITER_TOPIC + " " + new String(requestId) + " " + new String(payload)); // TODO: inefficient
+                            requestPublisher.send(payload);
                             busyByWorkerId.remove(workerId);
                             busyByRequestId.remove(requestId);
                             available.push(workerId);
