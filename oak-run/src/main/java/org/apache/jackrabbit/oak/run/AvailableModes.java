@@ -26,6 +26,7 @@ import org.apache.jackrabbit.oak.index.IndexCommand;
 import org.apache.jackrabbit.oak.index.merge.IndexDiffCommand;
 import org.apache.jackrabbit.oak.run.commons.Command;
 import org.apache.jackrabbit.oak.run.commons.Modes;
+import org.apache.jackrabbit.oak.simple.CommHubCommand;
 import org.apache.jackrabbit.oak.simple.ImportToSimpleCommand;
 import org.apache.jackrabbit.oak.simple.SerialiseNodeStoreCommand;
 import org.apache.jackrabbit.oak.simple.SimpleBlobReaderServiceCommand;
@@ -73,6 +74,7 @@ public final class AvailableModes {
             .put(SerialiseNodeStoreCommand.NAME, new SerialiseNodeStoreCommand())
             .put("simple-blob-reader-service", new SimpleBlobReaderServiceCommand())
             .put("simple-blob-writer-service", new SimpleNodeStateWriterServiceCommand())
+            .put(CommHubCommand.NAME, new CommHubCommand())
             .put("tarmkdiff", new FileStoreDiffCommand())
             .put(ThreadDumpCommand.THREADDUMP, new ThreadDumpCommand())
             .put("tika", new TikaCommand())

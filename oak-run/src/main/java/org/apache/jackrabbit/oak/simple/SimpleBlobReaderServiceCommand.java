@@ -38,6 +38,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -55,6 +56,8 @@ public class SimpleBlobReaderServiceCommand implements Command {
     private static final String summary = "Serves the contents of a simple blobstore via ZeroMQ REP\n" +
         "Example:\n" +
         "simple-blob-reader-service simple:///tmp/imported";
+
+    private static final String READER_TOPIC = "read";
 
     private File blobDir;
     private SimpleBlobStore blobStore;
@@ -83,7 +86,7 @@ public class SimpleBlobReaderServiceCommand implements Command {
         blobStore = new SimpleBlobStore(blobDir);
         context = new ZContext();
         threadPool = Executors.newFixedThreadPool(5);
-        readerFrontend = new Router(context, "tcp://*:8000", "inproc://readerBackend");
+        readerFrontend = new Router(context, "tcp://comm-hub:8000", "tcp://comm-hub:8001", "inproc://readerBackend");
         readerFrontend.start();
 
         for (int nThread = 0; nThread < 5; ++nThread) {
@@ -203,10 +206,12 @@ public class SimpleBlobReaderServiceCommand implements Command {
 
     private static class Router extends Thread implements Closeable {
         private final ZContext context;
-        private final String requestBindAddr;
+        private final String requestSubConnectAddr;
+        private final String requestPubConnectAddr;
         private final String workerBindAddr;
         private volatile boolean shutDown;
-        private ZMQ.Socket requestRouter;
+        private ZMQ.Socket requestSubscriber;
+        private ZMQ.Socket requestPublisher;
         private ZMQ.Socket workerRouter;
         private final Stack<byte[]> available = new Stack<>();
         private final Map<byte[], byte[]> busyByWorkerId = new HashMap<>();
@@ -214,24 +219,29 @@ public class SimpleBlobReaderServiceCommand implements Command {
         private ZMQ.Poller poller;
         private Queue<Pair<byte[], byte[]>> pending = new LinkedList<>();
 
-        public Router(ZContext context, String requestBindAddr, String workerBindAddr) {
+        public Router(ZContext context, String requestSubConnectAddr, String requestPubConnectAddr, String workerBindAddr) {
             super("Backend Router");
             this.context = context;
-            this.requestBindAddr = requestBindAddr;
+            this.requestSubConnectAddr = requestSubConnectAddr;
+            this.requestPubConnectAddr = requestPubConnectAddr;
             this.workerBindAddr = workerBindAddr;
         }
 
         @Override
         public void run() {
             shutDown = false;
-            requestRouter = context.createSocket(SocketType.ROUTER);
-            requestRouter.setBacklog(100000);
+            requestSubscriber = context.createSocket(SocketType.SUB);
+            requestSubscriber.setBacklog(100000);
+            requestPublisher = context.createSocket(SocketType.PUB);
+            requestPublisher.setBacklog(100000);
             workerRouter = context.createSocket(SocketType.ROUTER);
             workerRouter.setBacklog(100000);
             poller = context.createPoller(2);
-            poller.register(requestRouter, ZMQ.Poller.POLLIN);
+            poller.register(requestSubscriber, ZMQ.Poller.POLLIN);
             poller.register(workerRouter, ZMQ.Poller.POLLIN);
-            requestRouter.bind(requestBindAddr);
+            requestSubscriber.subscribe(READER_TOPIC);
+            requestSubscriber.connect(requestSubConnectAddr);
+            requestPublisher.connect(requestPubConnectAddr);
             workerRouter.bind(workerBindAddr);
             loop:
             while (!shutDown) {
@@ -253,17 +263,21 @@ public class SimpleBlobReaderServiceCommand implements Command {
                     }
                 }
             }
-            requestRouter.close();
+            requestPublisher.close();
+            requestSubscriber.close();
             workerRouter.close();
             available.clear();
             busyByWorkerId.clear();
             busyByRequestId.clear();
         }
 
-        private void handleIncomingRequest() throws InterruptedException {
-            byte[] requestId = requestRouter.recv(); // requester identity
-            requestRouter.recvStr();                    // delimiter
-            byte[] payload = requestRouter.recv();
+        private void handleIncomingRequest() {
+            byte[] request = requestSubscriber.recv();
+            int startRequestId = READER_TOPIC.length() + 1;
+            int endRequestId;
+            for (endRequestId = startRequestId; endRequestId < request.length && request[endRequestId] != ' '; ++endRequestId);
+            byte[] requestId = Arrays.copyOfRange(request, startRequestId, endRequestId);
+            byte[] payload = Arrays.copyOfRange(request, endRequestId + 1, request.length);
             pending.add(Pair.of(requestId, payload));
         }
 
@@ -303,10 +317,8 @@ public class SimpleBlobReaderServiceCommand implements Command {
                         case "E":
                         case "F":
                         case "N":
-                            requestRouter.sendMore(requestId);
-                            requestRouter.sendMore("");
-                            requestRouter.sendMore(verb);
-                            requestRouter.send(payload);
+                            requestPublisher.sendMore(verb);
+                            requestPublisher.send(READER_TOPIC + " " + new String(requestId) + " " + new String(payload)); // TODO: inefficient
                             busyByWorkerId.remove(workerId);
                             busyByRequestId.remove(requestId);
                             available.push(workerId);
