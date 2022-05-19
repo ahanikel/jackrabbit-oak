@@ -32,6 +32,7 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -49,6 +50,9 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
 
     private static final String summary = "Serves the contents of a simple blobstore via ZeroMQ REP\n" +
         "Example:\n" + NAME + " /tmp/imported/log.txt";
+
+    private static final String WRITER_TOPIC = "write";
+    private static final String JOURNAL_TOPIC = "journal";
 
     private File blobDir;
     private ZContext context;
@@ -76,7 +80,7 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
         blobDir = new File(uri.getPath());
         context = new ZContext();
         threadPool = Executors.newFixedThreadPool(5);
-        writerFrontend = new Router(context, "tcp://*:8001", "inproc://writerBackend");
+        writerFrontend = new Router(context, "tcp://comm-hub:8000", "tcp://comm-hub:8001", "inproc://writerBackend");
         writerFrontend.start();
 
         recordHandler = new SimpleRecordHandler(blobDir, "tcp://*:9000");
@@ -146,10 +150,12 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
 
     private static class Router extends Thread implements Closeable {
         private final ZContext context;
-        private final String requestBindAddr;
+        private final String requestSubConnectAddr;
+        private final String requestPubConnectAddr;
         private final String workerBindAddr;
         private volatile boolean shutDown;
-        private ZMQ.Socket requestRouter;
+        private ZMQ.Socket requestSubscriber;
+        private ZMQ.Socket requestPublisher;
         private ZMQ.Socket workerRouter;
         private final Stack<byte[]> available = new Stack<>();
         private final Map<byte[], byte[]> busyByWorkerId = new HashMap<>();
@@ -157,24 +163,29 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
         private ZMQ.Poller poller;
         private Queue<Pair<byte[], byte[]>> pending = new LinkedList<>();
 
-        public Router(ZContext context, String requestBindAddr, String workerBindAddr) {
+        public Router(ZContext context, String requestSubConnectAddr, String requestPubConnectAddr, String workerBindAddr) {
             super("Backend Router");
             this.context = context;
-            this.requestBindAddr = requestBindAddr;
+            this.requestSubConnectAddr = requestSubConnectAddr;
+            this.requestPubConnectAddr = requestPubConnectAddr;
             this.workerBindAddr = workerBindAddr;
         }
 
         @Override
         public void run() {
             shutDown = false;
-            requestRouter = context.createSocket(SocketType.ROUTER);
-            requestRouter.setBacklog(100000);
+            requestSubscriber = context.createSocket(SocketType.SUB);
+            requestSubscriber.setBacklog(100000);
+            requestPublisher = context.createSocket(SocketType.PUB);
+            requestPublisher.setBacklog(100000);
             workerRouter = context.createSocket(SocketType.ROUTER);
             workerRouter.setBacklog(100000);
             poller = context.createPoller(2);
-            poller.register(requestRouter, ZMQ.Poller.POLLIN);
+            poller.register(requestSubscriber, ZMQ.Poller.POLLIN);
             poller.register(workerRouter, ZMQ.Poller.POLLIN);
-            requestRouter.bind(requestBindAddr);
+            requestSubscriber.subscribe(WRITER_TOPIC);
+            requestSubscriber.connect(requestSubConnectAddr);
+            requestPublisher.connect(requestPubConnectAddr);
             workerRouter.bind(workerBindAddr);
             loop:
             while (!shutDown) {
@@ -196,7 +207,8 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
                     }
                 }
             }
-            requestRouter.close();
+            requestPublisher.close();
+            requestSubscriber.close();
             workerRouter.close();
             available.clear();
             busyByWorkerId.clear();
@@ -204,9 +216,12 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
         }
 
         private void handleIncomingRequest() throws InterruptedException {
-            byte[] requestId = requestRouter.recv(); // requester identity
-            requestRouter.recvStr();                    // delimiter
-            byte[] payload = requestRouter.recv();
+            byte[] request = requestSubscriber.recv();
+            int startRequestId = WRITER_TOPIC.length() + 1;
+            int endRequestId;
+            for (endRequestId = startRequestId; endRequestId < request.length && request[endRequestId] != ' '; ++endRequestId);
+            byte[] requestId = Arrays.copyOfRange(request, startRequestId, endRequestId);
+            byte[] payload = Arrays.copyOfRange(request, endRequestId + 1, request.length);
             pending.add(Pair.of(requestId, payload));
         }
 
@@ -246,10 +261,8 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
                         case "E":
                         case "F":
                         case "N":
-                            requestRouter.sendMore(requestId);
-                            requestRouter.sendMore("");
-                            requestRouter.sendMore(verb);
-                            requestRouter.send(payload);
+                            requestPublisher.sendMore(verb);
+                            requestPublisher.send(WRITER_TOPIC + " " + new String(requestId) + " " + new String(payload)); // TODO: inefficient
                             busyByWorkerId.remove(workerId);
                             busyByRequestId.remove(requestId);
                             available.push(workerId);

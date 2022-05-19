@@ -92,6 +92,9 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     private static final Logger log = LoggerFactory.getLogger(SimpleNodeStore.class.getName());
     public static final String ROOT_NODE_NAME = "root";
+    private static final String READER_TOPIC = "read";
+    private static final String WRITER_TOPIC = "write";
+    private static final String JOURNAL_TOPIC = "journal";
 
     public static SimpleNodeStoreBuilder builder() {
         return new SimpleNodeStoreBuilder();
@@ -419,13 +422,13 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
             synchronized (mergeRootMonitor) {
                 try {
                     final ZMQ.Socket socket = nodeStateWriter.get();
-                    socket.send(getUUThreadId() + " "
+                    socket.send(WRITER_TOPIC + " "
+                                    + getUUThreadId() + " "
                                     + "journal" + " " + journalId + (type == null ? "" : "-" + type) + " "
                                     + uuid + " "
                                     + oldUuid
                     );
-                    socket.recvStr(); // ignore
-                    socket.recvStr(); // ignore
+                    // TODO: wait for confirmation
                     break;
                 } catch (Throwable t) {
                     log.warn(t.toString());
