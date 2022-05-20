@@ -41,7 +41,8 @@ public class PersistentAzureCache extends AbstractPersistentCache {
     protected Buffer readSegmentInternal(long msb, long lsb) {
         try {
             final CloudBlockBlob blob = azure.getBlockBlobReference(segmentIdToString(msb, lsb));
-            final int size = Math.max(blob.getMetadata().size(), BLOB_SIZE_SAFETY_NET);
+            blob.downloadAttributes();
+            final int size = Math.toIntExact(Math.min(blob.getProperties().getLength(), BLOB_SIZE_SAFETY_NET));
             final Buffer ret = Buffer.allocate(size);
             blob.downloadToByteArray(ret.array(), 0);
             ret.limit(size);
@@ -64,11 +65,13 @@ public class PersistentAzureCache extends AbstractPersistentCache {
     @Override
     public void writeSegment(long msb, long lsb, Buffer buffer) {
         try {
-            final CloudBlockBlob blob = azure.getBlockBlobReference(segmentIdToString(msb, lsb));
             buffer.rewind();
-            final byte[] bytes = new byte[buffer.remaining()]; // TODO: is there a better way?
+            int size = buffer.remaining();
+            final CloudBlockBlob blob = azure.getBlockBlobReference(segmentIdToString(msb, lsb));
+            final byte[] bytes = new byte[size]; // TODO: is there a better way?
             buffer.get(bytes);
             blob.upload(new ByteArrayInputStream(bytes), bytes.length);
+            blob.uploadProperties();
         } catch (Exception e) {
         }
     }
@@ -77,13 +80,14 @@ public class PersistentAzureCache extends AbstractPersistentCache {
     public void cleanUp() {
         try {
             for (ListBlobItem blob : azure.listBlobs("")) {
-                azure.getBlockBlobReference(blob.getUri().toString()).delete();
+                ((CloudBlockBlob) blob).delete();
             }
         } catch (Exception e) {
         }
     }
 
-    String segmentIdToString(long msb, long lsb) {
-        return Long.toHexString(msb) + Long.toHexString(lsb);
+    static String segmentIdToString(long msb, long lsb) {
+        final String ret = String.format("%016x%016x", msb, lsb);
+        return ret;
     }
 }
