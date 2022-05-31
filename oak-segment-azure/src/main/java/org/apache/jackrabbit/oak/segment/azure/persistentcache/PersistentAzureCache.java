@@ -23,6 +23,8 @@ import com.microsoft.azure.storage.blob.ListBlobItem;
 import org.apache.jackrabbit.oak.commons.Buffer;
 import org.apache.jackrabbit.oak.segment.spi.persistence.persistentcache.AbstractPersistentCache;
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayInputStream;
 
@@ -30,10 +32,14 @@ public class PersistentAzureCache extends AbstractPersistentCache {
 
     public static int BLOB_SIZE_SAFETY_NET = 10_000_000;
 
+    private static final Logger log = LoggerFactory.getLogger(PersistentAzureCache.class);
+
     private CloudBlobDirectory azure;
+    private long lastWriteSegmentWarning;
 
     public PersistentAzureCache(CloudBlobDirectory azure) {
         this.azure = azure;
+        this.lastWriteSegmentWarning = 0;
     }
 
     @Override
@@ -48,6 +54,7 @@ public class PersistentAzureCache extends AbstractPersistentCache {
             ret.limit(size);
             return ret;
         } catch (Exception e) {
+            log.trace(e.toString());
             return null;
         }
     }
@@ -58,6 +65,7 @@ public class PersistentAzureCache extends AbstractPersistentCache {
             final CloudBlockBlob blob = azure.getBlockBlobReference(segmentIdToString(msb, lsb));
             return blob.exists();
         } catch (Exception e) {
+            log.trace(e.toString());
         }
         return false;
     }
@@ -73,6 +81,10 @@ public class PersistentAzureCache extends AbstractPersistentCache {
             blob.upload(new ByteArrayInputStream(bytes), bytes.length);
             blob.uploadProperties();
         } catch (Exception e) {
+            if (System.nanoTime() - lastWriteSegmentWarning > 60_000_000_000L) {
+                lastWriteSegmentWarning = System.nanoTime();
+                log.warn(e.toString());
+            }
         }
     }
 
@@ -83,6 +95,7 @@ public class PersistentAzureCache extends AbstractPersistentCache {
                 ((CloudBlockBlob) blob).delete();
             }
         } catch (Exception e) {
+            log.error(e.toString());
         }
     }
 
