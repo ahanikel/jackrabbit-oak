@@ -17,16 +17,32 @@
  */
 package org.apache.jackrabbit.oak.segment.azure.persistentcache;
 
+import com.microsoft.azure.storage.CloudStorageAccount;
+import com.microsoft.azure.storage.blob.CloudBlobContainer;
 import com.microsoft.azure.storage.blob.CloudBlobDirectory;
 import com.microsoft.azure.storage.blob.CloudBlockBlob;
 import com.microsoft.azure.storage.blob.ListBlobItem;
 import org.apache.jackrabbit.oak.commons.Buffer;
 import org.apache.jackrabbit.oak.segment.spi.persistence.persistentcache.AbstractPersistentCache;
+import org.apache.jackrabbit.oak.segment.spi.persistence.persistentcache.PersistentCache;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.osgi.framework.ServiceRegistration;
+import org.osgi.service.component.ComponentContext;
+import org.osgi.service.component.annotations.Activate;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.ConfigurationPolicy;
+import org.osgi.service.component.annotations.Deactivate;
+import org.osgi.service.metatype.annotations.AttributeDefinition;
+import org.osgi.service.metatype.annotations.ObjectClassDefinition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayInputStream;
+import java.util.Properties;
+import java.util.concurrent.Callable;
+
+import static org.apache.jackrabbit.oak.segment.remote.persistentcache.Configuration.PID;
 
 public class PersistentAzureCache extends AbstractPersistentCache {
 
@@ -102,5 +118,75 @@ public class PersistentAzureCache extends AbstractPersistentCache {
     static String segmentIdToString(long msb, long lsb) {
         final String ret = String.format("%016x%016x", msb, lsb);
         return ret;
+    }
+
+    @ObjectClassDefinition(
+            pid = {PID},
+            name = "Apache Jackrabbit Oak Azure Persistent Cache Service",
+            description = "Persistent cache for the Oak Segment Node Store")
+    public @interface Configuration {
+
+        String PID = "org.apache.jackrabbit.oak.segment.azure.persistentcache.PersistentAzureCacheService";
+
+        @AttributeDefinition(
+                name = "Azure cache",
+                description = "Boolean value indicating that the azure-persisted cache should be used for segment store"
+        )
+        boolean azureCacheEnabled() default false;
+
+        @AttributeDefinition(
+                name = "Azure cache connection string",
+                description = "Azure cache connection string"
+        )
+        String azureCacheConnectionString() default "";
+
+        @AttributeDefinition(
+                name = "Azure cache container name",
+                description = "Azure cache container name"
+        )
+        String azureCacheContainer();
+
+        @AttributeDefinition(
+                name = "Azure cache container directory name",
+                description = "Azure cache container directory name"
+        )
+        String azureCacheDirectory() default "aem-cache";
+    }
+
+    @Component(
+            configurationPolicy = ConfigurationPolicy.REQUIRE)
+    public static class Service {
+
+        private ServiceRegistration serviceRegistration;
+        private AbstractPersistentCache azureCache;
+
+        @Activate
+        public void activate(ComponentContext context, Configuration configuration) {
+            if (configuration.azureCacheEnabled()) {
+                try {
+                    final CloudStorageAccount azure = CloudStorageAccount.parse(configuration.azureCacheConnectionString());
+                    final CloudBlobContainer container = azure.createCloudBlobClient().getContainerReference(configuration.azureCacheContainer());
+                    final CloudBlobDirectory azureDirectory = container.getDirectoryReference(configuration.azureCacheDirectory());
+                    azureCache = new PersistentAzureCache(azureDirectory);
+                    final Properties props = new Properties();
+                    props.put("backend", "azure");
+                    serviceRegistration = context.getBundleContext().registerService(PersistentCache.class.getName(), azureCache, props);
+                } catch (Exception e) {
+                    log.error(e.toString());
+                }
+            }
+        }
+
+        @Deactivate
+        public void deactivate() {
+            if (azureCache != null) {
+                azureCache.close();
+                azureCache = null;
+            }
+            if (serviceRegistration != null) {
+                serviceRegistration.unregister();
+                serviceRegistration = null;
+            }
+        }
     }
 }

@@ -56,7 +56,7 @@ public abstract class AbstractPersistentCache implements PersistentCache, Closea
         writesPending = ConcurrentHashMap.newKeySet();
     }
 
-    public PersistentCache linkWith(AbstractPersistentCache nextCache) {
+    public PersistentCache linkWith(PersistentCache nextCache) {
         this.nextCache = nextCache;
         return nextCache;
     }
@@ -99,7 +99,7 @@ public abstract class AbstractPersistentCache implements PersistentCache, Closea
 
     /**
      * Reads the segment from the cache.
-     * If segment is not found, this method does not query next cache that was set with {@link #linkWith(AbstractPersistentCache)}
+     * If segment is not found, this method does not query next cache that was set with {@link #linkWith(PersistentCache)}
      *
      * @param msb the most significant bits of the identifier of the segment
      * @param lsb the least significant bits of the identifier of the segment

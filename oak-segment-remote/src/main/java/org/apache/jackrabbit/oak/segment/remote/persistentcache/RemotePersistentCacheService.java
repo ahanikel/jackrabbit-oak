@@ -17,10 +17,7 @@
  */
 package org.apache.jackrabbit.oak.segment.remote.persistentcache;
 
-import static org.apache.jackrabbit.oak.commons.IOUtils.closeQuietly;
-
 import com.google.common.io.Closer;
-
 import org.apache.jackrabbit.oak.api.jmx.CacheStatsMBean;
 import org.apache.jackrabbit.oak.cache.CacheStats;
 import org.apache.jackrabbit.oak.osgi.OsgiWhiteboard;
@@ -36,15 +33,22 @@ import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.ConfigurationPolicy;
 import org.osgi.service.component.annotations.Deactivate;
 import org.osgi.service.component.annotations.Reference;
+import org.osgi.service.component.annotations.ReferenceCardinality;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.Properties;
 
+import static org.apache.jackrabbit.oak.commons.IOUtils.closeQuietly;
+
 @Component(
         configurationPolicy = ConfigurationPolicy.REQUIRE,
         configurationPid = {Configuration.PID})
 public class RemotePersistentCacheService {
+    private static final Logger log = LoggerFactory.getLogger(RemotePersistentCacheService.class);
+
     private ServiceRegistration registration;
 
     private PersistentCache persistentCache;
@@ -56,10 +60,13 @@ public class RemotePersistentCacheService {
     @Reference
     private StatisticsProvider statisticsProvider = StatisticsProvider.NOOP;
 
+    @Reference(cardinality = ReferenceCardinality.OPTIONAL, target = "(backend=azure)")
+    private PersistentCache azureCache;
+
     @Activate
     public void activate(ComponentContext context, Configuration config) throws IOException {
         osgiWhiteboard = new OsgiWhiteboard(context.getBundleContext());
-        persistentCache = createPersistentCache(config, closer);
+        persistentCache = createPersistentCache(context, config, closer);
         if (persistentCache != null) {
             registration = context.getBundleContext().registerService(PersistentCache.class.getName(), persistentCache, new Properties());
         }
@@ -83,7 +90,7 @@ public class RemotePersistentCacheService {
         return WhiteboardUtils.registerMBean(osgiWhiteboard, clazz, bean, type, name);
     }
 
-    private PersistentCache createPersistentCache(Configuration configuration, Closer closer) {
+    private PersistentCache createPersistentCache(ComponentContext context, Configuration configuration, Closer closer) {
 
         RoleStatisticsProvider roleStatisticsProvider = new RoleStatisticsProvider(statisticsProvider, "remote_persistence");
 
@@ -105,6 +112,8 @@ public class RemotePersistentCacheService {
 
                 CacheStatsMBean redisCacheStatsMBean = redisCache.getCacheStats();
                 registerCloseable(registerMBean(CacheStatsMBean.class, redisCacheStatsMBean, CacheStats.TYPE, redisCacheStatsMBean.getName()));
+            } else if (azureCache != null) {
+                    persistentDiskCache.linkWith(azureCache);
             }
 
             return persistentDiskCache;
@@ -117,8 +126,9 @@ public class RemotePersistentCacheService {
             registerCloseable(registerMBean(CacheStatsMBean.class, redisCacheStatsMBean, CacheStats.TYPE, redisCacheStatsMBean.getName()));
 
             return redisCache;
+        } else if (azureCache != null) {
+            return azureCache;
         }
-
         return null;
     }
 }
