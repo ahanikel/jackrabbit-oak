@@ -179,13 +179,13 @@ public class PersistentAzureCache extends AbstractPersistentCache {
 
         @Deactivate
         public void deactivate() {
-            if (azureCache != null) {
-                azureCache.close();
-                azureCache = null;
-            }
             if (serviceRegistration != null) {
                 serviceRegistration.unregister();
                 serviceRegistration = null;
+            }
+            if (azureCache != null) {
+                azureCache.close();
+                azureCache = null;
             }
         }
     }
