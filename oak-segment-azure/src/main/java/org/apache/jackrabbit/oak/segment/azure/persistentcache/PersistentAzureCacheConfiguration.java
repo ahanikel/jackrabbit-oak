@@ -29,26 +29,49 @@ public @interface PersistentAzureCacheConfiguration {
     String PID = "org.apache.jackrabbit.oak.segment.azure.persistentcache.PersistentAzureCacheService";
 
     @AttributeDefinition(
-            name = "Azure cache",
+            name = "Azure cache enabled",
             description = "Boolean value indicating that the azure-persisted cache should be used for segment store"
     )
-    boolean azureCacheEnabled() default false;
+    boolean enabled() default false;
 
     @AttributeDefinition(
-            name = "Azure cache connection string",
-            description = "Azure cache connection string"
+            name = "Azure cache account name",
+            description = "Azure cache account name"
     )
-    String azureCacheConnectionString() default "";
+    String accountName() default "";
+
+    @AttributeDefinition(
+            name = "Azure cache access key",
+            description = "Azure cache access key"
+    )
+    String accessKey() default "";
 
     @AttributeDefinition(
             name = "Azure cache container name",
             description = "Azure cache container name"
     )
-    String azureCacheContainer();
+    String containerName() default "aem-cache";
 
     @AttributeDefinition(
             name = "Azure cache container directory name",
             description = "Azure cache container directory name"
     )
-    String azureCacheDirectory() default "aem-cache";
+    String rootPath() default "aem-cache";
+
+    @AttributeDefinition(
+            name = "Azure cache connection string (optional)",
+            description = "Connection string to be used to connect to the Azure cache storage. " +
+                    "Setting it will take precedence over accountName/accessKey and sharedAccessSignature properties.")
+    String connectionURL() default "";
+
+    @AttributeDefinition(
+            name = "Azure cache Shared Access Signature (optional)",
+            description = "Shared Access Signature string to be used to connect to the Azure cache storage. " +
+                    "Setting it will take precedence over accountName/accessKey properties.")
+    String sharedAccessSignature() default "";
+
+    @AttributeDefinition(
+            name = "Azure cache blob endpoint URL (optional)",
+            description = "Blob endpoint URL used to connect to the Azure cache storage")
+    String blobEndpoint() default "";
 }
