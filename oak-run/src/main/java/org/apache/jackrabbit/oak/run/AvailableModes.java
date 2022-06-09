@@ -31,6 +31,7 @@ import org.apache.jackrabbit.oak.simple.ImportToSimpleCommand;
 import org.apache.jackrabbit.oak.simple.SerialiseNodeStoreCommand;
 import org.apache.jackrabbit.oak.simple.SimpleBlobReaderServiceCommand;
 import org.apache.jackrabbit.oak.simple.SimpleNodeStateWriterServiceCommand;
+import org.apache.jackrabbit.oak.simple.SimpleQueueListenerCommand;
 
 public final class AvailableModes {
     // list of available Modes for the tool
@@ -75,6 +76,7 @@ public final class AvailableModes {
             .put("simple-blob-reader-service", new SimpleBlobReaderServiceCommand())
             .put("simple-blob-writer-service", new SimpleNodeStateWriterServiceCommand())
             .put(CommHubCommand.NAME, new CommHubCommand())
+            .put(SimpleQueueListenerCommand.NAME, new SimpleQueueListenerCommand())
             .put("tarmkdiff", new FileStoreDiffCommand())
             .put(ThreadDumpCommand.THREADDUMP, new ThreadDumpCommand())
             .put("tika", new TikaCommand())
