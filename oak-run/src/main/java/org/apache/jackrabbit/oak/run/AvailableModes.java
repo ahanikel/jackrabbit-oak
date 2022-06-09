@@ -30,6 +30,7 @@ import org.apache.jackrabbit.oak.simple.ImportToSimpleCommand;
 import org.apache.jackrabbit.oak.simple.SerialiseNodeStoreCommand;
 import org.apache.jackrabbit.oak.simple.SimpleBlobReaderServiceCommand;
 import org.apache.jackrabbit.oak.simple.SimpleNodeStateWriterServiceCommand;
+import org.apache.jackrabbit.oak.simple.SimpleQueueListenerCommand;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -83,6 +84,7 @@ public final class AvailableModes {
         builder.put("simple-blob-reader-service", new SimpleBlobReaderServiceCommand());
         builder.put("simple-blob-writer-service", new SimpleNodeStateWriterServiceCommand());
         builder.put(CommHubCommand.NAME, new CommHubCommand());
+        builder.put(SimpleQueueListenerCommand.NAME, new SimpleQueueListenerCommand());
         builder.put("tarmkdiff", new FileStoreDiffCommand());
         builder.put(ThreadDumpCommand.THREADDUMP, new ThreadDumpCommand());
         builder.put("tika", new TikaCommand());
