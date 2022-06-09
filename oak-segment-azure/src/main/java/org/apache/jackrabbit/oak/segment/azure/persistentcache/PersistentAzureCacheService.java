@@ -50,6 +50,7 @@ public class PersistentAzureCacheService {
             try {
                 final CloudStorageAccount azure = CloudStorageAccount.parse(createAzureConnectionURLFrom(configuration));
                 final CloudBlobContainer container = azure.createCloudBlobClient().getContainerReference(configuration.containerName());
+                container.createIfNotExists();
                 final CloudBlobDirectory azureDirectory = container.getDirectoryReference(configuration.rootPath());
                 azureCache = new PersistentAzureCache(azureDirectory);
                 final Properties props = new Properties();
