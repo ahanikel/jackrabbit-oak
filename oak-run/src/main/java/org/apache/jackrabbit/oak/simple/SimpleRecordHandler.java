@@ -90,7 +90,6 @@ public class SimpleRecordHandler {
         }
     }
 
-    private final File blobDir;
     private final Base64.Decoder b64 = Base64.getDecoder();
     private int line = 0;
     private final SimpleBlobStore store;
@@ -100,9 +99,8 @@ public class SimpleRecordHandler {
     private final Cache<String, Long> lastMessageSeen;
     private final ZMQ.Socket journalPublisher;
 
-    public SimpleRecordHandler(File blobDir, ZMQ.Socket journalPublisher) throws IOException {
-        this.blobDir = blobDir;
-        store = new SimpleBlobStore(blobDir);
+    public SimpleRecordHandler(SimpleBlobStore store, ZMQ.Socket journalPublisher) throws IOException {
+        this.store = store;
         nodeStates = new HashMap<>();
         currentBlobMap = new HashMap<>();
         cache = CacheBuilder.newBuilder().maximumSize(1000).build();
@@ -230,7 +228,7 @@ public class SimpleRecordHandler {
                     break;
                 }
                 if (!ns.skip) {
-                    ns.setProperty(tokens.nextToken(), value);
+                    ns.setProperty(tokens.nextToken(), value.substring(value.indexOf(' ') + 1));
                 }
                 break;
             }
@@ -274,8 +272,9 @@ public class SimpleRecordHandler {
                     currentBlob.setRef(ref);
                     for (int i = 0; ; ++i) {
                         try {
-                            currentBlob.setFile(File.createTempFile("b64temp", ".dat", blobDir));
-                            currentBlob.setFos(new FileOutputStream(currentBlob.getFile()));
+                            File tempFile = store.getTempFile();
+                            currentBlob.setFile(tempFile);
+                            currentBlob.setFos(new FileOutputStream(tempFile));
                             break;
                         } catch (IOException ioe) {
                             if (i % 600 == 0) {
