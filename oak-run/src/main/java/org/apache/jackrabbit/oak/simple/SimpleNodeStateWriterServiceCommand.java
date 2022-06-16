@@ -23,6 +23,7 @@ import joptsimple.OptionSet;
 import org.apache.jackrabbit.oak.run.cli.CommonOptions;
 import org.apache.jackrabbit.oak.run.cli.Options;
 import org.apache.jackrabbit.oak.run.commons.Command;
+import org.apache.jackrabbit.oak.store.zeromq.SimpleBlobStore;
 import org.apache.jackrabbit.oak.store.zeromq.SimpleRequestResponse;
 import org.zeromq.SocketType;
 import org.zeromq.ZContext;
@@ -59,7 +60,6 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
     private static final String PUBLISHER_URL_DEFAULT = "tcp://comm-hub:8001";
     private static final String WORKER_URL = "inproc://writerBackend";
 
-    private File blobDir;
     private ExecutorService threadPool;
     private Router writerFrontend;
     private SimpleRecordHandler recordHandler;
@@ -81,7 +81,7 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
 
         final CommonOptions commonOptions = opts.getOptionBean(CommonOptions.class);
         final URI uri = commonOptions.getURI(0);
-        blobDir = new File(uri.getPath());
+        final File blobDir = new File(uri.getPath());
         final ZContext context = new ZContext();
         threadPool = Executors.newFixedThreadPool(5);
         final ZMQ.Socket requestSubscriber = context.createSocket(SocketType.SUB);
@@ -97,7 +97,8 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
         writerFrontend = new Router(requestPublisher, requestSubscriber, workerRouter);
         writerFrontend.start();
 
-        recordHandler = new SimpleRecordHandler(blobDir, requestPublisher);
+        final SimpleBlobStore store = new SimpleBlobStore(blobDir);
+        recordHandler = new SimpleRecordHandler(store, requestPublisher);
 
         for (int nThread = 0; nThread < 5; ++nThread) {
             threadPool.execute(() -> {
