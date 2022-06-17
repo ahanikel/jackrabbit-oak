@@ -33,6 +33,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.UUID;
 
 import static org.junit.Assert.*;
@@ -99,8 +100,8 @@ public class SimpleRecordHandlerTest {
         IOUtils.copy(new FileInputStream(blob), bos);
         assertEquals(
                 "n:\n" +
-                "n+ child1 1234568\n" +
-                "n!\n", new String(bos.toByteArray()));
+                        "n+ child1 1234568\n" +
+                        "n!\n", new String(bos.toByteArray()));
     }
 
     @Test
@@ -151,6 +152,16 @@ public class SimpleRecordHandlerTest {
                         "p+ sling:resourceType <STRING> sling:redirect\n" +
                         "p+ sling:target <STRING> /index.html\n" +
                         "n!\n",
-                        new String(bos.toByteArray()));
+                new String(bos.toByteArray()));
+    }
+
+    @Test
+    public void handleRecordJournal() throws IOException {
+        simpleRecordHandler.handleRecord("thread-1", 123, "journal", "mytestjournal 6F3E7018B987ED1260B6B843364261BA " + new UUID(0, 0).toString());
+        File blob = new File(blobDir, "journal-mytestjournal");
+        assertTrue(blob.exists());
+        assertTrue(blob.isFile());
+        String actual = IOUtils.readString(new FileInputStream(blob));
+        assertEquals("6F3E7018B987ED1260B6B843364261BA", actual);
     }
 }
