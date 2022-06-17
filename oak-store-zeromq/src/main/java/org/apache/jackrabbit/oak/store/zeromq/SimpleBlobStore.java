@@ -103,6 +103,7 @@ public class SimpleBlobStore implements BlobStore {
 
     @Override
     public FileInputStream getInputStream(String ref) throws FileNotFoundException {
+        checkRef(ref);
         if (ref == null || ref.length() < 6) {
             throw new FileNotFoundException("ref: " + ref);
         }
@@ -110,6 +111,7 @@ public class SimpleBlobStore implements BlobStore {
     }
 
     public File getFile(String ref) throws FileNotFoundException {
+        checkRef(ref);
         if (ref == null || ref.length() < 6) {
             throw new FileNotFoundException("ref: " + ref);
         }
@@ -159,11 +161,13 @@ public class SimpleBlobStore implements BlobStore {
 
     @Override
     public File getSpecificFile(String name) {
+        checkRef(name);
         return new File(blobDir, name);
     }
 
     @Override
     public boolean hasBlob(String ref) {
+        checkRef(ref);
         if (ref == null || ref.length() < 6) {
             return false;
         }
@@ -172,6 +176,7 @@ public class SimpleBlobStore implements BlobStore {
 
     @Override
     public long getLength(String ref) throws IOException {
+        checkRef(ref);
         return getFile(ref).length();
     }
 
@@ -186,5 +191,11 @@ public class SimpleBlobStore implements BlobStore {
         final File dir = new File(blobDir, dirName.toString());
         dir.mkdirs();
         return new File(dir, ref);
+    }
+
+    private void checkRef(String ref) {
+        if (ref.contains("/")) {
+            throw new IllegalArgumentException();
+        }
     }
 }
