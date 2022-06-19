@@ -30,9 +30,12 @@ import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
 
 import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.UUID;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 public class SimpleBlobReaderServiceTest {
 
@@ -65,10 +68,10 @@ public class SimpleBlobReaderServiceTest {
         simpleBlobReaderService = new SimpleBlobReaderService(simpleBlobStore);
 
         simpleRecordHandler = new SimpleRecordHandler(simpleBlobStore, journalPublisher);
-        simpleRecordHandler.handleRecord("thread-1", 123, "b64+", "CDBA3AE79386D3CF3DAAE8EC7F760588");
-        simpleRecordHandler.handleRecord("thread-1", 124, "b64d", "bjoKbisgOmFzeW5jIDQzRDA3MjI5N0MwOTM3NUZBNjBGOUE2RDEzNzI0QkIzCm4rIDpjbHVzdGVyQ29uZmlnIEVFQkFCNTBCMkJBNEFFMzY5RjVGMTlGOTRFRkFDQzdECm4rIGFwcHMgQUNGMjQ3OTZBRjk3NTA1REFDMEYxMzU4Q0NENUVBNUMKbisgYmluIEM2RDREQjMxMjIxNjQ3RUQwQTlFMzVENTI0RjdCRDFBCm4rIGNvbmYgMUMwMUU3NUFEQTY3QkU3NURCNzhBNzg1MzA4MDMyN0EKbisgY29udGVudCA2NzFGODVCMUYwMUI5NEMwMDU3MzAzNDRFNEVGQTQ2MwpuKyBldGMgREU5OTMxNkExNTlCRDg4QkI5MDlFMERBOUQ0MDhBNzcKbisgaG9tZSBFQTYyMkZENDMwMzI3NTkyMEJCODQ5MjFEMEE5NkFGRApuKyBqY3I6c3lzdGVtIDgyOUVBRDdEQTlGQjFGRUNGRUM1MzUxMTM5MjhEODE1Cm4rIGxpYnMgMjZFMkRGMDM0NjRENjgzQzFDQjhDODczMEJBQUU3MEQKbisgb2FrOmluZGV4IDVBMjI1RDBFNTgwQkQ4QkNDMDIzRDJEMTQ5QjZGODBFCm4rIHJlcDpwb2xpY3kgQzVEMzA3RTkwQjBGQ0UxMDEyN0VFNzE4RjVDMzY2QzMKbisgcmVwOnJlcG9Qb2xpY3kgM0ExQzdFMTUxMUM1RUMyQjUyM0JCRkRDRTg5MEEwNkUKbisgc3lzdGVtIERDOEZDMTJFREUwMTU0MUUyQjg2N0MwNTYxMjE1OEQ1Cm4rIHRtcCAyRDczNEI0MTA1N0JENDQ3RTZFRkU5N0M1MEM4MUJBOApuKyB2YXIgMUJGRDMwNUM3QzcxMkFDMEVBOUJCQjVFODBBQUU4NzMKcCsgamNyOm1peGluVHlwZXMgPE5BTUVTPiBbcmVwOkFjY2Vzc0NvbnRyb2xsYWJsZSxyZXA6UmVwb0FjY2Vzc0NvbnRyb2xsYWJsZV0KcCsgamNyOnByaW1hcnlUeXBlIDxOQU1FPiByZXA6cm9vdApwKyBzbGluZzpyZXNvdXJjZVR5cGUgPFNUUklORz4gc2xpbmc6cmVkaXJlY3QKcCsgc2xpbmc6dGFyZ2V0IDxTVFJJTkc+IC9pbmRleC5odG1sCm4hCg==");
-        simpleRecordHandler.handleRecord("thread-1", 125, "b64!", "");
-        simpleRecordHandler.handleRecord("thread-1", 126, "journal", "mytestjournal CDBA3AE79386D3CF3DAAE8EC7F760588 " + new UUID(0, 0).toString());
+        simpleRecordHandler.handleRecord("thread-1", 123, "b64+", TestUtils.testNodeStateHash.getBytes());
+        simpleRecordHandler.handleRecord("thread-1", 124, "b64d", TestUtils.testNodeStateEncoded.getBytes());
+        simpleRecordHandler.handleRecord("thread-1", 125, "b64!", "".getBytes());
+        simpleRecordHandler.handleRecord("thread-1", 126, "journal", ("mytestjournal " + TestUtils.testNodeStateHash + " " + new UUID(0, 0).toString()).getBytes());
     }
 
     @After
@@ -96,7 +99,7 @@ public class SimpleBlobReaderServiceTest {
         request.send("journal mytestjournal");
         simpleBlobReaderService.handleReaderService(reply);
         assertEquals("E", request.recvStr());
-        assertEquals("CDBA3AE79386D3CF3DAAE8EC7F760588", request.recvStr());
+        assertEquals(TestUtils.testNodeStateHash, request.recvStr());
     }
 
     @Test
@@ -121,7 +124,7 @@ public class SimpleBlobReaderServiceTest {
         assertEquals("E", request.recvStr());
         assertEquals("false", request.recvStr());
 
-        request.send("hasblob CDBA3AE79386D3CF3DAAE8EC7F760588");
+        request.send("hasblob " + TestUtils.testNodeStateHash);
         simpleBlobReaderService.handleReaderService(reply);
         assertEquals("E", request.recvStr());
         assertEquals("true", request.recvStr());
@@ -154,9 +157,31 @@ public class SimpleBlobReaderServiceTest {
         assertEquals("N", request.recvStr());
         assertEquals("", request.recvStr());
 
-        request.send("blob CDBA3AE79386D3CF3DAAE8EC7F760588");
+        request.send("blob " + TestUtils.testNodeStateHash);
         simpleBlobReaderService.handleReaderService(reply);
         assertEquals("E", request.recvStr());
-        assertEquals(898, request.recvStr().length());
+        assertEquals(TestUtils.testNodeState, request.recvStr());
+    }
+
+    @Test
+    public void readLargeBlob() throws IOException {
+        final int blobSize = 1_000_000_000;
+        InputStream largeBlob = TestUtils.getLargeBlobInputStream(blobSize);
+        String ref = simpleBlobStore.putInputStream(largeBlob);
+        for (int count = 0; count < blobSize;) {
+            request.send("blob " + ref + " " + count + " -1");
+            simpleBlobReaderService.handleReaderService(reply);
+            String code = request.recvStr();
+            byte[] chunk = request.recv();
+            assertEquals(count % 10, chunk[0]);
+            count += chunk.length;
+            if (count < blobSize) {
+                assertEquals("C", code);
+                assertEquals(1048576, chunk.length);
+            } else {
+                assertEquals("E", code);
+                assertEquals(blobSize, count);
+            }
+        }
     }
 }
