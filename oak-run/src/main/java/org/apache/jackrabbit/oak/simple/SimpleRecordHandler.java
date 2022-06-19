@@ -99,7 +99,7 @@ public class SimpleRecordHandler {
     private final Cache<String, Long> lastMessageSeen;
     private final ZMQ.Socket journalPublisher;
 
-    public SimpleRecordHandler(SimpleBlobStore store, ZMQ.Socket journalPublisher) throws IOException {
+    public SimpleRecordHandler(SimpleBlobStore store, ZMQ.Socket journalPublisher) {
         this.store = store;
         nodeStates = new HashMap<>();
         currentBlobMap = new HashMap<>();
@@ -108,7 +108,7 @@ public class SimpleRecordHandler {
         this.journalPublisher = journalPublisher;
     }
 
-    public synchronized void handleRecord(String uuThreadId, long msgid, String op, String value) {
+    public synchronized void handleRecord(String uuThreadId, long msgid, String op, byte[] value) {
 
         ++line;
         if (line % 100000 == 0) {
@@ -121,14 +121,15 @@ public class SimpleRecordHandler {
         }
         lastMessageSeen.put(uuThreadId, msgid);
 
-        StringTokenizer tokens = new StringTokenizer(value);
-
         if (op == null) {
             return;
         }
 
+        boolean raw = false;
+
         switch (op) {
             case "n:": {
+                StringTokenizer tokens = new StringTokenizer(new String(value));
                 final String newUuid = tokens.nextToken();
                 SimpleMutableNodeState newNode;
                 if (cache.getIfPresent(newUuid) != null || store.hasBlob(newUuid)) {
@@ -194,6 +195,7 @@ public class SimpleRecordHandler {
 
             case "n+":
             case "n^": {
+                StringTokenizer tokens = new StringTokenizer(new String(value));
                 final String name = tokens.nextToken();
                 final String uuid = tokens.nextToken();
                 final SimpleMutableNodeState parent = nodeStates.get(uuThreadId);
@@ -208,6 +210,7 @@ public class SimpleRecordHandler {
             }
 
             case "n-": {
+                StringTokenizer tokens = new StringTokenizer(new String(value));
                 final String name = tokens.nextToken();
                 final SimpleMutableNodeState parent = nodeStates.get(uuThreadId);
                 if (parent == null) {
@@ -222,18 +225,21 @@ public class SimpleRecordHandler {
 
             case "p+":
             case "p^": {
+                String stringValue = new String(value);
+                StringTokenizer tokens = new StringTokenizer(stringValue);
                 final SimpleMutableNodeState ns = nodeStates.get(uuThreadId);
                 if (ns == null) {
                     log.error("Current nodestate not present");
                     break;
                 }
                 if (!ns.skip) {
-                    ns.setProperty(tokens.nextToken(), value.substring(value.indexOf(' ') + 1));
+                    ns.setProperty(tokens.nextToken(), stringValue.substring(stringValue.indexOf(' ') + 1));
                 }
                 break;
             }
 
             case "p-": {
+                StringTokenizer tokens = new StringTokenizer(new String(value));
                 final String name = tokens.nextToken();
                 final SimpleMutableNodeState ns = nodeStates.get(uuThreadId);
                 if (ns == null) {
@@ -247,6 +253,7 @@ public class SimpleRecordHandler {
             }
 
             case "b64+": {
+                StringTokenizer tokens = new StringTokenizer(new String(value));
                 final String ref = tokens.nextToken();
                 CurrentBlob currentBlob = currentBlobMap.get(uuThreadId);
                 if (currentBlob == null) {
@@ -315,6 +322,8 @@ public class SimpleRecordHandler {
                 break;
             }
 
+            case "braw":
+                raw = true;
             case "b64d": {
                 final CurrentBlob currentBlob = currentBlobMap.get(uuThreadId);
                 if (currentBlob.getFound() != null) {
@@ -327,7 +336,12 @@ public class SimpleRecordHandler {
                     throw new IllegalStateException(msg);
                 }
                 try {
-                    currentBlobFos.write(b64.decode(tokens.nextToken()));
+                    if (raw) {
+                        currentBlobFos.write(value);
+                    } else {
+                        StringTokenizer tokens = new StringTokenizer(new String(value));
+                        currentBlobFos.write(b64.decode(tokens.nextToken()));
+                    }
                 } catch (IOException e) {
                     final String msg = "Unable to write blob " + currentBlob.getRef();
                     log.error(msg);
@@ -372,6 +386,7 @@ public class SimpleRecordHandler {
             }
 
             case "journal": {
+                StringTokenizer tokens = new StringTokenizer(new String(value));
                 final String journalId = tokens.nextToken();
                 final String head = tokens.nextToken();
                 final String oldHead = tokens.nextToken();
