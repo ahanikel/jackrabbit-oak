@@ -72,9 +72,9 @@ public class SimpleRecordHandlerTest {
 
     @Test
     public void handleRecordBasics() throws IOException {
-        simpleRecordHandler.handleRecord("thread-1", 123, "n:", "9B26508DCB3614BD2A7E9CB8889D4C12 " + new UUID(0, 0).toString());
-        simpleRecordHandler.handleRecord("thread-1", 124, "n+", "child1 1234568");
-        simpleRecordHandler.handleRecord("thread-1", 125, "n!", "");
+        simpleRecordHandler.handleRecord("thread-1", 123, "n:", ("9B26508DCB3614BD2A7E9CB8889D4C12 " + new UUID(0, 0).toString()).getBytes());
+        simpleRecordHandler.handleRecord("thread-1", 124, "n+", "child1 1234568".getBytes());
+        simpleRecordHandler.handleRecord("thread-1", 125, "n!", "".getBytes());
 
         File offset = new File(blobDir, "offset");
         assertTrue(offset.exists());
@@ -106,9 +106,9 @@ public class SimpleRecordHandlerTest {
 
     @Test
     public void handleRecordProperties() throws IOException {
-        simpleRecordHandler.handleRecord("thread-1", 123, "n:", "6F3E7018B987ED1260B6B843364261BA " + new UUID(0, 0).toString());
-        simpleRecordHandler.handleRecord("thread-1", 124, "p+", "prop1 <LONG> 1234568");
-        simpleRecordHandler.handleRecord("thread-1", 125, "n!", "");
+        simpleRecordHandler.handleRecord("thread-1", 123, "n:", ("6F3E7018B987ED1260B6B843364261BA " + new UUID(0, 0).toString()).getBytes());
+        simpleRecordHandler.handleRecord("thread-1", 124, "p+", "prop1 <LONG> 1234568".getBytes());
+        simpleRecordHandler.handleRecord("thread-1", 125, "n!", "".getBytes());
         File blob = new File(blobDir, "6F/3E/70/6F3E7018B987ED1260B6B843364261BA");
         assertTrue(blob.exists());
         assertTrue(blob.isFile());
@@ -122,9 +122,9 @@ public class SimpleRecordHandlerTest {
 
     @Test
     public void handleRecordBlobs() throws IOException {
-        simpleRecordHandler.handleRecord("thread-1", 123, "b64+", "CDBA3AE79386D3CF3DAAE8EC7F760588");
-        simpleRecordHandler.handleRecord("thread-1", 124, "b64d", "bjoKbisgOmFzeW5jIDQzRDA3MjI5N0MwOTM3NUZBNjBGOUE2RDEzNzI0QkIzCm4rIDpjbHVzdGVyQ29uZmlnIEVFQkFCNTBCMkJBNEFFMzY5RjVGMTlGOTRFRkFDQzdECm4rIGFwcHMgQUNGMjQ3OTZBRjk3NTA1REFDMEYxMzU4Q0NENUVBNUMKbisgYmluIEM2RDREQjMxMjIxNjQ3RUQwQTlFMzVENTI0RjdCRDFBCm4rIGNvbmYgMUMwMUU3NUFEQTY3QkU3NURCNzhBNzg1MzA4MDMyN0EKbisgY29udGVudCA2NzFGODVCMUYwMUI5NEMwMDU3MzAzNDRFNEVGQTQ2MwpuKyBldGMgREU5OTMxNkExNTlCRDg4QkI5MDlFMERBOUQ0MDhBNzcKbisgaG9tZSBFQTYyMkZENDMwMzI3NTkyMEJCODQ5MjFEMEE5NkFGRApuKyBqY3I6c3lzdGVtIDgyOUVBRDdEQTlGQjFGRUNGRUM1MzUxMTM5MjhEODE1Cm4rIGxpYnMgMjZFMkRGMDM0NjRENjgzQzFDQjhDODczMEJBQUU3MEQKbisgb2FrOmluZGV4IDVBMjI1RDBFNTgwQkQ4QkNDMDIzRDJEMTQ5QjZGODBFCm4rIHJlcDpwb2xpY3kgQzVEMzA3RTkwQjBGQ0UxMDEyN0VFNzE4RjVDMzY2QzMKbisgcmVwOnJlcG9Qb2xpY3kgM0ExQzdFMTUxMUM1RUMyQjUyM0JCRkRDRTg5MEEwNkUKbisgc3lzdGVtIERDOEZDMTJFREUwMTU0MUUyQjg2N0MwNTYxMjE1OEQ1Cm4rIHRtcCAyRDczNEI0MTA1N0JENDQ3RTZFRkU5N0M1MEM4MUJBOApuKyB2YXIgMUJGRDMwNUM3QzcxMkFDMEVBOUJCQjVFODBBQUU4NzMKcCsgamNyOm1peGluVHlwZXMgPE5BTUVTPiBbcmVwOkFjY2Vzc0NvbnRyb2xsYWJsZSxyZXA6UmVwb0FjY2Vzc0NvbnRyb2xsYWJsZV0KcCsgamNyOnByaW1hcnlUeXBlIDxOQU1FPiByZXA6cm9vdApwKyBzbGluZzpyZXNvdXJjZVR5cGUgPFNUUklORz4gc2xpbmc6cmVkaXJlY3QKcCsgc2xpbmc6dGFyZ2V0IDxTVFJJTkc+IC9pbmRleC5odG1sCm4hCg==");
-        simpleRecordHandler.handleRecord("thread-1", 125, "b64!", "");
+        simpleRecordHandler.handleRecord("thread-1", 123, "b64+", "CDBA3AE79386D3CF3DAAE8EC7F760588".getBytes());
+        simpleRecordHandler.handleRecord("thread-1", 124, "b64d", "bjoKbisgOmFzeW5jIDQzRDA3MjI5N0MwOTM3NUZBNjBGOUE2RDEzNzI0QkIzCm4rIDpjbHVzdGVyQ29uZmlnIEVFQkFCNTBCMkJBNEFFMzY5RjVGMTlGOTRFRkFDQzdECm4rIGFwcHMgQUNGMjQ3OTZBRjk3NTA1REFDMEYxMzU4Q0NENUVBNUMKbisgYmluIEM2RDREQjMxMjIxNjQ3RUQwQTlFMzVENTI0RjdCRDFBCm4rIGNvbmYgMUMwMUU3NUFEQTY3QkU3NURCNzhBNzg1MzA4MDMyN0EKbisgY29udGVudCA2NzFGODVCMUYwMUI5NEMwMDU3MzAzNDRFNEVGQTQ2MwpuKyBldGMgREU5OTMxNkExNTlCRDg4QkI5MDlFMERBOUQ0MDhBNzcKbisgaG9tZSBFQTYyMkZENDMwMzI3NTkyMEJCODQ5MjFEMEE5NkFGRApuKyBqY3I6c3lzdGVtIDgyOUVBRDdEQTlGQjFGRUNGRUM1MzUxMTM5MjhEODE1Cm4rIGxpYnMgMjZFMkRGMDM0NjRENjgzQzFDQjhDODczMEJBQUU3MEQKbisgb2FrOmluZGV4IDVBMjI1RDBFNTgwQkQ4QkNDMDIzRDJEMTQ5QjZGODBFCm4rIHJlcDpwb2xpY3kgQzVEMzA3RTkwQjBGQ0UxMDEyN0VFNzE4RjVDMzY2QzMKbisgcmVwOnJlcG9Qb2xpY3kgM0ExQzdFMTUxMUM1RUMyQjUyM0JCRkRDRTg5MEEwNkUKbisgc3lzdGVtIERDOEZDMTJFREUwMTU0MUUyQjg2N0MwNTYxMjE1OEQ1Cm4rIHRtcCAyRDczNEI0MTA1N0JENDQ3RTZFRkU5N0M1MEM4MUJBOApuKyB2YXIgMUJGRDMwNUM3QzcxMkFDMEVBOUJCQjVFODBBQUU4NzMKcCsgamNyOm1peGluVHlwZXMgPE5BTUVTPiBbcmVwOkFjY2Vzc0NvbnRyb2xsYWJsZSxyZXA6UmVwb0FjY2Vzc0NvbnRyb2xsYWJsZV0KcCsgamNyOnByaW1hcnlUeXBlIDxOQU1FPiByZXA6cm9vdApwKyBzbGluZzpyZXNvdXJjZVR5cGUgPFNUUklORz4gc2xpbmc6cmVkaXJlY3QKcCsgc2xpbmc6dGFyZ2V0IDxTVFJJTkc+IC9pbmRleC5odG1sCm4hCg==".getBytes());
+        simpleRecordHandler.handleRecord("thread-1", 125, "b64!", "".getBytes());
         File blob = new File(blobDir, "CD/BA/3A/CDBA3AE79386D3CF3DAAE8EC7F760588");
         assertTrue(blob.exists());
         assertTrue(blob.isFile());
@@ -157,7 +157,7 @@ public class SimpleRecordHandlerTest {
 
     @Test
     public void handleRecordJournal() throws IOException {
-        simpleRecordHandler.handleRecord("thread-1", 123, "journal", "mytestjournal 6F3E7018B987ED1260B6B843364261BA " + new UUID(0, 0).toString());
+        simpleRecordHandler.handleRecord("thread-1", 123, "journal", ("mytestjournal 6F3E7018B987ED1260B6B843364261BA " + new UUID(0, 0).toString()).getBytes());
         File blob = new File(blobDir, "journal-mytestjournal");
         assertTrue(blob.exists());
         assertTrue(blob.isFile());
