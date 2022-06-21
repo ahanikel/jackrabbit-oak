@@ -44,7 +44,6 @@ public class SimpleBlobReaderServiceTest {
 
     private File blobDir;
     private SimpleBlobStore simpleBlobStore;
-    private SimpleBlobReaderService simpleBlobReaderService;
     private ZContext context;
     private ZMQ.Socket request;
     private ZMQ.Socket reply;
@@ -65,7 +64,6 @@ public class SimpleBlobReaderServiceTest {
 
         blobDir = temporaryFolder.newFolder();
         simpleBlobStore = new SimpleBlobStore(blobDir);
-        simpleBlobReaderService = new SimpleBlobReaderService(simpleBlobStore);
 
         simpleRecordHandler = new SimpleRecordHandler(simpleBlobStore, journalPublisher);
         simpleRecordHandler.handleRecord("thread-1", 123, "b64+", TestUtils.testNodeStateHash.getBytes());

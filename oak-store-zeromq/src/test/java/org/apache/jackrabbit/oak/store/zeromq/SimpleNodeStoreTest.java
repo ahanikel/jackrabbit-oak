@@ -25,15 +25,47 @@ import org.apache.jackrabbit.oak.spi.commit.EmptyHook;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
+import org.zeromq.SocketType;
+import org.zeromq.ZContext;
+import org.zeromq.ZMQ;
 
+import java.io.File;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
+@Ignore("unfinished")
 public class SimpleNodeStoreTest {
+
+    private static final String publisherUrl = "ipc://comm-hub-pub";
+    private static final String subscriberUrl = "ipc://comm-hub-sub";
+
+    @Rule
+    public TemporaryFolder temporaryFolder = new TemporaryFolder();
+
+    private File blobDir;
+    private SimpleBlobReaderService reader;
+    private SimpleNodeStateWriterService writer;
     private SimpleNodeStore store;
+    private ZContext context;
+    private ZMQ.Socket pubSocket;
+    private ZMQ.Socket subSocket;
 
     @Before
-    public void setup() {
+    public void setup() throws IOException {
+        context = new ZContext();
+        pubSocket = context.createSocket(SocketType.PUB);
+        pubSocket.bind(subscriberUrl);
+        subSocket = context.createSocket(SocketType.SUB);
+        subSocket.bind(publisherUrl);
+        subSocket.subscribe("");
+        ZMQ.proxy(subSocket, pubSocket, null);
+        blobDir = temporaryFolder.newFolder();
+        reader = new SimpleBlobReaderService(blobDir, publisherUrl, subscriberUrl);
+        writer = new SimpleNodeStateWriterService(blobDir, publisherUrl, subscriberUrl);
         store = SimpleNodeStore.builder()
             .setBackendReaderURL("tcp://localhost:8000")
             .setBackendWriterURL("tcp://localhost:8001")
@@ -46,6 +78,7 @@ public class SimpleNodeStoreTest {
     public void tearDown() {
         store.close();
         store = null;
+        context.close();
     }
 
     @Test

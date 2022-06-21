@@ -55,8 +55,7 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
         final CommonOptions commonOptions = opts.getOptionBean(CommonOptions.class);
         final URI uri = commonOptions.getURI(0);
         final File blobDir = new File(uri.getPath());
-        final SimpleBlobStore simpleBlobStore = new SimpleBlobStore(blobDir);
-        final SimpleNodeStateWriterService simpleNodeStateWriterService = new SimpleNodeStateWriterService(simpleBlobStore);
+        final SimpleNodeStateWriterService simpleNodeStateWriterService = new SimpleNodeStateWriterService(blobDir, "tcp://comm-hub:8000", "tcp://comm-hub:8001");
         simpleNodeStateWriterService.run();
    }
 }
