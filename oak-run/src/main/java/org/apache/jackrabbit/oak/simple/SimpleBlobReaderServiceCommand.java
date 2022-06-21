@@ -56,8 +56,7 @@ public class SimpleBlobReaderServiceCommand implements Command {
         final CommonOptions commonOptions = opts.getOptionBean(CommonOptions.class);
         final URI uri = commonOptions.getURI(0);
         final File blobDir = new File(uri.getPath());
-        final SimpleBlobStore blobStore = new SimpleBlobStore(blobDir);
-        final SimpleBlobReaderService simpleBlobReaderService = new SimpleBlobReaderService(blobStore);
+        final SimpleBlobReaderService simpleBlobReaderService = new SimpleBlobReaderService(blobDir, "tcp://comm-hub:8000", "tcp://comm-hub:8001");
         simpleBlobReaderService.run();
     }
 }

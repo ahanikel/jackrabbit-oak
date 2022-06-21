@@ -46,19 +46,23 @@ public class SimpleBlobReaderService implements Runnable {
     private static final String READER_REP_TOPIC = SimpleRequestResponse.Topic.READ.toString() + "-rep";
 
     private SimpleBlobStore blobStore;
+    private final String publisherUrl;
+    private final String subscriberUrl;
     private ZContext context;
     private ExecutorService threadPool;
     private Router readerFrontend;
 
-    public SimpleBlobReaderService(SimpleBlobStore blobStore) {
-        this.blobStore = blobStore;
+    public SimpleBlobReaderService(File blobDir, String publisherUrl, String subscriberUrl) throws IOException {
+        this.blobStore = new SimpleBlobStore(blobDir);
+        this.publisherUrl = publisherUrl;
+        this.subscriberUrl = subscriberUrl;
     }
 
     @Override
     public void run() {
         context = new ZContext();
         threadPool = Executors.newFixedThreadPool(5);
-        readerFrontend = new Router(context, "tcp://comm-hub:8000", "tcp://comm-hub:8001", "inproc://readerBackend");
+        readerFrontend = new Router(context, subscriberUrl, publisherUrl, "inproc://readerBackend");
         readerFrontend.start();
 
         for (int nThread = 0; nThread < 5; ++nThread) {
