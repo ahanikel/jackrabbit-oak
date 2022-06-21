@@ -20,35 +20,15 @@ package org.apache.jackrabbit.oak.simple;
 
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
-import org.apache.jackrabbit.oak.commons.IOUtils;
 import org.apache.jackrabbit.oak.run.cli.CommonOptions;
 import org.apache.jackrabbit.oak.run.cli.Options;
 import org.apache.jackrabbit.oak.run.commons.Command;
+import org.apache.jackrabbit.oak.store.zeromq.SimpleBlobReaderService;
 import org.apache.jackrabbit.oak.store.zeromq.SimpleBlobStore;
-import org.apache.jackrabbit.oak.store.zeromq.SimpleNodeState;
-import org.apache.jackrabbit.oak.store.zeromq.SimpleRequestResponse;
-import org.zeromq.SocketType;
-import org.zeromq.ZContext;
-import org.zeromq.ZMQ;
-import org.zeromq.ZMQException;
 
-import java.io.Closeable;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
 import java.net.URI;
-import java.nio.ByteBuffer;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
-import java.util.Queue;
-import java.util.Stack;
-import java.util.StringTokenizer;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 public class SimpleBlobReaderServiceCommand implements Command {
 
@@ -57,7 +37,6 @@ public class SimpleBlobReaderServiceCommand implements Command {
     private static final String summary = "Serves the contents of a simple blobstore\n" +
         "Example:\n" +
         "simple-blob-reader-service simple:///tmp/imported";
-
 
     @Override
     public void execute(String... args) throws Exception {
