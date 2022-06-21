@@ -16,11 +16,10 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.jackrabbit.oak.simple;
+package org.apache.jackrabbit.oak.store.zeromq;
 
 import org.apache.jackrabbit.oak.commons.Buffer;
 import org.apache.jackrabbit.oak.commons.IOUtils;
-import org.apache.jackrabbit.oak.store.zeromq.SimpleBlobStore;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -35,7 +34,8 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.UUID;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 public class SimpleNodeStateWriterServiceTest {
 
@@ -48,7 +48,6 @@ public class SimpleNodeStateWriterServiceTest {
     private ZMQ.Socket journalPublisher;
     private File blobDir;
     private SimpleBlobStore simpleBlobStore;
-    private SimpleNodeStateWriterService simpleNodeStateWriterService;
     private SimpleRecordHandler simpleRecordHandler;
 
     @Before

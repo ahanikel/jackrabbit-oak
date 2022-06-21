@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.jackrabbit.oak.simple;
+package org.apache.jackrabbit.oak.store.zeromq;
 
 import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.jackrabbit.oak.store.zeromq.SimpleBlobStore;
@@ -82,22 +82,22 @@ public class SimpleBlobReaderServiceTest {
     @Test
     public void handleReaderServiceJournal() {
         request.send("journal /etc/passwd");
-        simpleBlobReaderService.handleReaderService(reply);
+        SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
         assertEquals("F", request.recvStr());
         assertEquals("IllegalArgument", request.recvStr());
 
         request.send("journal ../../../../../../../../../../../../../../../../../../../../etc/passwd");
-        simpleBlobReaderService.handleReaderService(reply);
+        SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
         assertEquals("F", request.recvStr());
         assertEquals("IllegalArgument", request.recvStr());
 
         request.send("journal golden");
-        simpleBlobReaderService.handleReaderService(reply);
+        SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
         assertEquals("E", request.recvStr());
         assertEquals(new UUID(0, 0).toString(), request.recvStr());
 
         request.send("journal mytestjournal");
-        simpleBlobReaderService.handleReaderService(reply);
+        SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
         assertEquals("E", request.recvStr());
         assertEquals(TestUtils.testNodeStateHash, request.recvStr());
     }
@@ -105,27 +105,27 @@ public class SimpleBlobReaderServiceTest {
     @Test
     public void handleReaderServiceHasBlob() {
         request.send("hasblob /etc/passwd");
-        simpleBlobReaderService.handleReaderService(reply);
+        SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
         assertEquals("F", request.recvStr());
         assertEquals("IllegalArgument", request.recvStr());
 
         request.send("hasblob ../../../../../../../../../../../../../../../../../../../../etc/passwd");
-        simpleBlobReaderService.handleReaderService(reply);
+        SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
         assertEquals("F", request.recvStr());
         assertEquals("IllegalArgument", request.recvStr());
 
         request.send("hasblob 0");
-        simpleBlobReaderService.handleReaderService(reply);
+        SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
         assertEquals("E", request.recvStr());
         assertEquals("false", request.recvStr());
 
         request.send("hasblob " + new UUID(0, 0).toString());
-        simpleBlobReaderService.handleReaderService(reply);
+        SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
         assertEquals("E", request.recvStr());
         assertEquals("false", request.recvStr());
 
         request.send("hasblob " + TestUtils.testNodeStateHash);
-        simpleBlobReaderService.handleReaderService(reply);
+        SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
         assertEquals("E", request.recvStr());
         assertEquals("true", request.recvStr());
     }
@@ -133,32 +133,32 @@ public class SimpleBlobReaderServiceTest {
     @Test
     public void handleReaderServiceBlob() {
         request.send("blob /etc/passwd");
-        simpleBlobReaderService.handleReaderService(reply);
+        SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
         assertEquals("F", request.recvStr());
         assertEquals("IllegalArgument", request.recvStr());
 
         request.send("blob ../../../../../../../../../../../../../../../../../../../../etc/passwd");
-        simpleBlobReaderService.handleReaderService(reply);
+        SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
         assertEquals("F", request.recvStr());
         assertEquals("IllegalArgument", request.recvStr());
 
         request.send("blob 0");
-        simpleBlobReaderService.handleReaderService(reply);
+        SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
         assertEquals("N", request.recvStr());
         assertEquals("", request.recvStr());
 
         request.send("blob " + new UUID(0, 0).toString());
-        simpleBlobReaderService.handleReaderService(reply);
+        SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
         assertEquals("N", request.recvStr());
         assertEquals("", request.recvStr());
 
         request.send("blob " + DigestUtils.md5Hex("someArbitraryData").toUpperCase());
-        simpleBlobReaderService.handleReaderService(reply);
+        SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
         assertEquals("N", request.recvStr());
         assertEquals("", request.recvStr());
 
         request.send("blob " + TestUtils.testNodeStateHash);
-        simpleBlobReaderService.handleReaderService(reply);
+        SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
         assertEquals("E", request.recvStr());
         assertEquals(TestUtils.testNodeState, request.recvStr());
     }
@@ -170,7 +170,7 @@ public class SimpleBlobReaderServiceTest {
         String ref = simpleBlobStore.putInputStream(largeBlob);
         for (int count = 0; count < blobSize;) {
             request.send("blob " + ref + " " + count + " -1");
-            simpleBlobReaderService.handleReaderService(reply);
+            SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
             String code = request.recvStr();
             byte[] chunk = request.recv();
             assertEquals(count % 10, chunk[0]);

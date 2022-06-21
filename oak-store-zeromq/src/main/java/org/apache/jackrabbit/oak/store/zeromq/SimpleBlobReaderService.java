@@ -16,12 +16,9 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.jackrabbit.oak.simple;
+package org.apache.jackrabbit.oak.store.zeromq;
 
 import org.apache.jackrabbit.oak.commons.IOUtils;
-import org.apache.jackrabbit.oak.store.zeromq.SimpleBlobStore;
-import org.apache.jackrabbit.oak.store.zeromq.SimpleNodeState;
-import org.apache.jackrabbit.oak.store.zeromq.SimpleRequestResponse;
 import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
@@ -74,7 +71,7 @@ public class SimpleBlobReaderService implements Runnable {
                 socket.send("");
                 while (!Thread.currentThread().isInterrupted()) {
                     try {
-                        handleReaderService(socket);
+                        handleReaderService(socket, blobStore);
                     } catch (Throwable t) {
                         System.err.println(t.toString());
                     }
@@ -95,7 +92,7 @@ public class SimpleBlobReaderService implements Runnable {
         }
     }
 
-    public void handleReaderService(ZMQ.Socket socket) {
+    public static void handleReaderService(ZMQ.Socket socket, BlobStore blobStore) {
         String msg;
         try {
             msg = socket.recvStr();
@@ -115,7 +112,7 @@ public class SimpleBlobReaderService implements Runnable {
                 if (instance.contains("/")) {
                     throw new IllegalArgumentException();
                 }
-                ret = getJournalHead(instance);
+                ret = getJournalHead(instance, blobStore);
             } else if (msg.startsWith("hasblob ")) {
                 final String ref = msg.substring("hasblob ".length());
                 if (ref.contains("/")) {
@@ -185,7 +182,7 @@ public class SimpleBlobReaderService implements Runnable {
         socket.send(ret);
     }
 
-    private String getJournalHead(String journalName) throws IOException {
+    private static String getJournalHead(String journalName, BlobStore blobStore) throws IOException {
         final File journalFile = blobStore.getSpecificFile("journal-" + journalName);
         try (FileInputStream is = new FileInputStream(journalFile)) {
             return IOUtils.readString(is);

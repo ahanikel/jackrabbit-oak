@@ -24,6 +24,7 @@ import org.apache.jackrabbit.oak.run.cli.CommonOptions;
 import org.apache.jackrabbit.oak.run.cli.Options;
 import org.apache.jackrabbit.oak.run.commons.Command;
 import org.apache.jackrabbit.oak.store.zeromq.SimpleBlobStore;
+import org.apache.jackrabbit.oak.store.zeromq.SimpleNodeStateWriterService;
 
 import java.io.File;
 import java.net.URI;
