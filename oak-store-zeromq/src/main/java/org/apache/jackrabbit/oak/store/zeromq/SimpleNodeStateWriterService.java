@@ -24,6 +24,7 @@ import org.zeromq.ZMQ;
 import org.zeromq.ZMQException;
 
 import java.io.Closeable;
+import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
@@ -39,8 +40,6 @@ public class SimpleNodeStateWriterService implements Runnable {
 
     private static final String WRITER_REQ_TOPIC = SimpleRequestResponse.Topic.WRITE.toString() + "-req";
     private static final String WRITER_REP_TOPIC = SimpleRequestResponse.Topic.WRITE.toString() + "-rep";
-    private static final String SUBSCRIBER_URL_DEFAULT = "tcp://comm-hub:8000";
-    private static final String PUBLISHER_URL_DEFAULT = "tcp://comm-hub:8001";
     private static final String WORKER_URL = "inproc://writerBackend";
 
     private ExecutorService threadPool;
@@ -48,9 +47,13 @@ public class SimpleNodeStateWriterService implements Runnable {
     private SimpleRecordHandler recordHandler;
 
     private final SimpleBlobStore simpleBlobStore;
+    private final String publisherUrl;
+    private final String subscriberUrl;
 
-    public SimpleNodeStateWriterService(SimpleBlobStore simpleBlobStore) {
-        this.simpleBlobStore = simpleBlobStore;
+    public SimpleNodeStateWriterService(File blobStoreDir, String publisherUrl, String subscriberUrl) throws IOException {
+        this.simpleBlobStore = new SimpleBlobStore(blobStoreDir);
+        this.publisherUrl = publisherUrl;
+        this.subscriberUrl = subscriberUrl;
     }
 
     @Override
@@ -62,8 +65,8 @@ public class SimpleNodeStateWriterService implements Runnable {
         final ZMQ.Socket requestPublisher = context.createSocket(SocketType.PUB);
         requestPublisher.setBacklog(100000);
         requestSubscriber.subscribe(WRITER_REQ_TOPIC);
-        requestSubscriber.connect(SUBSCRIBER_URL_DEFAULT);
-        requestPublisher.connect(PUBLISHER_URL_DEFAULT);
+        requestSubscriber.connect(subscriberUrl);
+        requestPublisher.connect(publisherUrl);
         final ZMQ.Socket workerRouter = context.createSocket(SocketType.ROUTER);
         workerRouter.setBacklog(100000);
         workerRouter.bind(WORKER_URL);
