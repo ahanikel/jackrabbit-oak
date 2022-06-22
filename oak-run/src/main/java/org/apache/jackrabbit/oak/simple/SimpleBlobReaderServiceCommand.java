@@ -36,7 +36,7 @@ public class SimpleBlobReaderServiceCommand implements Command {
 
     private static final String summary = "Serves the contents of a simple blobstore\n" +
         "Example:\n" +
-        "simple-blob-reader-service simple:///tmp/imported";
+        "simple-blob-reader-service simple:///tmp/imported tcp://localhost:8000 tcp://localhost:8001";
 
     @Override
     public void execute(String... args) throws Exception {
@@ -49,14 +49,15 @@ public class SimpleBlobReaderServiceCommand implements Command {
         final OptionSet optionSet = opts.parseAndConfigure(parser, args);
         final List<?> uris = optionSet.nonOptionArguments();
 
-        if (uris.size() != 1) {
+        if (uris.size() != 3) {
             throw new IllegalArgumentException(summary);
         }
 
         final CommonOptions commonOptions = opts.getOptionBean(CommonOptions.class);
-        final URI uri = commonOptions.getURI(0);
-        final File blobDir = new File(uri.getPath());
-        final SimpleBlobReaderService simpleBlobReaderService = new SimpleBlobReaderService(blobDir, "tcp://comm-hub:8000", "tcp://comm-hub:8001");
+        final File blobDir = new File(commonOptions.getURI(0).getPath());
+        final String publisherUri = commonOptions.getURI(1).toString();
+        final String subscriberUri = commonOptions.getURI(2).toString();
+        final SimpleBlobReaderService simpleBlobReaderService = new SimpleBlobReaderService(blobDir, publisherUri, subscriberUri);
         simpleBlobReaderService.run();
     }
 }

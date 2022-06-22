@@ -188,7 +188,7 @@ public class SimpleNodeStoreBuilder {
        return blobCacheDir;
     }
 
-    SimpleNodeStoreBuilder setBlobCacheDir(String blobCacheDir) {
+    public SimpleNodeStoreBuilder setBlobCacheDir(String blobCacheDir) {
        this.blobCacheDir = blobCacheDir;
        return this;
     }

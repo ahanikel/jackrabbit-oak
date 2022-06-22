@@ -18,6 +18,8 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
@@ -28,6 +30,7 @@ import java.nio.ByteBuffer;
 
 public class SimpleRequestResponse implements Closeable {
 
+    private static final Logger log = LoggerFactory.getLogger(SimpleRequestResponse.class);
     private static final String processId = ManagementFactory.getRuntimeMXBean().getName();
 
     private final ThreadLocal<ZMQ.Socket> readerSocket;
@@ -62,8 +65,8 @@ public class SimpleRequestResponse implements Closeable {
         });
     }
 
-    public String requestString(String msg) {
-        return new String(requestBytes(msg));
+    public String requestString(String op, String msg) {
+        return new String(requestBytes(op, msg));
     }
 
     private byte[] getThreadLocalMessageId() {
@@ -74,23 +77,21 @@ public class SimpleRequestResponse implements Closeable {
         return buf.array();
     }
 
-    public byte[] requestBytes(String msg) {
+    public byte[] requestBytes(String op, String args) {
         lastReq.set(thisReq.get());
-        thisReq.set(msg);
+        thisReq.set(op + " " + args);
         final ZMQ.Socket writer = writerSocket.get();
         final ZMQ.Socket reader = readerSocket.get();
         byte[] ret;
         byte[] msgid = getThreadLocalMessageId();
         do {
-            do {
-                writer.sendMore(prefixOut.get());
-                writer.sendMore(msgid);
-                writer.send(msg);
-                ret = reader.recv();
-            } while (ret == null);
+            writer.sendMore(prefixOut.get());
+            writer.sendMore(msgid);
+            writer.sendMore(op);
+            writer.send(args);
             ret = reader.recv();
         } while (ret == null);
-        return ret;
+        return reader.recv();
     }
 
     public String receiveMore() {

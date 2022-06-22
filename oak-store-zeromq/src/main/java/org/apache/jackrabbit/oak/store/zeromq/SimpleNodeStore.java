@@ -335,7 +335,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         String msg;
         while (true) {
             try {
-                nodeStateReader.requestString("journal " + journalId).equals("E"); // verb, always "E"
+                nodeStateReader.requestString("journal", journalId).equals("E"); // verb, always "E"
                 msg = nodeStateReader.receiveMore();
                 break;
             } catch (Exception e) {
@@ -354,7 +354,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         String msg;
         while (true) {
             try {
-                nodeStateReader.requestString("journal " + journalId + "-checkpoints").equals("E"); // verb, always "E"
+                nodeStateReader.requestString("journal", journalId + "-checkpoints").equals("E"); // verb, always "E"
                 msg = nodeStateReader.receiveMore();
                 break;
             } catch (Throwable t) {
@@ -413,11 +413,17 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         while (true) {
             synchronized (mergeRootMonitor) {
                 try {
-                    nodeStateWriter.requestString(
-                                    "journal" + " " + journalId + (type == null ? "" : "-" + type) + " "
+                    String msg = nodeStateWriter.requestString("journal",
+                            journalId + (type == null ? "" : "-" + type) + " "
                                     + uuid + " "
                                     + oldUuid
                     );
+                    if (!msg.equals("E")) {
+                        log.error("lastReq: {}", nodeStateWriter.getLastReq());
+                        log.error("{}: {}", msg, nodeStateWriter.receiveMore());
+                    } else {
+                        nodeStateWriter.receiveMore(); // ignore, should be ""
+                    }
                     break;
                 } catch (Exception e1) {
                     log.warn(e1.toString());
@@ -501,10 +507,10 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         }
     }
 
-    private synchronized void write(String event) {
+    private synchronized void write(String op, String args) {
         while (true) {
             try {
-                final String msg = nodeStateWriter.requestString(event);
+                String msg = nodeStateWriter.requestString(op, args);
                 if (!msg.equals("E")) {
                     log.error("lastReq: {}", nodeStateWriter.getLastReq());
                     log.error("{}: {}", msg, nodeStateWriter.receiveMore());

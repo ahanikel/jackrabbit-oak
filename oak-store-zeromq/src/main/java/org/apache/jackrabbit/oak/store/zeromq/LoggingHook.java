@@ -34,6 +34,7 @@ import java.io.UnsupportedEncodingException;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.UUID;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 import static org.apache.jackrabbit.oak.api.Type.BINARIES;
@@ -47,13 +48,13 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
 
     public static final String UUID_NULL = new UUID(0, 0).toString();
 
-    private final Consumer<String> writer;
+    private final BiConsumer<String, String> writer;
 
-    private LoggingHook(final Consumer<String> writer) {
+    private LoggingHook(final BiConsumer<String, String> writer) {
         this.writer = writer;
     }
 
-    static LoggingHook newLoggingHook(final Consumer<String> writer) {
+    static LoggingHook newLoggingHook(final BiConsumer<String, String> writer) {
         return new LoggingHook(writer);
     }
 
@@ -65,19 +66,19 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
 
     @Override
     public boolean propertyAdded(PropertyState after) {
-        writer.accept("p+ " + toString(after));
+        writer.accept("p+", toString(after));
         return true;
     }
 
     @Override
     public boolean propertyChanged(PropertyState before, PropertyState after) {
-        writer.accept("p^ " + toString(after));
+        writer.accept("p^", toString(after));
         return true;
     }
 
     @Override
     public boolean propertyDeleted(PropertyState before) {
-        writer.accept("p- " + toString(before));
+        writer.accept("p-", toString(before));
         return true;
     }
 
@@ -91,19 +92,19 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
 
     @Override
     public boolean childNodeAdded(String name, NodeState after) {
-        writer.accept("n+ " + safeEncode(name) + " " + ((SimpleNodeState) after).getRef());
+        writer.accept("n+", safeEncode(name) + " " + ((SimpleNodeState) after).getRef());
         return true;
     }
 
     @Override
     public boolean childNodeChanged(String name, NodeState before, NodeState after) {
-        writer.accept("n^ " + safeEncode(name) + " " + ((SimpleNodeState) after).getRef() + " " + ((SimpleNodeState) before).getRef());
+        writer.accept("n^", safeEncode(name) + " " + ((SimpleNodeState) after).getRef() + " " + ((SimpleNodeState) before).getRef());
         return true;
     }
 
     @Override
     public boolean childNodeDeleted(String name, NodeState before) {
-        writer.accept("n- " + safeEncode(name));
+        writer.accept("n-", safeEncode(name));
         return true;
     }
 
@@ -158,19 +159,19 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
         }
     }
 
-    public static void writeBlob(Blob b, Consumer<String> writer) throws IOException {
+    public static void writeBlob(Blob b, BiConsumer<String, String> writer) throws IOException {
         try (InputStream is = b.getNewStream()) {
             writeBlob(b.getReference(), is, writer);
         }
     }
 
-    public static void writeBlob(String ref, InputStream is, Consumer<String> writer) throws IOException {
+    public static void writeBlob(String ref, InputStream is, BiConsumer<String, String> writer) {
         synchronized (writer) {
             final int chunkSize = 256 * 1024;
             byte[] buffer = new byte[chunkSize]; // not final because of fear it's not being GC'd
             final Base64.Encoder b64 = Base64.getEncoder();
             String encoded;
-            writer.accept("b64+ " + ref);
+            writer.accept("b64+", ref);
             try  {
                 int nBytes;
                 while ((nBytes = is.read(buffer)) >= 0) {
@@ -187,16 +188,16 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
                         // One could think that even though this message isn't exactly 16384 bytes long
                         // there is something special about this size.
                         // I guess it's 16384 when the zmq header is added.
-                        writer.accept("b64d " + encoded + " ");
+                        writer.accept("b64d", encoded + " ");
                     } else {
-                        writer.accept("b64d " + encoded);
+                        writer.accept("b64d", encoded);
                     }
                 }
             } catch (InterruptedException e) {
             } catch (Exception ioe) {
-                writer.accept("b64x " + safeEncode(ioe.getMessage()));
+                writer.accept("b64x", safeEncode(ioe.getMessage()));
             } finally {
-                writer.accept("b64!");
+                writer.accept("b64!", "");
             }
         }
     }
@@ -204,13 +205,13 @@ public class LoggingHook implements CommitHook, NodeStateDiff {
     @NotNull
     @Override
     public NodeState processCommit(NodeState before, NodeState after, @Nullable CommitInfo info) {
-        writer.accept("n: " + ((SimpleNodeState) after).getRef() + " " + ((SimpleNodeState) before).getRef());
+        writer.accept("n:", ((SimpleNodeState) after).getRef() + " " + ((SimpleNodeState) before).getRef());
         try {
             after.compareAgainstBaseState(before, this);
         } catch (Throwable t) {
             System.out.println(t.toString());
         }
-        writer.accept("n!");
+        writer.accept("n!", "");
         return after;
     }
 }
