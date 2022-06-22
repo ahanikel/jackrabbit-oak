@@ -35,7 +35,7 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
     public static final String NAME = "simple-nodestate-writer-service";
 
     private static final String summary = "Serves the contents of a simple blobstore via ZeroMQ REP\n" +
-        "Example:\n" + NAME + " /tmp/imported/log.txt";
+        "Example:\n" + NAME + " /tmp/imported/log.txt tcp://localhost:8000 tcp://localhost:8001";
 
     @Override
     public void execute(String... args) throws Exception {
@@ -48,14 +48,15 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
         final OptionSet optionSet = opts.parseAndConfigure(parser, args);
         final List<?> uris = optionSet.nonOptionArguments();
 
-        if (uris.size() != 1) {
+        if (uris.size() != 3) {
             throw new IllegalArgumentException(summary);
         }
 
         final CommonOptions commonOptions = opts.getOptionBean(CommonOptions.class);
-        final URI uri = commonOptions.getURI(0);
-        final File blobDir = new File(uri.getPath());
-        final SimpleNodeStateWriterService simpleNodeStateWriterService = new SimpleNodeStateWriterService(blobDir, "tcp://comm-hub:8000", "tcp://comm-hub:8001");
+        final File blobDir = new File(commonOptions.getURI(0).getPath());
+        final String publisherUri = commonOptions.getURI(1).toString();
+        final String subscriberUri = commonOptions.getURI(2).toString();
+        final SimpleNodeStateWriterService simpleNodeStateWriterService = new SimpleNodeStateWriterService(blobDir, publisherUri, subscriberUri);
         simpleNodeStateWriterService.run();
    }
 }

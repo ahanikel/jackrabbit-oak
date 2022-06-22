@@ -18,6 +18,8 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
@@ -38,6 +40,7 @@ import java.util.concurrent.Executors;
 
 public class SimpleNodeStateWriterService implements Runnable {
 
+    private static final Logger log = LoggerFactory.getLogger(SimpleNodeStateWriterService.class);
     private static final String WRITER_REQ_TOPIC = SimpleRequestResponse.Topic.WRITE.toString() + "-req";
     private static final String WRITER_REP_TOPIC = SimpleRequestResponse.Topic.WRITE.toString() + "-rep";
     private static final String WORKER_URL = "inproc://writerBackend";
@@ -113,7 +116,8 @@ public class SimpleNodeStateWriterService implements Runnable {
         try {
             msg = socket.recvStr();
         } catch (ZMQException e) {
-            socket.send("");
+            socket.sendMore("F");
+            socket.send(e.toString());
             return;
         }
         if (msg == null) {
@@ -152,7 +156,7 @@ public class SimpleNodeStateWriterService implements Runnable {
         private final Stack<byte[]> available = new Stack<>();
         private final Map<byte[], byte[]> busyByWorkerId = new HashMap<>();
         private final Map<byte[], byte[]> busyByRequestId = new HashMap<>();
-        private Queue<Pair<Pair<byte[], byte[]>, byte[]>> pending = new LinkedList<>();
+        private Queue<QueuedRequest> pending = new LinkedList<>();
 
         public Router(ZMQ.Socket requestPublisher, ZMQ.Socket requestSubscriber, ZMQ.Socket workerRouter) {
             super("Backend Router");
@@ -196,33 +200,35 @@ public class SimpleNodeStateWriterService implements Runnable {
             busyByRequestId.clear();
         }
 
-        private void handleIncomingRequest() throws InterruptedException {
+        private void handleIncomingRequest() {
             byte[] requestId = requestSubscriber.recv();
             byte[] msgid = requestSubscriber.recv();
             requestId = Arrays.copyOfRange(requestId, WRITER_REQ_TOPIC.length() + 1, requestId.length);
+            byte[] op = requestSubscriber.recv();
             byte[] payload = requestSubscriber.recv();
-            pending.add(Pair.of(Pair.of(requestId, msgid), payload));
+            pending.add(new QueuedRequest(requestId, msgid, op, payload));
         }
 
         private void handlePendingRequests() {
             while (!pending.isEmpty()) {
-                Pair<Pair<byte[], byte[]>, byte[]> request = pending.peek();
-                byte[] workerId = busyByRequestId.get(request.fst.fst);
+                QueuedRequest request = pending.peek();
+                byte[] workerId = busyByRequestId.get(request.clientId);
                 if (workerId == null) {
                     if (available.isEmpty()) {
                         return;
                     } else {
                         workerId = available.pop();
-                        busyByWorkerId.put(workerId, request.fst.fst);
-                        busyByRequestId.put(request.fst.fst, workerId);
+                        busyByWorkerId.put(workerId, request.clientId);
+                        busyByRequestId.put(request.clientId, workerId);
                     }
                 }
                 pending.remove();
                 workerRouter.sendMore(workerId);
                 workerRouter.sendMore("");
-                workerRouter.sendMore(request.fst.fst);
-                workerRouter.sendMore(request.fst.snd);
-                workerRouter.send(request.snd);
+                workerRouter.sendMore(request.clientId);
+                workerRouter.sendMore(request.msgId);
+                workerRouter.sendMore(request.op);
+                workerRouter.send(request.payload);
             }
         }
 
@@ -282,17 +288,17 @@ public class SimpleNodeStateWriterService implements Runnable {
             }
         }
 
-        private static class Pair<T,U> {
-            public T fst;
-            public U snd;
+        private static class QueuedRequest {
+            public byte[] clientId;
+            public byte[] msgId;
+            public byte[] op;
+            public byte[] payload;
 
-            public static <T,U> Pair of(T fst, U snd) {
-                return new Pair<>(fst, snd);
-            }
-
-            private Pair(T fst, U snd) {
-                this.fst = fst;
-                this.snd = snd;
+            public QueuedRequest(byte[] clientId, byte[] msgId, byte[] op, byte[] payload) {
+                this.clientId = clientId;
+                this.msgId = msgId;
+                this.op = op;
+                this.payload = payload;
             }
         }
     }
