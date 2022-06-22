@@ -78,7 +78,7 @@ public class ZeroMQBlobInputStream extends InputStream {
             cur = 0;
             return;
         }
-        verb = blobReader.requestString("blob " + reference + " " + offset + " " + buffer.length);
+        verb = blobReader.requestString("blob", reference + " " + offset + " " + buffer.length);
         max = blobReader.receiveMore(buffer, 0, buffer.length, 0);
         if (verb.equals("N")) {
             final String msg = "Blob " + reference + " not found";

@@ -18,18 +18,25 @@
  */
 package org.apache.jackrabbit.oak.simple;
 
+import joptsimple.OptionParser;
+import joptsimple.OptionSet;
 import org.apache.jackrabbit.oak.commons.Buffer;
+import org.apache.jackrabbit.oak.run.cli.CommonOptions;
 import org.apache.jackrabbit.oak.run.cli.Options;
 import org.apache.jackrabbit.oak.run.commons.Command;
 import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
 
+import java.io.File;
+import java.util.List;
+
 public class SimpleQueueListenerCommand implements Command {
 
     public static final String NAME = "simple-queue-listener";
 
-    private static final String summary = "Displays what goes on on the message queue";
+    private static final String summary = "Displays what goes on on the message queue\n" +
+        "Example:\n" + NAME + " tcp://localhost:8001";
 
     @Override
     public void execute(String... args) throws Exception {
@@ -37,10 +44,21 @@ public class SimpleQueueListenerCommand implements Command {
         opts.setCommandName(NAME);
         opts.setSummary(summary);
 
+        final OptionParser parser = new OptionParser();
+        final OptionSet optionSet = opts.parseAndConfigure(parser, args);
+        final List<?> uris = optionSet.nonOptionArguments();
+
+        if (uris.size() != 1) {
+            throw new IllegalArgumentException(summary);
+        }
+
+        final CommonOptions commonOptions = opts.getOptionBean(CommonOptions.class);
+        final String subscriberUri = commonOptions.getURI(0).toString();
+
         final ZContext context = new ZContext();
         final ZMQ.Socket socket = context.createSocket(SocketType.SUB);
         socket.subscribe("");
-        socket.connect("tcp://comm-hub:8000");
+        socket.connect(subscriberUri);
 
         while (!Thread.currentThread().isInterrupted()) {
             byte[] data = null;
