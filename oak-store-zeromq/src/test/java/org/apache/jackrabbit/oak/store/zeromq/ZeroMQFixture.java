@@ -58,6 +58,7 @@ public class ZeroMQFixture extends NodeStoreFixture {
             subSocket.bind(publisherUrl);
             subSocket.subscribe("");
             blobDir = File.createTempFile("zeromqns", ".d");
+            blobDir.delete();
             blobDir.mkdir();
             reader = new SimpleBlobReaderService(blobDir, publisherUrl, subscriberUrl);
             writer = new SimpleNodeStateWriterService(blobDir, publisherUrl, subscriberUrl);
@@ -66,6 +67,7 @@ public class ZeroMQFixture extends NodeStoreFixture {
             threadPool.execute(reader);
             threadPool.execute(writer);
             blobCacheDir = File.createTempFile("zeromqns-cache", ".d");
+            blobCacheDir.delete();
             blobCacheDir.mkdir();
             store = SimpleNodeStore.builder()
                     .setBackendReaderURL(subscriberUrl)
