@@ -36,6 +36,9 @@ import org.zeromq.ZMQ;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 @Ignore("unfinished")
 public class SimpleNodeStoreTest {
@@ -53,6 +56,7 @@ public class SimpleNodeStoreTest {
     private ZContext context;
     private ZMQ.Socket pubSocket;
     private ZMQ.Socket subSocket;
+    private ExecutorService threadPool;
 
     @Before
     public void setup() throws IOException {
@@ -62,22 +66,28 @@ public class SimpleNodeStoreTest {
         subSocket = context.createSocket(SocketType.SUB);
         subSocket.bind(publisherUrl);
         subSocket.subscribe("");
-        ZMQ.proxy(subSocket, pubSocket, null);
         blobDir = temporaryFolder.newFolder();
         reader = new SimpleBlobReaderService(blobDir, publisherUrl, subscriberUrl);
         writer = new SimpleNodeStateWriterService(blobDir, publisherUrl, subscriberUrl);
+        threadPool = Executors.newFixedThreadPool(3);
+        threadPool.execute(() -> ZMQ.proxy(subSocket, pubSocket, null));
+        threadPool.execute(reader);
+        threadPool.execute(writer);
         store = SimpleNodeStore.builder()
-            .setBackendReaderURL("tcp://localhost:8000")
-            .setBackendWriterURL("tcp://localhost:8001")
+            .setBackendReaderURL(subscriberUrl)
+            .setBackendWriterURL(publisherUrl)
             .setJournalId("golden")
-            .setBlobCacheDir("/tmp/blobcache")
+            .setBlobCacheDir(temporaryFolder.newFolder().getAbsolutePath())
             .build();
     }
 
     @After
-    public void tearDown() {
+    public void tearDown() throws InterruptedException {
+        threadPool.shutdownNow();
         store.close();
         store = null;
+        reader = null;
+        writer = null;
         context.close();
     }
 
