@@ -112,6 +112,7 @@ public class SimpleRecordHandler {
 
         Long lastMsgId = lastMessageSeen.getIfPresent(uuThreadId);
         if (lastMsgId != null && lastMsgId.longValue() >= msgid) {
+            log.info("Duplicate msgId: {} instead of {}", msgid, lastMsgId + 1);
             return;
         }
         lastMessageSeen.put(uuThreadId, msgid);
