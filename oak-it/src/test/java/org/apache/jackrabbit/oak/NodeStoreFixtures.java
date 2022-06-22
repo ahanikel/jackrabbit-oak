@@ -34,6 +34,7 @@ import org.apache.jackrabbit.oak.composite.CompositeSegmentStoreFixture;
 import org.apache.jackrabbit.oak.segment.aws.fixture.SegmentAwsFixture;
 import org.apache.jackrabbit.oak.segment.azure.fixture.SegmentAzureFixture;
 import org.apache.jackrabbit.oak.segment.fixture.SegmentTarFixture;
+import org.apache.jackrabbit.oak.store.zeromq.ZeroMQFixture;
 
 public class NodeStoreFixtures {
 
@@ -56,6 +57,8 @@ public class NodeStoreFixtures {
     public static final NodeStoreFixture COMPOSITE_MEM = new CompositeMemoryStoreFixture();
 
     public static final NodeStoreFixture COW_DOCUMENT = new COWStoreFixture();
+
+    public static final NodeStoreFixture ZEROMQ_NS = new ZeroMQFixture();
 
     public static Collection<Object[]> asJunitParameters(Set<FixturesHelper.Fixture> fixtures) {
         List<NodeStoreFixture> configuredFixtures = new ArrayList<NodeStoreFixture>();
@@ -89,6 +92,9 @@ public class NodeStoreFixtures {
         if (fixtures.contains(FixturesHelper.Fixture.COW_DOCUMENT)) {
             configuredFixtures.add(COW_DOCUMENT);
         }
+        if (fixtures.contains(FixturesHelper.Fixture.ZEROMQ_NS)) {
+            configuredFixtures.add(ZEROMQ_NS);
+        }
 
         Collection<Object[]> result = new ArrayList<Object[]>();
         for (NodeStoreFixture f : configuredFixtures) {
@@ -98,5 +104,4 @@ public class NodeStoreFixtures {
         }
         return result;
     }
-
 }
