@@ -165,7 +165,12 @@ public class SimpleBlobReaderServiceTest {
     public void readLargeBlob() throws IOException {
         final int blobSize = 1_000_000_000;
         InputStream largeBlob = TestUtils.getLargeBlobInputStream(blobSize);
-        String ref = simpleBlobStore.putInputStream(largeBlob);
+        String ref;
+        try {
+            ref = simpleBlobStore.putInputStream(largeBlob);
+        } catch (BlobAlreadyExistsException e) {
+            ref = e.getRef();
+        }
         for (int count = 0; count < blobSize;) {
             request.send("blob " + ref + " " + count + " -1");
             SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
