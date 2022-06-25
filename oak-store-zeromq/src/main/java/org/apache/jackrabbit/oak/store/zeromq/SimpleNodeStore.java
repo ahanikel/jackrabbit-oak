@@ -578,18 +578,15 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     @Override
     @NotNull
     public Blob createBlob(InputStream inputStream) throws IOException {
+        String ref;
         try {
-            final String ref = remoteBlobStore.putInputStream(inputStream);
-            final SimpleBlob blob = SimpleBlob.get(this, ref);
-            writeBlob(blob);
-            blobCache.put(blob.getReference(), blob);
-            return blob;
-        } catch (FileAlreadyExistsException e) {
-            final String ref = e.getMessage();
-            final SimpleBlob blob = SimpleBlob.get(this, ref);
-            blobCache.put(blob.getReference(), blob);
-            return blob;
+            ref = remoteBlobStore.putInputStream(inputStream);
+        } catch (BlobAlreadyExistsException e) {
+            ref = e.getRef();
         }
+        final SimpleBlob blob = SimpleBlob.get(this, ref);
+        blobCache.put(blob.getReference(), blob);
+        return blob;
     }
 
     @Override
@@ -754,11 +751,6 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     }
 
     @Override
-    public String writeBlob(String tempFileName) throws IOException {
-        return createBlob(new FileInputStream(tempFileName)).getReference();
-    }
-
-    @Override
     public int sweep() throws IOException {
         return 0;
     }
@@ -822,6 +814,15 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     }
 
     @Override
+    public String writeBlob(String tempFileName) throws IOException {
+        try {
+            return getRemoteBlobStore().putTempFile(new File(tempFileName));
+        } catch (BlobAlreadyExistsException e) {
+            return e.getRef();
+        }
+    }
+
+    @Override
     public String writeBlob(InputStream in) throws IOException {
         return createBlob(in).getReference();
     }
@@ -847,20 +848,6 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         return getBlob(blobId).getNewStream();
     }
 
-    public BlobStore getRemoteBlobStore() {
-        return remoteBlobStore;
-    }
-
-    public SimpleBlob putInputStream(InputStream is) throws IOException {
-        final String ref = remoteBlobStore.putInputStream(is);
-        return blobCache.get(ref);
-    }
-
-    public SimpleBlob putBytes(byte[] bytes) throws IOException {
-        final String ref = remoteBlobStore.putBytes(bytes);
-        return blobCache.get(ref);
-    }
-
     @Override
     public @Nullable String getBlobId(@NotNull String reference) {
         return reference;
@@ -869,5 +856,9 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     @Override
     public @Nullable String getReference(@NotNull String blobId) {
         return blobId;
+    }
+
+    public BlobStore getRemoteBlobStore() {
+        return remoteBlobStore;
     }
 }

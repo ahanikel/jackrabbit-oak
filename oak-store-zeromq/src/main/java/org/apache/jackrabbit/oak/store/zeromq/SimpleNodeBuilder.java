@@ -71,7 +71,7 @@ public class SimpleNodeBuilder extends MemoryNodeBuilder {
     @Override
     public Blob createBlob(InputStream is) throws IOException {
         final SimpleNodeState base = (SimpleNodeState) getBaseState();
-        return base.getStore().putInputStream(is);
+        return base.getStore().createBlob(is);
     }
 
     @Override
