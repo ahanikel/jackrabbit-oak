@@ -3,6 +3,7 @@ package org.apache.jackrabbit.oak.store.zeromq;
 import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.api.PropertyState;
 import org.apache.jackrabbit.oak.api.Type;
+import org.apache.jackrabbit.oak.plugins.memory.EmptyNodeState;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.apache.jackrabbit.oak.spi.state.NodeStateDiff;
 
@@ -98,6 +99,8 @@ public class SimpleNodeStateDiffGenerator implements NodeStateDiff {
             SimpleNodeState child;
             if (after instanceof SimpleNodeState) {
                 child = (SimpleNodeState) after;
+            } else if (after instanceof EmptyNodeState) {
+                child = SimpleNodeState.empty(store);
             } else {
                 SimpleNodeState before = SimpleNodeState.empty(store);
                 SimpleNodeStateDiffGenerator generator = new SimpleNodeStateDiffGenerator(before);
