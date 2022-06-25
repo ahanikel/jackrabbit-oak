@@ -99,6 +99,6 @@ public class ManualTests {
     public void testBlob() throws IOException {
         SimpleRequestResponse r = new SimpleRequestResponse(SimpleRequestResponse.Topic.READ, "tcp://comm-hub:8001", "tcp://comm-hub:8000");
         InputStream is = new ZeroMQBlobInputStream(r, "63C27F6741E5B9552BBCD2E6FAD68083");
-        LoggingHook.writeBlob("63C27F6741E5B9552BBCD2E6FAD68083", is, (String op, String args) -> System.out.println(op + " " + args));
+        LoggingHook.writeBlob("63C27F6741E5B9552BBCD2E6FAD68083", is, (String op, byte[] args) -> System.out.println(op + " " + new String(args)));
     }
 }
