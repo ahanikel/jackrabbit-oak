@@ -60,10 +60,8 @@ import org.zeromq.ZMQ;
 
 import java.io.Closeable;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.FileAlreadyExistsException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -72,6 +70,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiConsumer;
 import java.util.function.Function;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -507,7 +506,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         }
     }
 
-    private synchronized void write(String op, String args) {
+    private synchronized void write(String op, byte[] args) {
         while (true) {
             try {
                 String msg = nodeStateWriter.requestString(op, args);
@@ -527,17 +526,6 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                 }
             }
         }
-    }
-
-    private void writeBlob(SimpleBlob blob) {
-        synchronized (writeMonitor) {
-            try {
-                LoggingHook.writeBlob(blob, this::write);
-            } catch (Throwable t) {
-                log.error(t.getMessage());
-            }
-        }
-        countBlobWritten();
     }
 
     private void countBlobWritten() {
@@ -581,6 +569,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         String ref;
         try {
             ref = remoteBlobStore.putInputStream(inputStream);
+            countBlobWritten();
         } catch (BlobAlreadyExistsException e) {
             ref = e.getRef();
         }

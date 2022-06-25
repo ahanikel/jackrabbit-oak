@@ -23,16 +23,15 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 import java.util.function.Function;
 
 public class RemoteBlobStore implements BlobStore {
 
     private final Function<String, InputStream> reader;
-    private final BiConsumer<String, String> writer;
+    private final BiConsumer<String, byte[]> writer;
     private final SimpleBlobStore localStore;
 
-    public RemoteBlobStore(Function<String, InputStream> reader, BiConsumer<String,String> writer, SimpleBlobStore localStore) {
+    public RemoteBlobStore(Function<String, InputStream> reader, BiConsumer<String, byte[]> writer, SimpleBlobStore localStore) {
         this.reader = reader;
         this.writer = writer;
         this.localStore = localStore;
