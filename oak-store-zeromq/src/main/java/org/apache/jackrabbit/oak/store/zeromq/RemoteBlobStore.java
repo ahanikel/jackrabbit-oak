@@ -40,7 +40,11 @@ public class RemoteBlobStore implements BlobStore {
 
     private void ensureBlob(String ref) throws IOException {
         if (!localStore.hasBlob(ref)) {
-            localStore.putInputStream(reader.apply(ref));
+            try {
+                localStore.putInputStream(reader.apply(ref));
+            } catch (BlobAlreadyExistsException e) {
+                // should not happen
+            }
         }
     }
 
@@ -67,21 +71,25 @@ public class RemoteBlobStore implements BlobStore {
     }
 
     @Override
-    public String putBytes(byte[] bytes) throws IOException {
+    public String putBytes(byte[] bytes) throws IOException, BlobAlreadyExistsException {
         final String ref = localStore.putBytes(bytes);
-        writeBlobRemote(ref);
+        if (reader.apply(ref) == null) {
+            writeBlobRemote(ref);
+        }
         return ref;
     }
 
     @Override
-    public String putString(String string) throws IOException {
+    public String putString(String string) throws IOException, BlobAlreadyExistsException {
         return putBytes(string.getBytes());
     }
 
     @Override
-    public String putInputStream(InputStream is) throws IOException {
+    public String putInputStream(InputStream is) throws IOException, BlobAlreadyExistsException {
         final String ref = localStore.putInputStream(is);
-        writeBlobRemote(ref);
+        if (reader.apply(ref) == null) {
+            writeBlobRemote(ref);
+        }
         return ref;
     }
 
@@ -91,7 +99,7 @@ public class RemoteBlobStore implements BlobStore {
     }
 
     @Override
-    public String putTempFile(File tempFile) throws IOException {
+    public String putTempFile(File tempFile) throws BlobAlreadyExistsException, IOException {
         final String ref = localStore.putTempFile(tempFile);
         writeBlobRemote(ref);
         return ref;

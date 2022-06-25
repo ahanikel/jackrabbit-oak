@@ -119,17 +119,17 @@ public class SimpleBlobStore implements BlobStore {
     }
     
     @Override
-    public String putBytes(byte[] bytes) throws IOException {
+    public String putBytes(byte[] bytes) throws IOException, BlobAlreadyExistsException {
         return putInputStream(new ByteArrayInputStream(bytes));
     }
 
     @Override
-    public String putString(String string) throws IOException {
+    public String putString(String string) throws IOException, BlobAlreadyExistsException {
         return putBytes(string.getBytes());
     }
 
     @Override
-    public String putInputStream(InputStream is) throws IOException {
+    public String putInputStream(InputStream is) throws BlobAlreadyExistsException, IOException {
         final File tempFile = getTempFile();
         try (OutputStream os = new FileOutputStream(tempFile)) {
             IOUtils.copy(is, os);
@@ -149,10 +149,11 @@ public class SimpleBlobStore implements BlobStore {
     }
 
     @Override
-    public String putTempFile(File tempFile) {
+    public String putTempFile(File tempFile) throws BlobAlreadyExistsException {
         final String ref = Util.getRefFromFile(tempFile);
         if (hasBlob(ref)) {
             tempFile.delete();
+            throw new BlobAlreadyExistsException(ref);
         } else {
             tempFile.renameTo(getFileForRef(ref));
         }

@@ -173,7 +173,12 @@ public class SimpleRecordHandler {
                         try (OutputStream os = new FileOutputStream(tempFile)) {
                             ns.serialise(os);
                         }
-                        final String newRef = store.putTempFile(tempFile);
+                        String newRef;
+                        try {
+                            newRef = store.putTempFile(tempFile);
+                        } catch (BlobAlreadyExistsException e) {
+                            newRef = e.getRef();
+                        }
                         if (!newRef.equals(ns.getUuid())) {
                             // TODO: should we just warn and continue here?
                             throw new IllegalStateException(
@@ -365,7 +370,12 @@ public class SimpleRecordHandler {
                 }
                 try {
                     currentBlobFos.close();
-                    String newRef = store.putTempFile(currentBlob.getFile());
+                    String newRef;
+                    try {
+                        newRef = store.putTempFile(currentBlob.getFile());
+                    } catch (BlobAlreadyExistsException e) {
+                        newRef = e.getRef();
+                    }
                     if (!newRef.equals(currentBlob.getRef())) {
                         throw new IllegalStateException(
                             // TODO: should we just warn and continue here?
