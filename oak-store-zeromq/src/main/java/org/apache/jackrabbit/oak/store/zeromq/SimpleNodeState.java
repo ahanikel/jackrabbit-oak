@@ -426,4 +426,8 @@ public class SimpleNodeState implements NodeState {
         os.write(s.getBytes());
         os.write('\n');
     }
+
+    public String toString() {
+        return children.toString() + " " + properties.values().toString();
+    }
 }
