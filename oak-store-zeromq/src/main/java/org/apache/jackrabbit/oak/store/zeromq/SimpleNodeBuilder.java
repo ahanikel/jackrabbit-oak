@@ -73,4 +73,10 @@ public class SimpleNodeBuilder extends MemoryNodeBuilder {
         final SimpleNodeState base = (SimpleNodeState) getBaseState();
         return base.getStore().putInputStream(is);
     }
+
+    @Override
+    public void reset(@NotNull NodeState newBase) {
+        super.reset(newBase);
+        nodestate = null;
+    }
 }
