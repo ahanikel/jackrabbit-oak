@@ -41,6 +41,7 @@ public class SimpleNodeBuilder extends MemoryNodeBuilder {
 
     @Override
     protected void updated() {
+        super.updated();
         nodestate = null;
     }
 
