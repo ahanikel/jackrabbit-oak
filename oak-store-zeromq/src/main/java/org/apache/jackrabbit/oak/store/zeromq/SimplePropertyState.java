@@ -741,4 +741,8 @@ public class SimplePropertyState implements PropertyState {
             return this;
         }
     }
+
+    public String toString() {
+        return getSerialised();
+    }
 }
