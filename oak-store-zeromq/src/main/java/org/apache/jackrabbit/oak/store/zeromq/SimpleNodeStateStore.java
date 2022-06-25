@@ -75,7 +75,12 @@ public class SimpleNodeStateStore implements NodeStateStore {
             if (blob instanceof SimpleBlob) {
                 sb.append(blob.getReference());
             } else {
-                final String ref = blobStore.putInputStream(blob.getNewStream());
+                String ref;
+                try {
+                    ref = blobStore.putInputStream(blob.getNewStream());
+                } catch (BlobAlreadyExistsException e) {
+                    ref = e.getRef();
+                }
                 sb.append(ref);
             }
         } else if (ps.getType().equals(Type.BINARIES)) {
@@ -85,7 +90,12 @@ public class SimpleNodeStateStore implements NodeStateStore {
                 if (blob instanceof SimpleBlob) {
                     sb.append(blob.getReference());
                 } else {
-                    final String ref = blobStore.putInputStream(blob.getNewStream());
+                    String ref;
+                    try {
+                        ref = blobStore.putInputStream(blob.getNewStream());
+                    } catch (BlobAlreadyExistsException e) {
+                        ref = e.getRef();
+                    }
                     sb.append(ref);
                 }
                 sb.append(',');
@@ -187,7 +197,12 @@ public class SimpleNodeStateStore implements NodeStateStore {
             }
             writeLine(os, "n!");
         }
-        String ref = blobStore.putTempFile(tempFile);
+        String ref;
+        try {
+            ref = blobStore.putTempFile(tempFile);
+        } catch (BlobAlreadyExistsException e) {
+            ref = e.getRef();
+        }
         return SimpleNodeState.get(simpleNodeStore, ref, childrenMap, propertiesMap);
     }
 
