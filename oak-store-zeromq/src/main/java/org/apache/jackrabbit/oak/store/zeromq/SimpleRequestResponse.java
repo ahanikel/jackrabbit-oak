@@ -65,8 +65,12 @@ public class SimpleRequestResponse implements Closeable {
         });
     }
 
-    public String requestString(String op, String msg) {
+    public String requestString(String op, byte[] msg) {
         return new String(requestBytes(op, msg));
+    }
+
+    public String requestString(String op, String msg) {
+        return requestString(op, msg.getBytes());
     }
 
     private byte[] getThreadLocalMessageId() {
@@ -77,7 +81,7 @@ public class SimpleRequestResponse implements Closeable {
         return buf.array();
     }
 
-    public byte[] requestBytes(String op, String args) {
+    public byte[] requestBytes(String op, byte[] args) {
         lastReq.set(thisReq.get());
         thisReq.set(op + " " + args);
         final ZMQ.Socket writer = writerSocket.get();
