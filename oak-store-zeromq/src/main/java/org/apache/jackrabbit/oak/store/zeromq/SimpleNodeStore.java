@@ -109,9 +109,9 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     private final Object mergeRootMonitor = new Object();
     private final Object checkpointMonitor = new Object();
-    private final Object writeMonitor = new Object();
 
     private volatile String expectedRoot = null;
+    private volatile boolean commitFailed = false;
     private Thread logProcessor;
     private ZMQ.Socket journalSocket;
     private volatile String journalRoot;
@@ -119,10 +119,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     private String initJournal;
     private LoggingHook loggingHook;
     private volatile boolean configured;
-    private final String storeId = UUID.randomUUID().toString();
     private final AtomicLong remoteReadNodeCounter = new AtomicLong();
-    private final AtomicLong remoteWriteNodeCounter = new AtomicLong();
-    private final AtomicLong remoteReadBlobCounter = new AtomicLong();
     private final AtomicLong remoteWriteBlobCounter = new AtomicLong();
     private File blobCacheDir;
     private BlobStore remoteBlobStore;
@@ -197,28 +194,34 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                         final String oldUuid = journalSocket.recvStr();
                         log.info("Received {} {} ({})", journalId, newUuid, oldUuid);
                         if (oldUuid.equals(journalRoot)) {
+                            // all good
                             journalRoot = newUuid;
                         } else {
+                            // conflict
                             try {
+                                log.warn("Trying to reconcile conflicting updates.");
                                 final NodeState after = readNodeState(newUuid);
                                 final NodeState before = readNodeState(oldUuid);
                                 final NodeBuilder builder = readNodeState(journalRoot).builder();
                                 // TODO: when does a conflict lead to a CommitFailedException?
-                                final NodeStateDiff diff = new ConflictAnnotatingRebaseDiff(builder);
+                                final ConflictAnnotatingRebaseDiff diff = new ConflictAnnotatingRebaseDiff(builder);
                                 after.compareAgainstBaseState(before, diff);
                                 final SimpleNodeState newRoot = (SimpleNodeState) builder.getNodeState();
                                 journalRoot = newRoot.getRef();
-                            } catch (Throwable e) {
-                                // ignore
+                            } catch (Exception e) {
+                                log.warn("Reconciliation of conflicting updates failed: " + e.toString());
+                                commitFailed = true;
                             }
                         }
                         synchronized (expectedRoot) {
                             if (expectedRoot != null && expectedRoot.equals(newUuid)) {
                             log.info("Found our commit {}", newUuid);
                                 expectedRoot.notify();
+                            } else {
+                                commitFailed = false;
                             }
                         }
-                    } catch (Throwable t) {
+                    } catch (Exception t) {
                         try {
                             Thread.sleep(100);
                         } catch (InterruptedException e) {
@@ -230,10 +233,6 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         };
         logProcessor.start();
         loggingHook = LoggingHook.newLoggingHook(this::write);
-    }
-
-    public String getUUThreadId() {
-        return storeId + "-" + Thread.currentThread().getId();
     }
 
     @Override
@@ -314,7 +313,12 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         builder.setChildNode("checkpoints");
         final SimpleNodeState newSuperRoot = (SimpleNodeState) builder.getNodeState();
         journalRoot = EMPTY.getRef(); // the new journalRoot is set by the log processor
-        setRoot(newSuperRoot.getRef(), EMPTY.getRef());
+        try {
+            setRoot(newSuperRoot.getRef(), EMPTY.getRef());
+        } catch (CommitFailedException e) {
+            // should not happen
+            throw new IllegalStateException(e);
+        }
         setCheckpointRoot(EMPTY.getRef());
     }
 
@@ -389,13 +393,17 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         return readNodeState(checkpointRoot);
     }
 
-    private void setRoot(String uuid, String oldUuid) {
+    private void setRoot(String uuid, String oldUuid) throws CommitFailedException {
         expectedRoot = uuid;
         synchronized (expectedRoot) {
             setRootRemote(null, uuid, oldUuid);
             try {
                 expectedRoot.wait();
                 expectedRoot = null;
+                if (commitFailed) {
+                    commitFailed = false;
+                    throw new CommitFailedException("Conflict", 0, "");
+                }
             } catch (InterruptedException e) {
                 throw new IllegalStateException(e);
             }
@@ -436,7 +444,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         }
     }
 
-    private void mergeRoot(NodeState ns) {
+    private void mergeRoot(NodeState ns) throws CommitFailedException {
         final SimpleNodeState superRoot = getSuperRoot();
         final NodeBuilder superRootBuilder = superRoot.builder();
         superRootBuilder.setChildNode(ROOT_NODE_NAME, ns);
