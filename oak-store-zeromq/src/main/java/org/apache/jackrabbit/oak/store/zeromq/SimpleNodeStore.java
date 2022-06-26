@@ -548,7 +548,11 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         SimpleNodeState head = (SimpleNodeState) checkNotNull(builder).getNodeState();
         SimpleNodeState base = (SimpleNodeState) builder.getBaseState();
         if (!base.equals(newBase)) {
-            ((SimpleNodeBuilder) builder).reset(newBase);
+            try {
+                ((SimpleNodeBuilder) builder).reset(newBase);
+            } catch (IllegalStateException e) {
+                throw new IllegalArgumentException(e);
+            }
             head.compareAgainstBaseState(
                     base, new ConflictAnnotatingRebaseDiff(builder));
             head = (SimpleNodeState) builder.getNodeState();
