@@ -80,7 +80,9 @@ public class ZeroMQFixture extends NodeStoreFixture {
         }
     }
 
-    public void dispose() {
+    /*
+    @Override
+    public void dispose(NodeStore ns) {
         threadPool.shutdownNow();
         store.close();
         store = null;
@@ -88,9 +90,11 @@ public class ZeroMQFixture extends NodeStoreFixture {
         writer = null;
         context.close();
     }
+    */
 
     @Override
     public NodeStore createNodeStore() {
+        store.reset();
         return store;
     }
 }
