@@ -193,6 +193,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                         final String newUuid = journalSocket.recvStr();
                         final String oldUuid = journalSocket.recvStr();
                         log.info("Received {} {} ({})", journalId, newUuid, oldUuid);
+                        final NodeState after = readNodeState(newUuid);
                         if (oldUuid.equals(journalRoot)) {
                             // all good
                             journalRoot = newUuid;
@@ -200,7 +201,6 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                             // conflict
                             try {
                                 log.warn("Trying to reconcile conflicting updates.");
-                                final NodeState after = readNodeState(newUuid);
                                 final NodeState before = readNodeState(oldUuid);
                                 final NodeBuilder builder = readNodeState(journalRoot).builder();
                                 // TODO: when does a conflict lead to a CommitFailedException?
@@ -219,6 +219,9 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                                 expectedRoot.notify();
                             } else {
                                 commitFailed = false;
+                                if (changeDispatcher != null) {
+                                    changeDispatcher.contentChanged(after, CommitInfo.EMPTY_EXTERNAL);
+                                }
                             }
                         }
                     } catch (Exception t) {
