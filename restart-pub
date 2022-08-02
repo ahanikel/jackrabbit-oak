@@ -34,8 +34,8 @@ export journalId=pub
 rm -rf ~/Downloads/inst-pub
 rm -rf /tmp/blobCacheDir-pub
 mkdir ~/Downloads/inst-pub
-#cp -pR ~/Downloads/crx-quickstart.test-1.38.0 ~/Downloads/inst-1/crx-quickstart
+#cp -pR ~/Downloads/crx-quickstart.test-1.44.0 ~/Downloads/inst-1/crx-quickstart
 cp ~/Downloads/license.properties ~/Downloads/inst-pub/
 
-(cd /Users/ahanikel/Downloads/inst-pub && java -Xmx16g $DEBUG -Doak.queryLimitReads=10000000 -jar ../cq-quickstart-6.6.0-1.38.0.nosegment.jar -nofork -nobrowser -r author,crx3,crx3tar-nofds -p4506) &
+(cd /Users/ahanikel/Downloads/inst-pub && java -Xmx16g $DEBUG -Doak.queryLimitReads=10000000 -jar ../cq-quickstart-6.6.0-1.44.0.nosegment.jar -nofork -nobrowser -r author,crx3,crx3tar-nofds -p4506) &
 
