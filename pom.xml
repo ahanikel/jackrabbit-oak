@@ -48,19 +48,18 @@
     <module>oak-query-spi</module>
     <module>oak-security-spi</module>
     <module>oak-store-composite</module>
-    <!--module>oak-store-document</module-->
+    <module>oak-store-document</module>
 
-    <!--module>oak-blob-plugins</module-->
+    <module>oak-blob-plugins</module>
     <module>oak-blob</module>
     <module>oak-blob-cloud</module>
     <module>oak-blob-cloud-azure</module>
     <module>oak-core</module>
     <module>oak-jcr</module>
 
-    <!--module>oak-upgrade</module-->
+    <module>oak-upgrade</module>
     <module>oak-http</module>
     <module>oak-search</module>
-    <!--module>oak-lucene</module-->
     <module>oak-lucene</module>
     <module>oak-solr-core</module>
     <module>oak-solr-osgi</module>
