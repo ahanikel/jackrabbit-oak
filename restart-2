@@ -33,8 +33,8 @@ export ZEROMQ_LEADER=false
 rm -rf ~/Downloads/inst-2
 rm -rf /tmp/blobCacheDir-2
 mkdir ~/Downloads/inst-2
-#cp -pR ~/Downloads/crx-quickstart.test-1.38.0 ~/Downloads/inst-2/crx-quickstart
+#cp -pR ~/Downloads/crx-quickstart.test-1.44.0 ~/Downloads/inst-2/crx-quickstart
 cp ~/Downloads/license.properties ~/Downloads/inst-2/
 
-(cd /Users/ahanikel/Downloads/inst-2 && java -Xmx16g $DEBUG -Doak.queryLimitReads=10000000 -jar ../cq-quickstart-6.6.0-1.38.0.nosegment.jar -nofork -nobrowser -r author,crx3,crx3tar-nofds -p4505) &
+(cd /Users/ahanikel/Downloads/inst-2 && java -Xmx16g $DEBUG -Doak.queryLimitReads=10000000 -jar ../cq-quickstart-6.6.0-1.44.0.nosegment.jar -nofork -nobrowser -r author,crx3,crx3tar-nofds -p4505) &
 

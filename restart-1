@@ -28,8 +28,8 @@ export blobCacheDir=/tmp/blobCacheDir-1
 rm -rf ~/Downloads/inst-1
 rm -rf /tmp/blobCacheDir-1
 mkdir ~/Downloads/inst-1
-#cp -pR ~/Downloads/crx-quickstart.test-1.38.0 ~/Downloads/inst-1/crx-quickstart
+#cp -pR ~/Downloads/crx-quickstart.test-1.44.0 ~/Downloads/inst-1/crx-quickstart
 cp ~/Downloads/license.properties ~/Downloads/inst-1/
 
-(cd /Users/ahanikel/Downloads/inst-1 && java -Xmx16g $DEBUG -Doak.queryLimitReads=10000000 -jar ../cq-quickstart-6.6.0-1.38.0.nosegment.jar -nofork -nobrowser -r author,crx3,crx3tar-nofds -p4504) &
+(cd /Users/ahanikel/Downloads/inst-1 && java -Xmx16g $DEBUG -Doak.queryLimitReads=10000000 -jar ../cq-quickstart-6.6.0-1.44.0.nosegment.jar -nofork -nobrowser -r author,crx3raw -p4504) &
 

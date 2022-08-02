@@ -1,0 +1,1 @@
+ps auxww|awk '/oak-run/ {print $2}'|xargs kill 
