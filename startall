@@ -19,4 +19,4 @@ rm -rf /tmp/blobCacheDir
 
 (cd /Users/ahanikel/Downloads &&
     rm -rf crx-quickstart && rm -rf /tmp/blobs && rm -rf /Users/ahanikel/Downloads/blobs && (rm -f /tmp/zmqBlob* || true) && mkdir crx-quickstart && cp -R install.zeromq crx-quickstart/install)
-(cd /Users/ahanikel/Downloads && echo admin | java -Xmx8g '-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005' -Doak.queryLimitReads=10000000 -jar cq-quickstart-6.6.0-1.38.0.nosegment.jar -nofork -nobrowser -r author,crx3,crx3tar-nofds & )
+(cd /Users/ahanikel/Downloads && echo admin | java -Xmx8g '-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005' -Doak.queryLimitReads=10000000 -jar cq-quickstart-6.6.0-1.44.0.nosegment.jar -nofork -nobrowser -r author,crx3,crx3tar-nofds & )
