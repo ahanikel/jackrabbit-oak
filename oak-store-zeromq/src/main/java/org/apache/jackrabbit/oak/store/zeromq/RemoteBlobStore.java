@@ -27,11 +27,13 @@ import java.util.function.Function;
 
 public class RemoteBlobStore implements BlobStore {
 
+    private final Function<String, Boolean> checker;
     private final Function<String, InputStream> reader;
     private final BiConsumer<String, byte[]> writer;
     private final SimpleBlobStore localStore;
 
-    public RemoteBlobStore(Function<String, InputStream> reader, BiConsumer<String, byte[]> writer, SimpleBlobStore localStore) {
+    public RemoteBlobStore(Function<String, Boolean> checker, Function<String, InputStream> reader, BiConsumer<String, byte[]> writer, SimpleBlobStore localStore) {
+        this.checker = checker;
         this.reader = reader;
         this.writer = writer;
         this.localStore = localStore;
@@ -72,7 +74,7 @@ public class RemoteBlobStore implements BlobStore {
     @Override
     public String putBytes(byte[] bytes) throws IOException, BlobAlreadyExistsException {
         final String ref = localStore.putBytes(bytes);
-        if (reader.apply(ref) == null) {
+        if (checker.apply(ref)) {
             writeBlobRemote(ref);
         }
         return ref;
@@ -86,7 +88,7 @@ public class RemoteBlobStore implements BlobStore {
     @Override
     public String putInputStream(InputStream is) throws IOException, BlobAlreadyExistsException {
         final String ref = localStore.putInputStream(is);
-        if (reader.apply(ref) == null) {
+        if (checker.apply(ref)) {
             writeBlobRemote(ref);
         }
         return ref;

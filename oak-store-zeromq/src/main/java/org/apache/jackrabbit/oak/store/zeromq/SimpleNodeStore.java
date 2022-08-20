@@ -42,7 +42,6 @@ import org.apache.jackrabbit.oak.spi.descriptors.GenericDescriptors;
 import org.apache.jackrabbit.oak.spi.state.ConflictAnnotatingRebaseDiff;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
-import org.apache.jackrabbit.oak.spi.state.NodeStateDiff;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
 import org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardExecutor;
 import org.jetbrains.annotations.NotNull;
@@ -70,7 +69,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.BiConsumer;
 import java.util.function.Function;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -154,7 +152,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         this.blobCacheDir = new File(blobCacheDir);
         this.blobCacheDir.mkdirs();
         try {
-            this.remoteBlobStore = new RemoteBlobStore(this::read, this::write, new SimpleBlobStore(this.blobCacheDir));
+            this.remoteBlobStore = new RemoteBlobStore(this::hasBlob, this::readBlob, this::writeBlob, new SimpleBlobStore(this.blobCacheDir));
         } catch (IOException e) {
             throw new IllegalStateException(e);
         }
@@ -235,7 +233,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
             }
         };
         logProcessor.start();
-        loggingHook = LoggingHook.newLoggingHook(this::write);
+        loggingHook = LoggingHook.newLoggingHook(this::writeBlob);
     }
 
     @Override
@@ -505,11 +503,6 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         return null;
     }
 
-    private InputStream read(String uuid) {
-        countNodeRead();
-        return new ZeroMQBlobInputStream(nodeStateReader, uuid);
-    }
-
     private void countNodeRead() {
         final long c = remoteReadNodeCounter.incrementAndGet();
         if (c % 1000 == 0) {
@@ -517,7 +510,20 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         }
     }
 
-    private synchronized void write(String op, byte[] args) {
+    private boolean hasBlob(String uuid) {
+        final String ret = nodeStateReader.requestString("hasblob", uuid);
+        if (!"E".equals(ret)) {
+            return false;
+        }
+        return "true".equals(nodeStateReader.receiveMore());
+    }
+
+    private InputStream readBlob(String uuid) {
+        countNodeRead();
+        return new ZeroMQBlobInputStream(nodeStateReader, uuid);
+    }
+
+    private synchronized void writeBlob(String op, byte[] args) {
         while (true) {
             try {
                 String msg = nodeStateWriter.requestString(op, args);
@@ -599,7 +605,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         if (reference == null) {
             return null;
         }
-        reference = reference.toLowerCase(); // TODO: check
+        assert(reference.equals(reference.toUpperCase()));
         try {
             return blobCache.get(reference);
         } catch (Exception e) {
