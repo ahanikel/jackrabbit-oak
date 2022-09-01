@@ -66,7 +66,9 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
@@ -108,7 +110,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     private final Object mergeRootMonitor = new Object();
     private final Object checkpointMonitor = new Object();
 
-    private volatile String expectedRoot = null;
+    private final Map<String, Object> expectedRoots = new ConcurrentHashMap<>();
     private volatile boolean commitFailed = false;
     private Thread logProcessor;
     private ZMQ.Socket journalSocket;
@@ -211,15 +213,16 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                                 commitFailed = true;
                             }
                         }
-                        synchronized (expectedRoot) {
-                            if (expectedRoot != null && expectedRoot.equals(newUuid)) {
+                        Object expectedRootMonitor = expectedRoots.remove(newUuid);
+                        if (expectedRootMonitor != null) {
                             log.info("Found our commit {}", newUuid);
-                                expectedRoot.notify();
-                            } else {
-                                commitFailed = false;
-                                if (changeDispatcher != null) {
-                                    changeDispatcher.contentChanged(after, CommitInfo.EMPTY_EXTERNAL);
-                                }
+                            synchronized (expectedRootMonitor) {
+                                expectedRootMonitor.notify();
+                            }
+                        } else {
+                            commitFailed = false;
+                            if (changeDispatcher != null) {
+                                changeDispatcher.contentChanged(after, CommitInfo.EMPTY_EXTERNAL);
                             }
                         }
                     } catch (Exception t) {
@@ -395,12 +398,12 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     }
 
     private void setRoot(String uuid, String oldUuid) throws CommitFailedException {
-        expectedRoot = uuid;
-        synchronized (expectedRoot) {
+        Object expectedRootMonitor = new Object();
+        expectedRoots.put(uuid, expectedRootMonitor);
+        synchronized (expectedRootMonitor) {
             setRootRemote(null, uuid, oldUuid);
             try {
-                expectedRoot.wait();
-                expectedRoot = null;
+                expectedRootMonitor.wait();
                 if (commitFailed) {
                     commitFailed = false;
                     throw new CommitFailedException("Conflict", 0, "");
@@ -411,7 +414,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         }
     }
 
-    private synchronized void setCheckpointRoot(String uuid) {
+    private void setCheckpointRoot(String uuid) {
         final String oldUuid = checkpointRoot;
         checkpointRoot = uuid;
         setRootRemote("checkpoints", uuid, oldUuid);
@@ -419,6 +422,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     private void setRootRemote(String type, String uuid, String oldUuid) {
         while (true) {
+            // do we need the sync?
             synchronized (mergeRootMonitor) {
                 try {
                     String msg = nodeStateWriter.requestString("journal",
@@ -456,7 +460,6 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     @Override
     @NotNull
     public NodeState merge(@NotNull NodeBuilder builder, @NotNull CommitHook commitHook, @NotNull CommitInfo info) throws CommitFailedException {
-        synchronized (mergeRootMonitor) {
             if (!(builder instanceof SimpleNodeBuilder)) {
                 throw new IllegalArgumentException();
             }
@@ -474,17 +477,14 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                 changeDispatcher.contentChanged(afterHook, info);
             }
             return afterHook;
-        }
     }
 
     private void mergeCheckpoint(NodeBuilder builder) {
-        synchronized (checkpointMonitor) {
             final NodeState newBase = getCheckpointRoot();
             rebase(builder, newBase);
             final SimpleNodeState after = (SimpleNodeState) builder.getNodeState();
             setCheckpointRoot(after.getRef());
             ((SimpleNodeBuilder) builder).reset(after);
-        }
     }
 
     @Nullable
@@ -523,7 +523,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         return new ZeroMQBlobInputStream(nodeStateReader, uuid);
     }
 
-    private synchronized void writeBlob(String op, byte[] args) {
+    private void writeBlob(String op, byte[] args) {
         while (true) {
             try {
                 String msg = nodeStateWriter.requestString(op, args);
@@ -616,7 +616,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     }
 
     @Override
-    public synchronized @NotNull String checkpoint(long lifetime, @NotNull Map<String, String> properties) {
+    public @NotNull String checkpoint(long lifetime, @NotNull Map<String, String> properties) {
         long now = System.currentTimeMillis(); // is lifetime millis or micros?
 
         NodeBuilder checkpoints = getCheckpointRoot().builder();
@@ -652,7 +652,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     @Override
     @NotNull
-    public synchronized String checkpoint(long lifetime) {
+    public String checkpoint(long lifetime) {
         return checkpoint(lifetime, Collections.emptyMap());
     }
 
