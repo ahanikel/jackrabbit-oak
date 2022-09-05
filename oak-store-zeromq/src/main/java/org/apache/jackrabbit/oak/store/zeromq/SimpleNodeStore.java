@@ -616,7 +616,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     }
 
     @Override
-    public @NotNull String checkpoint(long lifetime, @NotNull Map<String, String> properties) {
+    public synchronized @NotNull String checkpoint(long lifetime, @NotNull Map<String, String> properties) {
         long now = System.currentTimeMillis(); // is lifetime millis or micros?
 
         NodeBuilder checkpoints = getCheckpointRoot().builder();
