@@ -162,7 +162,7 @@ public class SimpleRecordHandler {
             }
 
             case "n!": {
-                final SimpleMutableNodeState ns = nodeStates.get(uuThreadId);
+                final SimpleMutableNodeState ns = nodeStates.remove(uuThreadId);
                 if (ns == null) {
                     log.error("Current nodestate not present");
                     break;
@@ -352,9 +352,8 @@ public class SimpleRecordHandler {
             }
 
             case "b64!": {
-                final CurrentBlob currentBlob = currentBlobMap.get(uuThreadId);
+                final CurrentBlob currentBlob = currentBlobMap.remove(uuThreadId);
                 if (currentBlob.getFound() != null) {
-                    currentBlobMap.remove(uuThreadId);
                     try {
                         currentBlob.getFound().close();
                     } catch (IOException e) {
@@ -382,9 +381,7 @@ public class SimpleRecordHandler {
                             String.format("Calculated ref %1s differs from expected ref %2s",
                                 newRef, currentBlob.getRef()));
                     }
-                    currentBlobMap.remove(uuThreadId);
                 } catch (IOException e) {
-                    currentBlobMap.remove(uuThreadId);
                     log.error(e.getMessage());
                     throw new IllegalStateException(e);
                 }
