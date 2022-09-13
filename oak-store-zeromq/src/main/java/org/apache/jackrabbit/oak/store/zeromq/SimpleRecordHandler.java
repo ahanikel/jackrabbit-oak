@@ -327,6 +327,10 @@ public class SimpleRecordHandler {
                 raw = true;
             case "b64d": {
                 final CurrentBlob currentBlob = currentBlobMap.get(uuThreadId);
+                if (currentBlob == null) {
+                    log.error("Current blob for {} not present.", uuThreadId);
+                    break;
+                }
                 if (currentBlob.getFound() != null) {
                     break;
                 }
@@ -376,10 +380,7 @@ public class SimpleRecordHandler {
                         newRef = e.getRef();
                     }
                     if (!newRef.equals(currentBlob.getRef())) {
-                        throw new IllegalStateException(
-                            // TODO: should we just warn and continue here?
-                            String.format("Calculated ref %1s differs from expected ref %2s",
-                                newRef, currentBlob.getRef()));
+                        log.error("Calculated ref {} differs from expected ref {}", newRef, currentBlob.getRef());
                     }
                 } catch (IOException e) {
                     log.error(e.getMessage());
