@@ -29,7 +29,7 @@ public class Util {
             try (InputStream is = new FileInputStream(file)) {
                 byte[] buf = new byte[1024 * 1024];
                 int nRead = is.read(buf);
-                while (nRead > 0) {
+                while (nRead >= 0) {
                     md5.update(buf, 0, nRead);
                     nRead = is.read(buf);
                 }
