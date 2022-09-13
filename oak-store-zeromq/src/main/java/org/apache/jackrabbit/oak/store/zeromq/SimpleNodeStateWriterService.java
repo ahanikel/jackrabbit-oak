@@ -135,7 +135,7 @@ public class SimpleNodeStateWriterService implements Runnable {
             byte[] value = socket.recv();
             recordHandler.handleRecord(uuThreadId, msgid, op, value);
         } catch (Exception e) {
-            final String errorMsg = "An error occurred on: " + msg + ", exception: " + e.getMessage();
+            final String errorMsg = "An error occurred on: " + msg + ", exception: " + e.toString();
             System.err.println(errorMsg);
             socket.sendMore("F");
             socket.send(errorMsg);
@@ -189,7 +189,7 @@ public class SimpleNodeStateWriterService implements Runnable {
                     if (e instanceof InterruptedException) {
                         shutDown = true;
                     }
-                    System.err.println(e.getMessage());
+                    System.err.println(e.toString());
                 }
             }
             requestPublisher.close();
