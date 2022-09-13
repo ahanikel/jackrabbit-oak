@@ -259,7 +259,10 @@ public class SimpleBlobReaderService implements Runnable {
                     if (e instanceof InterruptedException) {
                         shutDown = true;
                     }
-                    System.err.println(e.getMessage());
+                    System.err.println(e.toString());
+                    while (requestSubscriber.hasReceiveMore()) {
+                        requestSubscriber.recv(); // throw away the remaining message parts, if any
+                    }
                 }
             }
             requestPublisher.close();
