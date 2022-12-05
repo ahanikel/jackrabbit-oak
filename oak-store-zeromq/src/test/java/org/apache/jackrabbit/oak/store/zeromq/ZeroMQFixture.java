@@ -18,10 +18,8 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq;
 
-import org.apache.jackrabbit.oak.Oak;
 import org.apache.jackrabbit.oak.fixture.NodeStoreFixture;
 import org.apache.jackrabbit.oak.spi.state.NodeStore;
-import org.apache.jackrabbit.oak.stats.StatisticsProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.zeromq.SocketType;
@@ -42,7 +40,7 @@ public class ZeroMQFixture extends NodeStoreFixture {
     private File blobDir;
     private File blobCacheDir;
     private SimpleBlobReaderService reader;
-    private SimpleNodeStateWriterService writer;
+    private SimpleBlobWriterService writer;
     private SimpleNodeStore store;
     private ZContext context;
     private ZMQ.Socket pubSocket;
@@ -61,7 +59,7 @@ public class ZeroMQFixture extends NodeStoreFixture {
             blobDir.delete();
             blobDir.mkdir();
             reader = new SimpleBlobReaderService(blobDir, publisherUrl, subscriberUrl);
-            writer = new SimpleNodeStateWriterService(blobDir, publisherUrl, subscriberUrl);
+            writer = new SimpleBlobWriterService(blobDir, publisherUrl, subscriberUrl);
             threadPool = Executors.newFixedThreadPool(3);
             threadPool.execute(() -> ZMQ.proxy(subSocket, pubSocket, null));
             threadPool.execute(reader);

@@ -37,7 +37,7 @@ import java.util.UUID;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
-public class SimpleNodeStateWriterServiceTest {
+public class SimpleBlobWriterServiceTest {
 
     @Rule
     public TemporaryFolder temporaryFolder = new TemporaryFolder();
@@ -75,19 +75,19 @@ public class SimpleNodeStateWriterServiceTest {
     @Test
     public void handleWriterService() throws IOException {
         sendWriteRequestString("thread-1", 123, "b64+", "CDBA3AE79386D3CF3DAAE8EC7F760588");
-        SimpleNodeStateWriterService.handleWriterService(reply, simpleRecordHandler);
+        SimpleBlobWriterService.handleWriterService(reply, simpleRecordHandler);
         assertEquals("E", request.recvStr());
         assertEquals("", request.recvStr());
         sendWriteRequestString("thread-1", 124, "b64d", "bjoKbisgOmFzeW5jIDQzRDA3MjI5N0MwOTM3NUZBNjBGOUE2RDEzNzI0QkIzCm4rIDpjbHVzdGVyQ29uZmlnIEVFQkFCNTBCMkJBNEFFMzY5RjVGMTlGOTRFRkFDQzdECm4rIGFwcHMgQUNGMjQ3OTZBRjk3NTA1REFDMEYxMzU4Q0NENUVBNUMKbisgYmluIEM2RDREQjMxMjIxNjQ3RUQwQTlFMzVENTI0RjdCRDFBCm4rIGNvbmYgMUMwMUU3NUFEQTY3QkU3NURCNzhBNzg1MzA4MDMyN0EKbisgY29udGVudCA2NzFGODVCMUYwMUI5NEMwMDU3MzAzNDRFNEVGQTQ2MwpuKyBldGMgREU5OTMxNkExNTlCRDg4QkI5MDlFMERBOUQ0MDhBNzcKbisgaG9tZSBFQTYyMkZENDMwMzI3NTkyMEJCODQ5MjFEMEE5NkFGRApuKyBqY3I6c3lzdGVtIDgyOUVBRDdEQTlGQjFGRUNGRUM1MzUxMTM5MjhEODE1Cm4rIGxpYnMgMjZFMkRGMDM0NjRENjgzQzFDQjhDODczMEJBQUU3MEQKbisgb2FrOmluZGV4IDVBMjI1RDBFNTgwQkQ4QkNDMDIzRDJEMTQ5QjZGODBFCm4rIHJlcDpwb2xpY3kgQzVEMzA3RTkwQjBGQ0UxMDEyN0VFNzE4RjVDMzY2QzMKbisgcmVwOnJlcG9Qb2xpY3kgM0ExQzdFMTUxMUM1RUMyQjUyM0JCRkRDRTg5MEEwNkUKbisgc3lzdGVtIERDOEZDMTJFREUwMTU0MUUyQjg2N0MwNTYxMjE1OEQ1Cm4rIHRtcCAyRDczNEI0MTA1N0JENDQ3RTZFRkU5N0M1MEM4MUJBOApuKyB2YXIgMUJGRDMwNUM3QzcxMkFDMEVBOUJCQjVFODBBQUU4NzMKcCsgamNyOm1peGluVHlwZXMgPE5BTUVTPiBbcmVwOkFjY2Vzc0NvbnRyb2xsYWJsZSxyZXA6UmVwb0FjY2Vzc0NvbnRyb2xsYWJsZV0KcCsgamNyOnByaW1hcnlUeXBlIDxOQU1FPiByZXA6cm9vdApwKyBzbGluZzpyZXNvdXJjZVR5cGUgPFNUUklORz4gc2xpbmc6cmVkaXJlY3QKcCsgc2xpbmc6dGFyZ2V0IDxTVFJJTkc+IC9pbmRleC5odG1sCm4hCg==");
-        SimpleNodeStateWriterService.handleWriterService(reply, simpleRecordHandler);
+        SimpleBlobWriterService.handleWriterService(reply, simpleRecordHandler);
         assertEquals("E", request.recvStr());
         assertEquals("", request.recvStr());
         sendWriteRequestString("thread-1", 125, "b64!", null);
-        SimpleNodeStateWriterService.handleWriterService(reply, simpleRecordHandler);
+        SimpleBlobWriterService.handleWriterService(reply, simpleRecordHandler);
         assertEquals("E", request.recvStr());
         assertEquals("", request.recvStr());
         sendWriteRequestString("thread-1", 126, "journal", "mytestjournal CDBA3AE79386D3CF3DAAE8EC7F760588 " + new UUID(0, 0).toString());
-        SimpleNodeStateWriterService.handleWriterService(reply, simpleRecordHandler);
+        SimpleBlobWriterService.handleWriterService(reply, simpleRecordHandler);
         assertEquals("E", request.recvStr());
         assertEquals("", request.recvStr());
         File journalFile = simpleBlobStore.getSpecificFile("journal-mytestjournal");
@@ -126,25 +126,25 @@ public class SimpleNodeStateWriterServiceTest {
         final String blobDataMessage = TestUtils.getLargeChunkEncoded(chunkSize);
 
         sendWriteRequestString("thread-1", 501, "b64+", largeBlobRef);
-        SimpleNodeStateWriterService.handleWriterService(reply, simpleRecordHandler);
+        SimpleBlobWriterService.handleWriterService(reply, simpleRecordHandler);
         assertEquals("E", request.recvStr());
         assertEquals("", request.recvStr());
 
         int i;
         for (i = 0; i <= 1_000_000_000 / chunkSize; ++i) {
             sendWriteRequestString("thread-1", 501 + i, "b64d", blobDataMessage);
-            SimpleNodeStateWriterService.handleWriterService(reply, simpleRecordHandler);
+            SimpleBlobWriterService.handleWriterService(reply, simpleRecordHandler);
             assertEquals("E", request.recvStr());
             assertEquals("", request.recvStr());
         }
         int remaining = 1_000_000_000 % chunkSize;
         sendWriteRequestString("thread-1", 501 + i++, "b64d", TestUtils.getLargeChunkEncoded(remaining));
-        SimpleNodeStateWriterService.handleWriterService(reply, simpleRecordHandler);
+        SimpleBlobWriterService.handleWriterService(reply, simpleRecordHandler);
         assertEquals("E", request.recvStr());
         assertEquals("", request.recvStr());
 
         sendWriteRequestString("thread-1", 501 + i, "b64!", null);
-        SimpleNodeStateWriterService.handleWriterService(reply, simpleRecordHandler);
+        SimpleBlobWriterService.handleWriterService(reply, simpleRecordHandler);
         String code = request.recvStr();
         String info = request.recvStr();
         if (code.equals("F")) {
@@ -171,25 +171,25 @@ public class SimpleNodeStateWriterServiceTest {
         final byte[] blobDataMessage = TestUtils.getLargeChunk(chunkSize);
 
         sendWriteRequestString("thread-1", 501, "b64+", largeBlobRef);
-        SimpleNodeStateWriterService.handleWriterService(reply, simpleRecordHandler);
+        SimpleBlobWriterService.handleWriterService(reply, simpleRecordHandler);
         assertEquals("E", request.recvStr());
         assertEquals("", request.recvStr());
 
         int i;
         for (i = 0; i <= 1_000_000_000 / chunkSize; ++i) {
             sendWriteRequestBytes("thread-1", 501 + i, "braw", blobDataMessage);
-            SimpleNodeStateWriterService.handleWriterService(reply, simpleRecordHandler);
+            SimpleBlobWriterService.handleWriterService(reply, simpleRecordHandler);
             assertEquals("E", request.recvStr());
             assertEquals("", request.recvStr());
         }
         int remaining = 1_000_000_000 % chunkSize;
         sendWriteRequestBytes("thread-1", 501 + i++, "braw", TestUtils.getLargeChunk(remaining));
-        SimpleNodeStateWriterService.handleWriterService(reply, simpleRecordHandler);
+        SimpleBlobWriterService.handleWriterService(reply, simpleRecordHandler);
         assertEquals("E", request.recvStr());
         assertEquals("", request.recvStr());
 
         sendWriteRequestString("thread-1", 501 + i, "b64!", null);
-        SimpleNodeStateWriterService.handleWriterService(reply, simpleRecordHandler);
+        SimpleBlobWriterService.handleWriterService(reply, simpleRecordHandler);
         String code = request.recvStr();
         String info = request.recvStr();
         if (code.equals("F")) {

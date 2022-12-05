@@ -38,9 +38,9 @@ import java.util.Stack;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public class SimpleNodeStateWriterService implements Runnable {
+public class SimpleBlobWriterService implements Runnable {
 
-    private static final Logger log = LoggerFactory.getLogger(SimpleNodeStateWriterService.class);
+    private static final Logger log = LoggerFactory.getLogger(SimpleBlobWriterService.class);
     private static final String WRITER_REQ_TOPIC = SimpleRequestResponse.Topic.WRITE.toString() + "-req";
     private static final String WRITER_REP_TOPIC = SimpleRequestResponse.Topic.WRITE.toString() + "-rep";
     private static final String WORKER_URL = "inproc://writerBackend";
@@ -53,7 +53,7 @@ public class SimpleNodeStateWriterService implements Runnable {
     private final String publisherUrl;
     private final String subscriberUrl;
 
-    public SimpleNodeStateWriterService(File blobStoreDir, String publisherUrl, String subscriberUrl) throws IOException {
+    public SimpleBlobWriterService(File blobStoreDir, String publisherUrl, String subscriberUrl) throws IOException {
         this.simpleBlobStore = new SimpleBlobStore(blobStoreDir);
         this.publisherUrl = publisherUrl;
         this.subscriberUrl = subscriberUrl;
