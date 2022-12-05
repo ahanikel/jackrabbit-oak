@@ -23,16 +23,14 @@ import joptsimple.OptionSet;
 import org.apache.jackrabbit.oak.run.cli.CommonOptions;
 import org.apache.jackrabbit.oak.run.cli.Options;
 import org.apache.jackrabbit.oak.run.commons.Command;
-import org.apache.jackrabbit.oak.store.zeromq.SimpleBlobStore;
-import org.apache.jackrabbit.oak.store.zeromq.SimpleNodeStateWriterService;
+import org.apache.jackrabbit.oak.store.zeromq.SimpleBlobWriterService;
 
 import java.io.File;
-import java.net.URI;
 import java.util.List;
 
-public class SimpleNodeStateWriterServiceCommand implements Command {
+public class SimpleBlobWriterServiceCommand implements Command {
 
-    public static final String NAME = "simple-nodestate-writer-service";
+    public static final String NAME = "simple-blob-writer-service";
 
     private static final String summary = "Serves the contents of a simple blobstore\n" +
         "java -jar oak-run.jar " + NAME + " <simple-store-url> <sending-url> <receiving-url>" +
@@ -57,7 +55,7 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
         final File blobDir = new File(commonOptions.getURI(0).getPath());
         final String publisherUri = commonOptions.getURI(1).toString();
         final String subscriberUri = commonOptions.getURI(2).toString();
-        final SimpleNodeStateWriterService simpleNodeStateWriterService = new SimpleNodeStateWriterService(blobDir, publisherUri, subscriberUri);
-        simpleNodeStateWriterService.run();
+        final SimpleBlobWriterService simpleBlobWriterService = new SimpleBlobWriterService(blobDir, publisherUri, subscriberUri);
+        simpleBlobWriterService.run();
    }
 }
