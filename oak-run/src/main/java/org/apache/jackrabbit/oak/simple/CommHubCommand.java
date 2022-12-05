@@ -16,8 +16,9 @@ public class CommHubCommand implements Command {
     public static final String NAME = "comm-hub";
 
     private final String summary = "Starts the communication hub\n" +
+            "java -jar oak-run.jar " + NAME + " <sending-url> <receiving-url>" +
             "Example:\n" +
-            "java -jar oak-run.jar comm-hub tcp://localhost:8000 tcp://localhost:8001";
+            "java -jar oak-run.jar " + NAME + " tcp://localhost:8000 tcp://localhost:8001";
 
     @Override
     public void execute(String... args) throws Exception {
