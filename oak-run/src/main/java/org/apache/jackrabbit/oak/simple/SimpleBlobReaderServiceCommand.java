@@ -35,6 +35,7 @@ public class SimpleBlobReaderServiceCommand implements Command {
     public static final String NAME = "simple-blob-reader-service";
 
     private static final String summary = "Serves the contents of a simple blobstore\n" +
+        "java -jar oak-run.jar " + NAME + " <simple-store-url> reader-service <sending-url> <receiving-url>" +
         "Example:\n" +
         "simple-blob-reader-service simple:///tmp/imported tcp://localhost:8000 tcp://localhost:8001";
 
