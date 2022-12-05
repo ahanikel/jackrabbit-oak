@@ -261,6 +261,11 @@
       <artifactId>jackrabbit-jcr-server</artifactId>
       <version>${jackrabbit.version}</version>
     </dependency>
+    <dependency>
+      <groupId>org.apache.jackrabbit</groupId>
+      <artifactId>oak-store-zeromq</artifactId>
+      <version>${project.version}</version>
+    </dependency>
 
     <dependency>
       <groupId>net.sf.jopt-simple</groupId>
