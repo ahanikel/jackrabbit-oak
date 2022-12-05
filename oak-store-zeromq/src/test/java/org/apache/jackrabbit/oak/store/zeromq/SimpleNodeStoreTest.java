@@ -19,7 +19,6 @@
 package org.apache.jackrabbit.oak.store.zeromq;
 
 import org.apache.jackrabbit.oak.api.CommitFailedException;
-import org.apache.jackrabbit.oak.spi.commit.CommitHook;
 import org.apache.jackrabbit.oak.spi.commit.CommitInfo;
 import org.apache.jackrabbit.oak.spi.commit.EmptyHook;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
@@ -38,7 +37,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 @Ignore("unfinished")
 public class SimpleNodeStoreTest {
@@ -51,7 +49,7 @@ public class SimpleNodeStoreTest {
 
     private File blobDir;
     private SimpleBlobReaderService reader;
-    private SimpleNodeStateWriterService writer;
+    private SimpleBlobWriterService writer;
     private SimpleNodeStore store;
     private ZContext context;
     private ZMQ.Socket pubSocket;
@@ -68,7 +66,7 @@ public class SimpleNodeStoreTest {
         subSocket.subscribe("");
         blobDir = temporaryFolder.newFolder();
         reader = new SimpleBlobReaderService(blobDir, publisherUrl, subscriberUrl);
-        writer = new SimpleNodeStateWriterService(blobDir, publisherUrl, subscriberUrl);
+        writer = new SimpleBlobWriterService(blobDir, publisherUrl, subscriberUrl);
         threadPool = Executors.newFixedThreadPool(3);
         threadPool.execute(() -> ZMQ.proxy(subSocket, pubSocket, null));
         threadPool.execute(reader);

@@ -71,7 +71,7 @@ public class SimpleNodeStoreBuilder {
             // ignore
         }
         if (backendReaderURL == null) {
-            backendReaderURL = "tcp://localhost:8000";
+            backendReaderURL = "tcp://localhost:8001";
         }
         try {
             backendWriterURL = System.getenv(PARAM_BACKEND_WRITER_URL);
@@ -79,7 +79,7 @@ public class SimpleNodeStoreBuilder {
             // ignore
         }
         if (backendWriterURL == null) {
-            backendWriterURL = "tcp://localhost:8001";
+            backendWriterURL = "tcp://localhost:8000";
         }
         try {
             blobCacheDir = System.getenv(PARAM_BLOB_CACHE_DIR);
