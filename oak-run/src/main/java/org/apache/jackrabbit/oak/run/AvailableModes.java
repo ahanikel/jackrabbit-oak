@@ -30,7 +30,7 @@ import org.apache.jackrabbit.oak.simple.CommHubCommand;
 import org.apache.jackrabbit.oak.simple.ImportToSimpleCommand;
 import org.apache.jackrabbit.oak.simple.SerialiseNodeStoreCommand;
 import org.apache.jackrabbit.oak.simple.SimpleBlobReaderServiceCommand;
-import org.apache.jackrabbit.oak.simple.SimpleNodeStateWriterServiceCommand;
+import org.apache.jackrabbit.oak.simple.SimpleBlobWriterServiceCommand;
 import org.apache.jackrabbit.oak.simple.SimpleQueueListenerCommand;
 
 public final class AvailableModes {
@@ -73,8 +73,8 @@ public final class AvailableModes {
             .put("resetclusterid", new ResetClusterIdCommand())
             .put("restore", new RestoreCommand())
             .put(SerialiseNodeStoreCommand.NAME, new SerialiseNodeStoreCommand())
-            .put("simple-blob-reader-service", new SimpleBlobReaderServiceCommand())
-            .put("simple-blob-writer-service", new SimpleNodeStateWriterServiceCommand())
+            .put(SimpleBlobReaderServiceCommand.NAME, new SimpleBlobReaderServiceCommand())
+            .put(SimpleBlobWriterServiceCommand.NAME, new SimpleBlobWriterServiceCommand())
             .put(CommHubCommand.NAME, new CommHubCommand())
             .put(SimpleQueueListenerCommand.NAME, new SimpleQueueListenerCommand())
             .put("tarmkdiff", new FileStoreDiffCommand())

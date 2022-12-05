@@ -36,6 +36,7 @@ public class SimpleQueueListenerCommand implements Command {
     public static final String NAME = "simple-queue-listener";
 
     private static final String summary = "Displays what goes on on the message queue\n" +
+        "java -jar oak-run.jar " + NAME + " <queue-url>" +
         "Example:\n" + NAME + " tcp://localhost:8001";
 
     @Override
