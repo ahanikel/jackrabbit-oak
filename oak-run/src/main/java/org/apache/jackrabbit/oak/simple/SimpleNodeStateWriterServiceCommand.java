@@ -34,7 +34,8 @@ public class SimpleNodeStateWriterServiceCommand implements Command {
 
     public static final String NAME = "simple-nodestate-writer-service";
 
-    private static final String summary = "Serves the contents of a simple blobstore via ZeroMQ REP\n" +
+    private static final String summary = "Serves the contents of a simple blobstore\n" +
+        "java -jar oak-run.jar " + NAME + " <simple-store-url> <sending-url> <receiving-url>" +
         "Example:\n" + NAME + " /tmp/imported/log.txt tcp://localhost:8000 tcp://localhost:8001";
 
     @Override
