@@ -16,11 +16,34 @@ In addition to Oak instances, other processes listen to the log:
 - and so on.
 
 ## PoC implementation
+### Communication hub
 The "comm-hub" process is the communication backbone. It opens two sockets, one for writing messages to the queue, and one for reading.
 
-The message format is a bit verbose but makes debugging easier. Fields are separated by a space. The first field starts with a service identifier (currently "read" or "write"), a dash "-", and a type ("req" for request, "rep" for reply). The second field identifies the requesting thread (<pid>@<host>-<threadId>). The third field should be a message id set by the requester and echoed in the reply, but I think that's not implemented yet. The remaining fields are service dependent.
+The message format is a bit verbose but makes debugging easier. Fields are separated by a space. The first field starts with a service identifier (currently "read" or "write"), a dash "-", and a type ("req" for request, "rep" for reply). The second field identifies the requesting thread («pid»@«host»-«threadId»). The third field should be a message id set by the requester and echoed in the reply, but I think that's not fully implemented yet. In a reply message, the fourth field indicates the message status: «N» for "not found", «F» for "fault/error", «C» for "continued" (this is a multi-part message and more parts will follow), or «E» "end" (this is the end of a multi-part message or the only message part). The remaining fields are service dependent.
 
-The reader service 
+### Reader service
+The reader service provides blobs/nodestates («blob» and «hasblob») and the current root of a journal («journal»). For example
+```
+read-req 33624@Axels-MacBook-Pro.local-306 2 hasblob 8578AEA22CF6ADE2C845ECE9C375B4DA
+read-rep 33624@Axels-MacBook-Pro.local-306 2 E false
+```
+
+### Writer service
+The writer service stores blobs/nodestates and the journal(s) in the blobstore. For efficiency the «braw» command is used most of the time. It contains the blob in binary format in the last field of the message. For blobs exceeding the max message size, they are split into b64 encoded chunks and sent to the queue using «b64+» (start with blobId as parameter), «b64d» (with b64 encoded data), and «b64!» (end). Upon success the service responds with an empty «E» message.
+
+A journal entry is written as
+```
+write-req 33624@Axels-MacBook-Pro.local-306 618 journal golden DE6E888A0CCF62B208982F63CC7BB6FA 5B77940AA4269AB940431E4C54D2D786
+```
+where the «journal» command is followed by the name of the journal/repository, followed by the new root, followed by the old (expected) root.
+
+### Nodestore implementation
+The frontend, the actual NodeStore implementation, consists of two parts.
+
+The "merge" method uses the builder to recursively diff against the current state and generate new nodestates along the way. These new nodestates are sent to the queue (writer service). Finally the new root nodestate is written and its id is sent to the queue (writer service) as the new journal root. The thread then waits to be notified if the merge was successful or not, which is the responsibility for the second part.
+
+The second part is a thread which continuously listens on the queue for new journal messages. If it sees one and the journal/repository name matches its own, it tries to apply it (rebasing if necessary). If this fails (conflict) and the commit is not its own, it just skips it. If the commit happens to be its own, it notifies the merge thread about success or failure to apply it.
+
 ## Build it
 
 ```shell
