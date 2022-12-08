@@ -4,9 +4,11 @@ The ZeroMQ nodestore is a distributed nodestore for Apache Oak using ZeroMQ as i
 
 Nodestates contain properties and references to their child nodestates. They are serialised and identified by the hash of their serialisation (content-addressable storage). Therefore they can be treated like any other blob.
 
+![Oak NodeState Model](assets/nodestates.svg)
+
 A reference to the root nodestate is stored separately in a journal and defines a repository. Several root nodestates and therefore journals/repositories can share the same blobstore bucket. These root nodestates can even belong to different tenants if the serialised nodestates are encrypted. A repository can be cloned in no time by creating a new journal referencing the same root nodestate.
 
-![Oak NodeState Model](assets/nodestates.svg)
+![Services](assets/services.svg)
 
 Changes are written to a log, which gives them a global order. When a commit is merged, the nodestates are written first, then the new journal entry. All participating Oak instances listen to and process the log and its commits, including their own, in the same manner, and therefore eventually have the same state. In the case of conflicts, all instances use the same resolution mechanism. 
 
