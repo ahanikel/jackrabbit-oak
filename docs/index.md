@@ -2,15 +2,16 @@
 
 The ZeroMQ nodestore is a distributed nodestore for Apache Oak using ZeroMQ as its communication layer.
 
-Nodestates contain properties and references to their child nodestates. They are serialised and identified by the hash of their serialisation (content-addressable storage). Therefore they can be treated like any other blob.
+## NodeStates
+We adopt the Oak NodeState model also for the storage backend. Nodestates contain properties and references to their child nodestates. They are serialised and identified by the hash of their serialisation (content-addressable storage). Therefore the serialised nodestate is the basic unit of storage (key/value pair or document) and can be treated like any other blob.
 
 ![Oak NodeState Model](assets/nodestates.svg)
 
-A reference to the root nodestate is stored separately in a journal and defines a repository. Several root nodestates and therefore journals/repositories can share the same blobstore bucket. These root nodestates can even belong to different tenants if the serialised nodestates are encrypted. A repository can be cloned in no time by creating a new journal referencing the same root nodestate.
+## Journal
+A reference to the root nodestate is stored separately in a journal head and defines a repository. Several root nodestates and therefore journals/repositories can share the same blobstore bucket. These root nodestates can even belong to different tenants. A repository can be cloned in no time by creating a new journal referencing the same root nodestate.
 
-![Services](assets/services.svg)
-
-Changes are written to a log, which gives them a global order. When a commit is merged, the nodestates are written first, then the new journal entry. All participating Oak instances listen to and process the log and its commits, including their own, in the same manner, and therefore eventually have the same state. In the case of conflicts, all instances use the same resolution mechanism. 
+## The log
+Changes are written to a log, which gives them a global order. When a commit is merged, the blobs and nodestates are written first, then the new journal entry. All participating Oak instances listen to and process the log and its commits, including their own, in the same manner, and therefore eventually have the same state. In the case of conflicts, all instances use the same resolution mechanism.
 
 In addition to Oak instances, other processes listen to the log:
 - a blobstore writer writes nodestates and blobs to the blob store, where they are available for reads
@@ -18,6 +19,13 @@ In addition to Oak instances, other processes listen to the log:
 - some process removes unreferenced blobs from the blob store
 - some process gathers statistics and sends them to a separate queue
 - and so on.
+
+![Services](assets/services.svg)
+
+## Security
+The current PoC implementation does not use any encryption and therefore assumes that blobstore buckets and the logs are kept separate between tenants. If tenants share a common blobstore and/or the log, the data would need to be encrypted before sending it to the log and decrypted when read by the Oak nodestore. This is what we're aiming for so the PoC should do that eventually and check the performance impact. An alternative would be a per-tenant blob cache doing the encryption and decryption.
+
+The nice thing about using ZeroMQ for communication is that it provides us with a pluggable architecture where such a cache can be easily added, as long as we keep the communication protocol stable.
 
 ## PoC implementation
 ### Communication hub
