@@ -84,6 +84,8 @@ public class SimpleBlobWriterService implements Runnable {
                 socket.setIdentity(("" + Thread.currentThread().getId()).getBytes());
                 socket.connect(WORKER_URL);
                 socket.setReceiveTimeOut(1000);
+                socket.sendMore(Util.longToBytes(0L));
+                socket.sendMore(Util.longToBytes(0L));
                 socket.sendMore("H");
                 socket.send("");
                 while (!Thread.currentThread().isInterrupted()) {
@@ -123,29 +125,33 @@ public class SimpleBlobWriterService implements Runnable {
         if (msg == null) {
             return; // timeout
         }
-        String ret = null;
+
+        byte[] reqMsgId = null;
 
         try {
             final String uuThreadId = msg;
-            ByteBuffer buf = ByteBuffer.allocate(Long.BYTES);
-            socket.recvByteBuffer(buf, 0);
-            buf.rewind();
-            final long msgid = buf.getLong();
+            reqMsgId = socket.recv();
             final String op = socket.recvStr();
             byte[] value = socket.recv();
-            recordHandler.handleRecord(uuThreadId, msgid, op, value);
+            recordHandler.handleRecord(uuThreadId, Util.longFromBytes(reqMsgId), op, value);
+            socket.sendMore(reqMsgId);
+            socket.sendMore(Util.longToBytes(0L));
+            socket.sendMore("E");
+            socket.send("");
         } catch (Exception e) {
             final String errorMsg = "An error occurred on: " + msg + ", exception: " + e.toString();
             System.err.println(errorMsg);
+            if (reqMsgId == null) {
+                socket.sendMore(Util.longToBytes(0L));
+            } else {
+                socket.sendMore(reqMsgId);
+            }
+            socket.sendMore(Util.longToBytes(0L));
             socket.sendMore("F");
             socket.send(errorMsg);
             return;
         }
-        socket.sendMore("E");
-        if (ret == null) {
-            ret = "";
-        }
-        socket.send(ret);
+
     }
 
     private static class Router extends Thread implements Closeable {
@@ -178,10 +184,10 @@ public class SimpleBlobWriterService implements Runnable {
                 try {
                     handlePendingRequests();
                     poller.poll(100);
-                    if (poller.pollin(0)) {
-                        handleIncomingRequest();
-                    } else if (poller.pollin(1)) {
+                    if (poller.pollin(1)) {
                         handleWorkerRequest();
+                    } else if (poller.pollin(0)) {
+                        handleIncomingRequest();
                     } else {
                         continue;
                     }
@@ -236,6 +242,8 @@ public class SimpleBlobWriterService implements Runnable {
             try {
                 byte[] workerId = workerRouter.recv();      // worker identity
                 workerRouter.recvStr();                     // delimiter
+                byte[] reqMsgId = workerRouter.recv();
+                byte[] repMsgId = workerRouter.recv();
                 String verb = workerRouter.recvStr();       // verb (H = Hello, C = Continuation, E = End)
                 byte[] payload = workerRouter.recv();
                 byte[] requestId = busyByWorkerId.get(workerId);
@@ -249,6 +257,8 @@ public class SimpleBlobWriterService implements Runnable {
                         case "F":
                         case "N":
                             requestPublisher.sendMore(WRITER_REP_TOPIC + " " + new String(requestId));
+                            requestPublisher.sendMore(reqMsgId);
+                            requestPublisher.sendMore(repMsgId);
                             requestPublisher.sendMore(verb);
                             requestPublisher.send(payload);
                             busyByWorkerId.remove(workerId);
@@ -258,23 +268,25 @@ public class SimpleBlobWriterService implements Runnable {
                         default:
                             System.err.println("Unknown worker verb " + verb);
                     }
-                    return;
-                }
-                if (available.contains(workerId)) {
+                } else if (available.contains(workerId)) {
                     System.err.println(String.format("Spurious message from available worker: %1$: %2$", verb, payload));
-                    return;
-                }
-                switch (verb) {
-                    case "H":
-                        System.err.println("New worker registered: " + new String(workerId));
-                        available.push(workerId);
-                        break;
-                    default:
-                        System.err.println(String.format("Expected Hello message from new worker but got %1$: %2$", verb, payload));
+                } else {
+                    switch (verb) {
+                        case "H":
+                            System.err.println("New worker registered: " + new String(workerId));
+                            available.push(workerId);
+                            break;
+                        default:
+                            System.err.println(String.format("Expected Hello message from new worker but got %1$: %2$", verb, payload));
+                    }
                 }
             } catch (Throwable t) {
                 System.err.println(t.toString());
                 throw t;
+            } finally {
+                while (workerRouter.hasReceiveMore()) {
+                    System.err.println(String.format("Throwing away spurious message part: {}", workerRouter.recvStr()));
+                }
             }
         }
 

@@ -27,6 +27,7 @@ import org.zeromq.ZMQ;
 import java.io.Closeable;
 import java.lang.management.ManagementFactory;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 
 public class SimpleRequestResponse implements Closeable {
 
@@ -39,7 +40,8 @@ public class SimpleRequestResponse implements Closeable {
     private final ThreadLocal<String> prefixIn;
     private final ThreadLocal<String> thisReq;
     private final ThreadLocal<String> lastReq;
-    private final ThreadLocal<Long> msgid;
+    private final ThreadLocal<Long> requestMsgId;
+    private final ThreadLocal<Long> responseMsgId;
 
     public SimpleRequestResponse(Topic topic, String pubAddr, String subAddr) {
 
@@ -48,7 +50,8 @@ public class SimpleRequestResponse implements Closeable {
         this.prefixIn  = ThreadLocal.withInitial(() -> topic.toString()  + "-rep " + processId + "-" + Thread.currentThread().getId());
         this.thisReq = new ThreadLocal<>();
         this.lastReq = new ThreadLocal<>();
-        this.msgid = ThreadLocal.withInitial(() -> 0L);
+        this.requestMsgId = ThreadLocal.withInitial(() -> 0L);
+        this.responseMsgId = ThreadLocal.withInitial(() -> 0L);
 
         this.readerSocket = ThreadLocal.withInitial(() -> {
             ZMQ.Socket ret = context.createSocket(SocketType.SUB);
@@ -73,12 +76,28 @@ public class SimpleRequestResponse implements Closeable {
         return requestString(op, msg.getBytes());
     }
 
-    private byte[] getThreadLocalMessageId() {
+    private long getThreadLocalRequestMessageId() {
+        return requestMsgId.get();
+    }
+
+    private byte[] getAndIncThreadLocalRequestMessageIdAsBytes() {
         ByteBuffer buf = ByteBuffer.allocate(Long.BYTES);
-        long lastMessageId = msgid.get();
+        long lastMessageId = requestMsgId.get();
         buf.putLong(lastMessageId);
-        msgid.set(lastMessageId + 1);
+        requestMsgId.set(lastMessageId + 1);
         return buf.array();
+    }
+
+    private long getThreadLocalResponseMessageId() {
+        return requestMsgId.get();
+    }
+
+    private void resetThreadLocalResponseMessageId() {
+        responseMsgId.set(0L);
+    }
+
+    private void incThreadLocalResponseMessageId() {
+        responseMsgId.set(responseMsgId.get() + 1);
     }
 
     public byte[] requestBytes(String op, byte[] args) {
@@ -87,18 +106,28 @@ public class SimpleRequestResponse implements Closeable {
         final ZMQ.Socket writer = writerSocket.get();
         final ZMQ.Socket reader = readerSocket.get();
         byte[] ret;
-        byte[] msgid = getThreadLocalMessageId();
+        byte[] msgid = getAndIncThreadLocalRequestMessageIdAsBytes();
+        resetThreadLocalResponseMessageId();
         do {
             writer.sendMore(prefixOut.get());
             writer.sendMore(msgid);
             writer.sendMore(op);
             writer.send(args);
             ret = reader.recv();
-        } while (ret == null);
+        } while (ret == null); // ret will contain the response type plus thread id
+        byte[] reqId = reader.recv();
+        byte[] repId = reader.recv();
+        if (!Arrays.equals(reqId, msgid)) {
+            log.error("Request id does not match, actual: {}, expected: {}", reqId, msgid);
+        }
+        if (!Arrays.equals(repId, Util.LONG_ZERO)) {
+            log.error("Reply id does not match, actual: {}", repId);
+        }
         return reader.recv();
     }
 
     public String receiveMore() {
+        ZMQ.Socket reader = readerSocket.get();
         return readerSocket.get().recvStr();
     }
 
