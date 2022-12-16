@@ -5,10 +5,13 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
 public class Util {
+
+    public static byte[] LONG_ZERO = longToBytes(0L);
 
     public static String getRefFromBytes(byte[] b) {
         try {
@@ -63,5 +66,18 @@ public class Util {
         final StringBuilder sb = new StringBuilder();
         appendInputStream(sb, is);
         return sb.toString();
+    }
+
+    public static byte[] longToBytes(long l) {
+        ByteBuffer buf = ByteBuffer.allocate(Long.BYTES);
+        buf.putLong(l);
+        return buf.array();
+    }
+
+    public static long longFromBytes(byte[] bytes) {
+        ByteBuffer buf = ByteBuffer.allocate(Long.BYTES);
+        buf.put(bytes);
+        buf.rewind();
+        return buf.getLong();
     }
 }
