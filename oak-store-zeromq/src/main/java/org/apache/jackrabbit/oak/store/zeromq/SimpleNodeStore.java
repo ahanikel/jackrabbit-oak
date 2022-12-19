@@ -111,7 +111,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     private final Object mergeRootMonitor = new Object();
     private final Object checkpointMonitor = new Object();
 
-    private final Map<String, Object> expectedRoots = new ConcurrentHashMap<>();
+    private final Map<String, CommitInfo> expectedRoots = new ConcurrentHashMap<>();
     private final Map<String, Object> confirmedRoots = new ConcurrentHashMap<>();
     private volatile boolean commitFailed = false;
     private Thread logProcessor;
@@ -219,14 +219,17 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                             log.warn("Conflicting updates, commit failed: journal {} {} {}", journalId, newUuid, oldUuid);
                             commitFailed = true;
                         }
-                        Object expectedRootMonitor = expectedRoots.remove(newUuid);
-                        if (expectedRootMonitor != null) {
+                        CommitInfo commitInfo = expectedRoots.remove(newUuid);
+                        if (commitInfo != null) {
                             log.info("Found our commit {}", newUuid);
                             if (!commitFailed) {
-                                confirmedRoots.put(newUuid, expectedRootMonitor);
+                                confirmedRoots.put(newUuid, commitInfo);
+                                if (changeDispatcher != null) {
+                                    changeDispatcher.contentChanged(after, commitInfo);
+                                }
                             }
-                            synchronized (expectedRootMonitor) {
-                                expectedRootMonitor.notify();
+                            synchronized (commitInfo) {
+                                commitInfo.notify();
                             }
                         } else {
                             commitFailed = false;
@@ -327,7 +330,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         final SimpleNodeState newSuperRoot = (SimpleNodeState) builder.getNodeState();
         journalRoot = EMPTY.getRef(); // the new journalRoot is set by the log processor
         try {
-            setRoot(newSuperRoot.getRef(), EMPTY.getRef());
+            setRoot(newSuperRoot.getRef(), EMPTY.getRef(), CommitInfo.EMPTY);
         } catch (CommitFailedException e) {
             // should not happen
             throw new IllegalStateException(e);
@@ -406,13 +409,12 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         return readNodeState(checkpointRoot);
     }
 
-    private void setRoot(String uuid, String oldUuid) throws CommitFailedException {
-        Object expectedRootMonitor = new Object();
-        expectedRoots.put(uuid, expectedRootMonitor);
-        synchronized (expectedRootMonitor) {
+    private void setRoot(String uuid, String oldUuid, CommitInfo info) throws CommitFailedException {
+        expectedRoots.put(uuid, info);
+        synchronized (info) {
             setRootRemote(null, uuid, oldUuid);
             try {
-                expectedRootMonitor.wait();
+                info.wait();
                 if (confirmedRoots.remove(uuid) == null) {
                     throw new CommitFailedException("Conflict", 0, "");
                 }
@@ -457,12 +459,12 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         }
     }
 
-    private void mergeRoot(NodeState ns) throws CommitFailedException {
+    private void mergeRoot(NodeState ns, CommitInfo info) throws CommitFailedException {
         final SimpleNodeState superRoot = getSuperRoot();
         final NodeBuilder superRootBuilder = superRoot.builder();
         superRootBuilder.setChildNode(ROOT_NODE_NAME, ns);
         final SimpleNodeState newSuperRoot = (SimpleNodeState) superRootBuilder.getNodeState();
-        setRoot(newSuperRoot.getRef(), superRoot.getRef());
+        setRoot(newSuperRoot.getRef(), superRoot.getRef(), info);
     }
 
     @Override
@@ -476,21 +478,19 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         while (true) {
             final NodeState newBase = getRoot();
             final NodeState afterConflict = MergingNodeStateDiff.merge(newBase,
-                    after, new DefaultThreeWayConflictHandler(ThreeWayConflictHandler.Resolution.OURS)); // or Resolution.MERGED, not sure which one is better
+                    after, new DefaultThreeWayConflictHandler(ThreeWayConflictHandler.Resolution.MERGED)); // or Resolution.MERGED, not sure which one is better
             try {
                 final NodeState afterHook = commitHook.processCommit(newBase, afterConflict, info);
                 if (afterHook.equals(newBase)) {
                     return newBase;
                 }
-                mergeRoot(afterHook);
+                mergeRoot(afterHook, info);
+                NodeState committed = getRoot();
                 if (retried > 0) {
                     log.info("Commit successful after retrying {} times.", retried);
                 }
-                ((SimpleNodeBuilder) builder).reset(afterHook);
-                if (changeDispatcher != null) {
-                    changeDispatcher.contentChanged(afterHook, info);
-                }
-                return afterHook;
+                ((SimpleNodeBuilder) builder).reset(committed);
+                return committed;
             } catch (CommitFailedException e) {
                 if (++retried > 4) {
                     log.error("Commit unsuccessful after trying {} times. Giving up", retried);
