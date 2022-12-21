@@ -50,20 +50,30 @@ public class ZeroMQFixture extends NodeStoreFixture {
     public ZeroMQFixture() {
         try {
             context = new ZContext();
+
+            // Communication hub
             pubSocket = context.createSocket(SocketType.PUB);
             pubSocket.bind(subscriberUrl);
             subSocket = context.createSocket(SocketType.SUB);
             subSocket.bind(publisherUrl);
             subSocket.subscribe("");
+
+            // Where the blobs are stored
             blobDir = File.createTempFile("zeromqns", ".d");
             blobDir.delete();
             blobDir.mkdir();
+
+            // Reader and writer services
             reader = new SimpleBlobReaderService(blobDir, publisherUrl, subscriberUrl);
             writer = new SimpleBlobWriterService(blobDir, publisherUrl, subscriberUrl);
+
+            // Run services
             threadPool = Executors.newFixedThreadPool(3);
             threadPool.execute(() -> ZMQ.proxy(subSocket, pubSocket, null));
             threadPool.execute(reader);
             threadPool.execute(writer);
+
+            // The blob cache of the frontend nodestore
             blobCacheDir = File.createTempFile("zeromqns-cache", ".d");
             blobCacheDir.delete();
             blobCacheDir.mkdir();
