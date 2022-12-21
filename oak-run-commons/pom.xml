@@ -175,7 +175,7 @@
         <dependency>
             <groupId>org.apache.jackrabbit</groupId>
             <artifactId>oak-store-zeromq</artifactId>
-            <version>1.38.0-zeromq</version>
+            <version>${project.version}</version>
             <scope>compile</scope>
         </dependency>
     </dependencies>
