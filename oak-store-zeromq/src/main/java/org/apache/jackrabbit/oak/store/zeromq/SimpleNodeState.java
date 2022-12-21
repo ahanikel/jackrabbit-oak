@@ -428,6 +428,7 @@ public class SimpleNodeState implements NodeState {
     }
 
     public String toString() {
-        return children.toString() + " " + properties.values().toString();
+        ensureLoaded();
+        return "" + getRef() + ": " + children + " " + (properties != null ? properties.values() : "{}");
     }
 }
