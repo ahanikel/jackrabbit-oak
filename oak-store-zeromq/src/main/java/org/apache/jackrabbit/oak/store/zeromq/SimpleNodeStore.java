@@ -28,7 +28,6 @@ import org.apache.jackrabbit.oak.api.Descriptors;
 import org.apache.jackrabbit.oak.api.PropertyState;
 import org.apache.jackrabbit.oak.api.jmx.CheckpointMBean;
 import org.apache.jackrabbit.oak.osgi.OsgiWhiteboard;
-import org.apache.jackrabbit.oak.plugins.commit.DefaultThreeWayConflictHandler;
 import org.apache.jackrabbit.oak.plugins.memory.MemoryNodeBuilder;
 import org.apache.jackrabbit.oak.spi.blob.BlobOptions;
 import org.apache.jackrabbit.oak.spi.blob.GarbageCollectableBlobStore;
@@ -39,8 +38,8 @@ import org.apache.jackrabbit.oak.spi.commit.CommitInfo;
 import org.apache.jackrabbit.oak.spi.commit.Observable;
 import org.apache.jackrabbit.oak.spi.commit.Observer;
 import org.apache.jackrabbit.oak.spi.commit.ObserverTracker;
-import org.apache.jackrabbit.oak.spi.commit.ThreeWayConflictHandler;
 import org.apache.jackrabbit.oak.spi.descriptors.GenericDescriptors;
+import org.apache.jackrabbit.oak.spi.state.ApplyDiff;
 import org.apache.jackrabbit.oak.spi.state.ConflictAnnotatingRebaseDiff;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
@@ -92,6 +91,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     private static final Logger log = LoggerFactory.getLogger(SimpleNodeStore.class.getName());
     public static final String ROOT_NODE_NAME = "root";
+    public static final String CHECKPOINT_NODE_NAME = "checkpoints";
 
     public static SimpleNodeStoreBuilder builder() {
         return new SimpleNodeStoreBuilder();
@@ -111,7 +111,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     private final Object mergeRootMonitor = new Object();
     private final Object checkpointMonitor = new Object();
 
-    private final Map<String, CommitInfo> expectedRoots = new ConcurrentHashMap<>();
+    private final Map<String, Pair<Object, CommitInfo>> expectedRoots = new ConcurrentHashMap<>();
     private final Map<String, Object> confirmedRoots = new ConcurrentHashMap<>();
     private volatile boolean commitFailed = false;
     private Thread logProcessor;
@@ -197,47 +197,32 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                         log.info("Received {} {} ({})", journalId, newUuid, oldUuid);
                         final NodeState after = readNodeState(newUuid);
                         if (oldUuid.equals(journalRoot)) {
-                            // all good
                             journalRoot = newUuid;
+                            log.info("new root: {}", journalRoot);
                         } else {
-                            // conflict
-                            /*
-                            try {
-                                log.warn("Trying to reconcile conflicting updates.");
-                                final NodeState before = readNodeState(oldUuid);
-                                final NodeBuilder builder = readNodeState(journalRoot).builder();
-                                // TODO: when does a conflict lead to a CommitFailedException?
-                                final ConflictAnnotatingRebaseDiff diff = new ConflictAnnotatingRebaseDiff(builder);
-                                after.compareAgainstBaseState(before, diff);
-                                final SimpleNodeState newRoot = (SimpleNodeState) builder.getNodeState();
-                                journalRoot = newRoot.getRef();
-                            } catch (Exception e) {
-                                log.warn("Reconciliation of conflicting updates failed: " + e.toString());
-                                commitFailed = true;
-                            }
-                            */
                             log.warn("Conflicting updates, commit failed: journal {} {} {}", journalId, newUuid, oldUuid);
                             commitFailed = true;
                         }
-                        CommitInfo commitInfo = expectedRoots.remove(newUuid);
-                        if (commitInfo != null) {
+                        Pair<Object, CommitInfo> monitorInfo = expectedRoots.remove(newUuid);
+                        if (monitorInfo != null) {
                             log.info("Found our commit {}", newUuid);
                             if (!commitFailed) {
-                                confirmedRoots.put(newUuid, commitInfo);
+                                confirmedRoots.put(newUuid, monitorInfo);
                                 if (changeDispatcher != null) {
-                                    changeDispatcher.contentChanged(after, commitInfo);
+                                    changeDispatcher.contentChanged(after.getChildNode(ROOT_NODE_NAME), monitorInfo.snd);
                                 }
                             }
-                            synchronized (commitInfo) {
-                                commitInfo.notify();
+                            synchronized (monitorInfo.fst) {
+                                monitorInfo.fst.notify();
                             }
                         } else {
                             commitFailed = false;
                             if (changeDispatcher != null) {
-                                changeDispatcher.contentChanged(after, CommitInfo.EMPTY_EXTERNAL);
+                                changeDispatcher.contentChanged(after.getChildNode(ROOT_NODE_NAME), CommitInfo.EMPTY_EXTERNAL);
                             }
                         }
                     } catch (Exception t) {
+                        log.warn("Caught exception: {}", t);
                         try {
                             Thread.sleep(100);
                         } catch (InterruptedException e) {
@@ -303,12 +288,12 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     void init() {
         final String uuid = readRootRemote();
-        checkpointRoot = readCPRootRemote();
         log.info("Journal root initialised with {}", uuid);
         journalRoot = uuid;
         if ("undefined".equals(uuid) || SimpleNodeState.UUID_NULL.toString().equals(uuid)) {
-            reset();
+            resetRoot();
         }
+        resetCPRoot();
         changeDispatcher = new ChangeDispatcher(getRoot());
     }
 
@@ -322,11 +307,16 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
      * nodes remain lingering around unless some GC mechanism (which is not yet
      * implemented) removes them. This is needed for testing.
      */
-    public void reset() {
+    public void reset () {
+        resetRoot();
+        resetCPRoot();
+    }
+
+    private void resetRoot() {
         emptyCaches();
         final NodeBuilder builder = EMPTY.builder();
         builder.setChildNode(ROOT_NODE_NAME);
-        builder.setChildNode("checkpoints");
+        builder.setChildNode(CHECKPOINT_NODE_NAME);
         final SimpleNodeState newSuperRoot = (SimpleNodeState) builder.getNodeState();
         journalRoot = EMPTY.getRef(); // the new journalRoot is set by the log processor
         try {
@@ -335,7 +325,12 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
             // should not happen
             throw new IllegalStateException(e);
         }
-        setCheckpointRoot(EMPTY.getRef());
+    }
+
+    private void resetCPRoot() {
+        SimpleNodeBuilder cpRootBuilder = (SimpleNodeBuilder) EMPTY.builder();
+        cpRootBuilder.setChildNode(CHECKPOINT_NODE_NAME);
+        checkpointRoot = cpRootBuilder.getNodeState().getRef();
     }
 
     void emptyCaches() {
@@ -369,6 +364,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         return msg;
     }
 
+    /*
     private String readCPRootRemote() {
         String msg;
         while (true) {
@@ -387,6 +383,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         }
         return msg;
     }
+    */
 
     @Override
     @NotNull
@@ -402,19 +399,24 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         return readNodeState(uuid);
     }
 
-    private NodeState getCheckpointRoot() {
+    private SimpleNodeState getCheckpointSuperRoot() {
         if ("undefined".equals(checkpointRoot) || checkpointRoot == null) {
             throw new IllegalStateException("checkpointRoot is undefined, forgot to call init()?");
         }
         return readNodeState(checkpointRoot);
     }
 
+    private SimpleNodeState getCheckpointRoot() {
+        return (SimpleNodeState) getCheckpointSuperRoot().getChildNode(CHECKPOINT_NODE_NAME);
+    }
+
     private void setRoot(String uuid, String oldUuid, CommitInfo info) throws CommitFailedException {
-        expectedRoots.put(uuid, info);
-        synchronized (info) {
+        final Object monitor = new Object();
+        expectedRoots.put(uuid, Pair.of(monitor, info));
+        synchronized (monitor) {
             setRootRemote(null, uuid, oldUuid);
             try {
-                info.wait();
+                monitor.wait();
                 if (confirmedRoots.remove(uuid) == null) {
                     throw new CommitFailedException("Conflict", 0, "");
                 }
@@ -424,11 +426,13 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         }
     }
 
+    /*
     private void setCheckpointRoot(String uuid) {
         final String oldUuid = checkpointRoot;
         checkpointRoot = uuid;
-        setRootRemote("checkpoints", uuid, oldUuid);
+        setRootRemote(CHECKPOINT_NODE_NAME, uuid, oldUuid);
     }
+    */
 
     private void setRootRemote(String type, String uuid, String oldUuid) {
         while (true) {
@@ -459,7 +463,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         }
     }
 
-    private void mergeRoot(NodeState ns, CommitInfo info) throws CommitFailedException {
+    private synchronized void mergeRoot(NodeState ns, CommitInfo info) throws CommitFailedException {
         final SimpleNodeState superRoot = getSuperRoot();
         final NodeBuilder superRootBuilder = superRoot.builder();
         superRootBuilder.setChildNode(ROOT_NODE_NAME, ns);
@@ -469,16 +473,23 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     @Override
     @NotNull
-    public NodeState merge(@NotNull NodeBuilder builder, @NotNull CommitHook commitHook, @NotNull CommitInfo info) throws CommitFailedException {
+    public synchronized NodeState merge(@NotNull NodeBuilder builder, @NotNull CommitHook commitHook, @NotNull CommitInfo info) throws CommitFailedException {
         if (!(builder instanceof SimpleNodeBuilder)) {
             throw new IllegalArgumentException();
         }
         int retried = 0;
+        final NodeState before = builder.getBaseState();
         final NodeState after = builder.getNodeState();
         while (true) {
             final NodeState newBase = getRoot();
-            final NodeState afterConflict = MergingNodeStateDiff.merge(newBase,
-                    after, new DefaultThreeWayConflictHandler(ThreeWayConflictHandler.Resolution.MERGED)); // or Resolution.MERGED, not sure which one is better
+            final NodeState afterConflict;
+            if (!before.equals(newBase)) {
+                final NodeBuilder newBuilder = newBase.builder();
+                after.compareAgainstBaseState(before, new ApplyDiff(newBuilder));
+                afterConflict = newBuilder.getNodeState();
+            } else {
+                afterConflict = after;
+            }
             try {
                 final NodeState afterHook = commitHook.processCommit(newBase, afterConflict, info);
                 if (afterHook.equals(newBase)) {
@@ -492,21 +503,64 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                 ((SimpleNodeBuilder) builder).reset(committed);
                 return committed;
             } catch (CommitFailedException e) {
-                if (++retried > 4) {
+                if (++retried > 0) {
                     log.error("Commit unsuccessful after trying {} times. Giving up", retried);
                     throw e;
+                }
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException ex) {
                 }
                 continue;
             }
         }
     }
 
-    private void mergeCheckpoint(NodeBuilder builder) {
+    private synchronized void mergeCheckpointRoot(NodeState cpRoot, CommitInfo info) throws CommitFailedException {
+        final SimpleNodeState superRoot = getCheckpointSuperRoot();
+        final NodeBuilder superRootBuilder = superRoot.builder();
+        superRootBuilder.setChildNode(CHECKPOINT_NODE_NAME, cpRoot);
+        final SimpleNodeState newSuperRoot = (SimpleNodeState) superRootBuilder.getNodeState();
+        checkpointRoot = newSuperRoot.getRef();
+    }
+
+    private synchronized void mergeCheckpoint(NodeBuilder builder) throws CommitFailedException {
+        int retried = 0;
+        final NodeState before = builder.getBaseState();
+        final NodeState after = builder.getNodeState();
+        while (true) {
             final NodeState newBase = getCheckpointRoot();
-            rebase(builder, newBase);
-            final SimpleNodeState after = (SimpleNodeState) builder.getNodeState();
-            setCheckpointRoot(after.getRef());
-            ((SimpleNodeBuilder) builder).reset(after);
+            final NodeState afterConflict;
+            if (!before.equals(newBase)) {
+                final NodeBuilder newBuilder = newBase.builder();
+                after.compareAgainstBaseState(before, new ApplyDiff(newBuilder));
+                afterConflict = newBuilder.getNodeState();
+            } else {
+                afterConflict = after;
+            }
+            try {
+                if (afterConflict.equals(newBase)) {
+                    return;
+                }
+                mergeCheckpointRoot(afterConflict, CommitInfo.EMPTY);
+                NodeState committed = getCheckpointRoot();
+                if (retried > 0) {
+                    log.info("Commit successful after retrying {} times.", retried);
+                }
+                ((SimpleNodeBuilder) builder).reset(committed);
+                return;
+            } catch (CommitFailedException e) {
+                if (++retried > 0) {
+                    log.error("Commit unsuccessful after trying {} times. Giving up", retried);
+                    throw e;
+                }
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException ex) {
+                }
+                continue;
+            }
+        }
     }
 
     @Nullable
@@ -667,7 +721,11 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         }
         cp.setChildNode("root", currentRoot);
 
-        mergeCheckpoint(checkpoints);
+        try {
+            mergeCheckpoint(checkpoints);
+        } catch (CommitFailedException e) {
+            throw new IllegalStateException(e);
+        }
         return name;
     }
 
@@ -718,7 +776,11 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         final NodeBuilder cpRoot = getCheckpointRoot().builder();
         boolean ret = cpRoot.getChildNode(checkpoint).remove();
         if (ret) {
-            mergeCheckpoint(cpRoot);
+            try {
+                mergeCheckpoint(cpRoot);
+            } catch (CommitFailedException e) {
+                throw new IllegalStateException(e);
+            }
         }
         return ret;
     }
