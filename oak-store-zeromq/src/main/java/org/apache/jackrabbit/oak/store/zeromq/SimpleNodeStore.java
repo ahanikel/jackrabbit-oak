@@ -477,6 +477,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         if (!(builder instanceof SimpleNodeBuilder)) {
             throw new IllegalArgumentException();
         }
+        checkArgument(((SimpleNodeBuilder) builder).isRoot());
         int retried = 0;
         final NodeState before = builder.getBaseState();
         final NodeState after = builder.getNodeState();
@@ -485,7 +486,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
             final NodeState afterConflict;
             if (!before.equals(newBase)) {
                 final NodeBuilder newBuilder = newBase.builder();
-                after.compareAgainstBaseState(before, new ApplyDiff(newBuilder));
+                after.compareAgainstBaseState(before, new MergingApplyDiff(newBuilder));
                 afterConflict = newBuilder.getNodeState();
             } else {
                 afterConflict = after;

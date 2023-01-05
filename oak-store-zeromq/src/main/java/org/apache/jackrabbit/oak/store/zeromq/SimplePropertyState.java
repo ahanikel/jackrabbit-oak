@@ -745,4 +745,8 @@ public class SimplePropertyState implements PropertyState {
     public String toString() {
         return getSerialised();
     }
+
+    SimpleNodeStore getStore() {
+        return store;
+    }
 }
