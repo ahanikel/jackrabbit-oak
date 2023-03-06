@@ -14,3 +14,6 @@ derby.log
 oak-shaded-guava/dependency-reduced-pom.xml
 .DS_Store
 TAGS
+.cpcache
+.nrepl-port
+.vscode
