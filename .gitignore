@@ -13,3 +13,6 @@ derby.log
 .java-version
 oak-shaded-guava/dependency-reduced-pom.xml
 TAGS
+.cpcache
+.nrepl-port
+.vscode
