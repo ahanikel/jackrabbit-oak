@@ -11,3 +11,6 @@ atlassian-ide-plugin.xml
 .checkstyle
 derby.log
 TAGS
+.cpcache
+.nrepl-port
+.vscode
