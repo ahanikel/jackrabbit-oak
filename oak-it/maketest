@@ -1,1 +1,2 @@
-mvn -Dmaven.surefire.debug="-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=40404 -Xnoagent -Djava.compiler=NONE" -Dnsfixtures=ZEROMQ_NS clean test
+export JAVA_HOME=/opt/homebrew/Cellar/openjdk@11/11.0.19/libexec/openjdk.jdk/Contents/Home
+mvn -Dmaven.surefire.debug="-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=40404 -Xnoagent -Djava.compiler=NONE" -Dnsfixtures=ZEROMQ_NS clean test $@
