@@ -478,18 +478,15 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
             throw new IllegalArgumentException();
         }
         checkArgument(((SimpleNodeBuilder) builder).isRoot());
-        int retried = 0;
         final NodeState before = builder.getBaseState();
-        final NodeState after = builder.getNodeState();
-        while (true) {
+
+        for (int retried = 0;; ++retried) {
             final NodeState newBase = getRoot();
             final NodeState afterConflict;
             if (!before.equals(newBase)) {
-                final NodeBuilder newBuilder = newBase.builder();
-                after.compareAgainstBaseState(before, new MergingApplyDiff(newBuilder));
-                afterConflict = newBuilder.getNodeState();
+                afterConflict = rebase(builder, newBase);
             } else {
-                afterConflict = after;
+                afterConflict = builder.getNodeState();
             }
             try {
                 final NodeState afterHook = commitHook.processCommit(newBase, afterConflict, info);
@@ -504,15 +501,14 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                 ((SimpleNodeBuilder) builder).reset(committed);
                 return committed;
             } catch (CommitFailedException e) {
-                if (++retried > 0) {
-                    log.error("Commit unsuccessful after trying {} times. Giving up", retried);
+                if (retried > 9) {
+                    log.error("Commit unsuccessful after retrying {} times. Giving up", retried);
                     throw e;
                 }
                 try {
                     Thread.sleep(1000);
                 } catch (InterruptedException ex) {
                 }
-                continue;
             }
         }
     }
