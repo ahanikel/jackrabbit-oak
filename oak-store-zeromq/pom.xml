@@ -39,7 +39,7 @@
         <configuration>
           <instructions>
             <Import-Package>
-              <!-- OAK-7182 -->${guava.osgi.import},
+              <!-- OAK-7182 -->${guava.osgi.import};resolution:=optional,
               com.neilalexander.*;resolution:=optional,
               *
             </Import-Package>
@@ -108,11 +108,11 @@
       <artifactId>oak-store-spi</artifactId>
       <version>${project.version}</version>
     </dependency>
-
-    <!-- General utility libraries -->
     <dependency>
-      <groupId>com.google.guava</groupId>
-      <artifactId>guava</artifactId>
+      <groupId>javax.jcr</groupId>
+      <artifactId>jcr</artifactId>
+      <version>2.0</version>
+      <scope>provided</scope>
     </dependency>
 
     <!-- Logging -->
