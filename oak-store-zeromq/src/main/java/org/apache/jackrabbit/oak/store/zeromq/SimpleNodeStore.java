@@ -18,8 +18,11 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq;
 
+import com.google.common.base.Charsets;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
+import com.google.common.hash.BloomFilter;
+import com.google.common.hash.Funnels;
 import org.apache.felix.scr.annotations.Service;
 import org.apache.jackrabbit.commons.SimpleValueFactory;
 import org.apache.jackrabbit.oak.api.Blob;
@@ -40,6 +43,7 @@ import org.apache.jackrabbit.oak.spi.commit.Observer;
 import org.apache.jackrabbit.oak.spi.commit.ObserverTracker;
 import org.apache.jackrabbit.oak.spi.descriptors.GenericDescriptors;
 import org.apache.jackrabbit.oak.spi.state.ApplyDiff;
+import org.apache.jackrabbit.oak.spi.state.Clusterable;
 import org.apache.jackrabbit.oak.spi.state.ConflictAnnotatingRebaseDiff;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
@@ -87,7 +91,7 @@ import static org.apache.jackrabbit.oak.spi.cluster.ClusterRepositoryInfo.getOrC
         property = "oak.nodestore.description=nodeStoreType=simple"
 )
 @Service
-public class SimpleNodeStore implements NodeStore, Observable, Closeable, GarbageCollectableBlobStore {
+public class SimpleNodeStore implements NodeStore, Observable, Closeable, GarbageCollectableBlobStore, Clusterable {
 
     private static final Logger log = LoggerFactory.getLogger(SimpleNodeStore.class.getName());
     public static final String ROOT_NODE_NAME = "root";
@@ -125,6 +129,8 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     private final AtomicLong remoteWriteBlobCounter = new AtomicLong();
     private File blobCacheDir;
     private BlobStore remoteBlobStore;
+    private String instanceId;
+    private BloomFilter<CharSequence> roots = BloomFilter.create(Funnels.stringFunnel(Charsets.UTF_8), 9000000); // about 8MB
 
     public SimpleNodeStore() {
     }
@@ -198,6 +204,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                         final NodeState after = readNodeState(newUuid);
                         if (oldUuid.equals(journalRoot)) {
                             journalRoot = newUuid;
+                            roots.put(newUuid);
                             log.info("new root: {}", journalRoot);
                         } else {
                             log.warn("Conflicting updates, commit failed: journal {} {} {}", journalId, newUuid, oldUuid);
@@ -245,6 +252,8 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     @Activate
     public void activate(ComponentContext ctx) {
+
+        instanceId = UUID.randomUUID().toString();
 
         // TODO: configure using OSGi config
         final SimpleNodeStoreBuilder builder = new SimpleNodeStoreBuilder();
@@ -794,6 +803,29 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     @Override
     public Closeable addObserver(Observer observer) {
         return changeDispatcher.addObserver(observer);
+    }
+
+    @Override
+    public @NotNull String getInstanceId() {
+        return instanceId;
+    }
+
+    @Override
+    public @Nullable String getVisibilityToken() {
+        return journalRoot;
+    }
+
+    @Override
+    public boolean isVisible(@NotNull String visibilityToken, long maxWaitMillis) throws InterruptedException {
+        long maxWaitNanos = System.nanoTime() + maxWaitMillis * 1000000;
+        do {
+            // TODO: this is a very approximate implementation, is it good enough?
+            // TODO: also, there is a race condition here
+            if (journalRoot.equals(visibilityToken) || expectedRoots.containsKey(visibilityToken) || roots.mightContain(visibilityToken)) {
+                return true;
+            }
+        } while (System.nanoTime() < maxWaitNanos);
+        return false;
     }
 
     private interface KVStore<K, V> {
