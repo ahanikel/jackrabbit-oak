@@ -414,11 +414,20 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         final Object monitor = new Object();
         expectedRoots.put(uuid, Pair.of(monitor, info));
         synchronized (monitor) {
-            setRootRemote(null, uuid, oldUuid);
             try {
-                monitor.wait();
-                if (confirmedRoots.remove(uuid) == null) {
-                    throw new CommitFailedException("Conflict", 0, "");
+                for (int i = 0; ; ++i) {
+                    setRootRemote(null, uuid, oldUuid);
+                    monitor.wait(1000);
+                    if (confirmedRoots.containsKey(uuid)) {
+                        if (confirmedRoots.remove(uuid) != null) {
+                            break;
+                        }
+                        throw new CommitFailedException("Conflict", 0, "");
+                    } else if (i > 8) {
+                        throw new CommitFailedException("Error", 0, "Unsuccessful after " + i + " retries");
+                    } else {
+                        // timeout => try again
+                    }
                 }
             } catch (InterruptedException e) {
                 throw new IllegalStateException(e);
