@@ -454,34 +454,31 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     private void setRootRemote(String type, String uuid, String oldUuid) {
         while (true) {
-            // do we need the sync?
-            synchronized (mergeRootMonitor) {
+            try {
+                String msg = nodeStateWriter.requestString("journal",
+                        journalId + (type == null ? "" : "-" + type) + " "
+                                + uuid + " "
+                                + oldUuid
+                );
+                if (!msg.equals("E")) {
+                    log.error("lastReq: {}", nodeStateWriter.getLastReq());
+                    log.error("{}: {}", msg, nodeStateWriter.receiveMore());
+                } else {
+                    nodeStateWriter.receiveMore(); // ignore, should be ""
+                }
+                break;
+            } catch (Exception e1) {
+                log.warn(e1.toString());
                 try {
-                    String msg = nodeStateWriter.requestString("journal",
-                            journalId + (type == null ? "" : "-" + type) + " "
-                                    + uuid + " "
-                                    + oldUuid
-                    );
-                    if (!msg.equals("E")) {
-                        log.error("lastReq: {}", nodeStateWriter.getLastReq());
-                        log.error("{}: {}", msg, nodeStateWriter.receiveMore());
-                    } else {
-                        nodeStateWriter.receiveMore(); // ignore, should be ""
-                    }
-                    break;
-                } catch (Exception e1) {
-                    log.warn(e1.toString());
-                    try {
-                        Thread.sleep(100);
-                    } catch (InterruptedException e) {
-                        // ignore
-                    }
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    // ignore
                 }
             }
         }
     }
 
-    private synchronized void mergeRoot(NodeState ns, CommitInfo info) throws CommitFailedException {
+    private void mergeRoot(NodeState ns, CommitInfo info) throws CommitFailedException {
         final SimpleNodeState superRoot = getSuperRoot();
         final NodeBuilder superRootBuilder = superRoot.builder();
         superRootBuilder.setChildNode(ROOT_NODE_NAME, ns);
@@ -491,7 +488,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     @Override
     @NotNull
-    public synchronized NodeState merge(@NotNull NodeBuilder builder, @NotNull CommitHook commitHook, @NotNull CommitInfo info) throws CommitFailedException {
+    public NodeState merge(@NotNull NodeBuilder builder, @NotNull CommitHook commitHook, @NotNull CommitInfo info) throws CommitFailedException {
         if (!(builder instanceof SimpleNodeBuilder)) {
             throw new IllegalArgumentException();
         }
@@ -519,12 +516,12 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                 ((SimpleNodeBuilder) builder).reset(committed);
                 return committed;
             } catch (CommitFailedException e) {
-                if (retried > 9) {
+                if (retried > 90) {
                     log.error("Commit unsuccessful after retrying {} times. Giving up", retried);
                     throw e;
                 }
                 try {
-                    Thread.sleep(1000);
+                    Thread.sleep(100);
                 } catch (InterruptedException ex) {
                 }
             }
