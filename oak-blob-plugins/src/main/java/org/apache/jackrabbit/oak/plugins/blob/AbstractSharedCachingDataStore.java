@@ -34,6 +34,8 @@ import java.util.concurrent.TimeUnit;
 
 import com.google.common.base.Function;
 import com.google.common.base.Stopwatch;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterators;
@@ -135,6 +137,11 @@ public abstract class AbstractSharedCachingDataStore extends AbstractDataStore
     protected CompositeDataStoreCache cache;
 
     /**
+     * Data record cache
+     */
+    protected Cache<String, FileCacheDataRecord> dataRecordCache;
+
+    /**
      * The delegate backend
      */
     protected AbstractSharedBackend backend;
@@ -178,6 +185,10 @@ public abstract class AbstractSharedCachingDataStore extends AbstractDataStore
                 }
             }, statisticsProvider, listeningExecutor, schedulerExecutor, executor, stagingPurgeInterval,
                 stagingRetryInterval);
+        this.dataRecordCache = CacheBuilder.newBuilder()
+                .expireAfterAccess(10, TimeUnit.SECONDS)
+                .initialCapacity(100000)
+                .build();
     }
 
     protected abstract AbstractSharedBackend createBackend();
@@ -197,22 +208,25 @@ public abstract class AbstractSharedCachingDataStore extends AbstractDataStore
     @Override
     @Nullable
     public DataRecord getRecordIfStored(DataIdentifier dataIdentifier)
-        throws DataStoreException {
+            throws DataStoreException {
         // Return file attributes from cache only if corresponding file is cached
         // This avoids downloading the file for just accessing the meta data.
-        File cached = cache.getIfPresent(dataIdentifier.toString());
-        if (cached != null && cached.exists()) {
-            return new FileCacheDataRecord(this, backend, dataIdentifier, cached.length(),
-                tmp, cached.lastModified());
-        } else {
-            // Return the metadata from backend and lazily load the stream
-            try {
-                DataRecord rec = backend.getRecord(dataIdentifier);
-                return new FileCacheDataRecord(this, backend, dataIdentifier, rec.getLength(),
-                    tmp, rec.getLastModified());
-            } catch (Exception e) {
-                LOG.error("Error retrieving record [{}]", dataIdentifier, e);
-            }
+        try {
+            return dataRecordCache.get(dataIdentifier.toString(),
+                    () -> {
+                        File cached = cache.getIfPresent(dataIdentifier.toString());
+                        if (cached != null && cached.exists()) {
+                            return new FileCacheDataRecord(this, backend, dataIdentifier, cached.length(),
+                                    tmp, cached.lastModified());
+                        } else {
+                            // Return the metadata from backend and lazily load the stream
+                            DataRecord rec = backend.getRecord(dataIdentifier);
+                            return new FileCacheDataRecord(this, backend, dataIdentifier, rec.getLength(),
+                                    tmp, rec.getLastModified());
+                        }
+                    });
+        } catch (Exception e) {
+            LOG.error("Error retrieving record [{}]", dataIdentifier, e);
         }
         return null;
     }
