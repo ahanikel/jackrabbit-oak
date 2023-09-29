@@ -154,6 +154,7 @@ public abstract class AbstractSharedCachingDataStore extends AbstractDataStore
     private Cache<String, DataRecord> recordCache;
 
     public void init(String homeDir) throws DataStoreException {
+        LOG.info("Blob metadata cache active.");
         if (path == null) {
             path = homeDir + "/repository/datastore";
         }
