@@ -153,6 +153,10 @@ public abstract class AbstractSharedCachingDataStore extends AbstractDataStore
      */
     private Cache<String, DataRecord> recordCache;
 
+    public static long timer = 0;
+    public static int runs = 0;
+
+
     public void init(String homeDir) throws DataStoreException {
         LOG.info("Blob metadata cache active.");
         if (path == null) {
@@ -211,20 +215,30 @@ public abstract class AbstractSharedCachingDataStore extends AbstractDataStore
     @Nullable
     public DataRecord getRecordIfStored(DataIdentifier dataIdentifier)
         throws DataStoreException {
+        long start = System.nanoTime();
         // Return file attributes from cache only if corresponding file is cached
         // This avoids downloading the file for just accessing the meta data.
         File cached = cache.getIfPresent(dataIdentifier.toString());
-        if (cached != null && cached.exists()) {
-            return new FileCacheDataRecord(this, backend, dataIdentifier, cached.length(),
-                tmp, cached.lastModified());
-        } else {
-            // Return the metadata from backend and lazily load the stream
-            try {
+        try {
+            if (cached != null && cached.exists()) {
+                return new FileCacheDataRecord(this, backend, dataIdentifier, cached.length(),
+                    tmp, cached.lastModified());
+            } else {
+                // Return the metadata from backend and lazily load the stream
                 DataRecord rec = recordCache.get(dataIdentifier.toString(), () -> backend.getRecord(dataIdentifier));
                 return new FileCacheDataRecord(this, backend, dataIdentifier, rec.getLength(),
                     tmp, rec.getLastModified());
-            } catch (Exception e) {
-                LOG.error("Error retrieving record [{}]", dataIdentifier, e);
+            }
+        } catch (Exception e) {
+            LOG.error("Error retrieving record [{}]", dataIdentifier, e);
+        } finally {
+            if (runs > 98) {
+                LOG.info("Total time for 100 runs: {} sec", (timer + (System.nanoTime() - start)) / 1.0e9);
+                runs = 0;
+                timer = 0;
+            } else {
+                timer += (System.nanoTime() - start);
+                ++runs;
             }
         }
         return null;
