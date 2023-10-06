@@ -131,6 +131,9 @@ public class NodeImpl<T extends NodeDelegate> extends ItemImpl<T> implements Jac
 
     private final int logWarnStringSizeThreshold;
 
+    private static long timer = 0;
+    private static int runs = 0;
+
     @Nullable
     public static NodeImpl<? extends NodeDelegate> createNodeOrNull(
             @Nullable NodeDelegate delegate, @NotNull SessionContext context)
@@ -557,8 +560,9 @@ public class NodeImpl<T extends NodeDelegate> extends ItemImpl<T> implements Jac
     @Override
     @NotNull
     public Node getNode(String relPath) throws RepositoryException {
+        long start = System.nanoTime();
         final String oakPath = getOakPathOrThrowNotFound(relPath);
-        return perform(new NodeOperation<Node>(dlg, "getNode") {
+        Node ret = perform(new NodeOperation<Node>(dlg, "getNode") {
             @NotNull
             @Override
             public Node perform() throws RepositoryException {
@@ -570,6 +574,15 @@ public class NodeImpl<T extends NodeDelegate> extends ItemImpl<T> implements Jac
                 }
             }
         });
+        if (runs > 98) {
+            LOG.info("Total time for 100 runs: {} sec", (timer + (System.nanoTime() - start)) / 1.0e9);
+            runs = 0;
+            timer = 0;
+        } else {
+            timer += (System.nanoTime() - start);
+            ++runs;
+        }
+        return ret;
     }
 
     @Override
