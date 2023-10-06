@@ -90,6 +90,9 @@ public class SessionImpl implements JackrabbitSession {
     private final CounterStats sessionCounter;
     private final Object logoutMonitor = new Object();
 
+    private static long timer = 0;
+    private static int runs = 0;
+
     public SessionImpl(SessionContext sessionContext) {
         this.sessionContext = sessionContext;
         this.sd = sessionContext.getSessionDelegate();
@@ -379,7 +382,17 @@ public class SessionImpl implements JackrabbitSession {
     @Override
     @NotNull
     public Node getNodeByIdentifier(String id) throws RepositoryException {
-        return getNodeById(requireNonNull(id, "parameter 'id' must not be null"));
+        long start = System.nanoTime();
+        Node ret = getNodeById(requireNonNull(id, "parameter 'id' must not be null"));
+        if (runs > 98) {
+            log.info("Total time for 100 runs: {} sec", (timer + (System.nanoTime() - start)) / 1.0e9);
+            runs = 0;
+            timer = 0;
+        } else {
+            timer += (System.nanoTime() - start);
+            ++runs;
+        }
+        return ret;
     }
 
     @Override
