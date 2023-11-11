@@ -25,15 +25,15 @@ import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
 
 import java.io.Closeable;
-import java.lang.management.ManagementFactory;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.UUID;
 
 public class SimpleRequestResponse implements Closeable {
 
     private static final Logger log = LoggerFactory.getLogger(SimpleRequestResponse.class);
-    private static final String processId = ManagementFactory.getRuntimeMXBean().getName();
 
+    private final String thisInstanceId;
     private final ThreadLocal<ZMQ.Socket> readerSocket;
     private final ThreadLocal<ZMQ.Socket> writerSocket;
     private final ThreadLocal<String> prefixOut;
@@ -46,8 +46,9 @@ public class SimpleRequestResponse implements Closeable {
     public SimpleRequestResponse(Topic topic, String pubAddr, String subAddr) {
 
         final ZContext context = new ZContext();
-        this.prefixOut = ThreadLocal.withInitial(() -> topic.toString()  + "-req " + processId + "-" + Thread.currentThread().getId());
-        this.prefixIn  = ThreadLocal.withInitial(() -> topic.toString()  + "-rep " + processId + "-" + Thread.currentThread().getId());
+        this.thisInstanceId = UUID.randomUUID().toString();
+        this.prefixOut = ThreadLocal.withInitial(() -> topic.toString()  + "-req " + thisInstanceId + "-" + Thread.currentThread().getId());
+        this.prefixIn  = ThreadLocal.withInitial(() -> topic.toString()  + "-rep " + thisInstanceId + "-" + Thread.currentThread().getId());
         this.thisReq = new ThreadLocal<>();
         this.lastReq = new ThreadLocal<>();
         this.requestMsgId = ThreadLocal.withInitial(() -> 0L);
