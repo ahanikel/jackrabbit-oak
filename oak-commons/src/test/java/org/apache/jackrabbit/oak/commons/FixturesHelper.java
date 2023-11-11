@@ -48,7 +48,7 @@ public final class FixturesHelper {
 
     private static final Set<Fixture> FIXTURES;
     static {
-        String raw = System.getProperty(NS_FIXTURES, "");
+        String raw = System.getProperty(NS_FIXTURES, "ZEROMQ_NS");
         if (raw.trim().isEmpty()) {
             FIXTURES = unmodifiableSet(EnumSet.allOf(Fixture.class));
         } else {
