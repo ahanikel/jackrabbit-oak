@@ -61,6 +61,7 @@ import org.slf4j.LoggerFactory;
 import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
+import org.zeromq.ZMQException;
 
 import java.io.Closeable;
 import java.io.File;
@@ -229,6 +230,9 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                             }
                         }
                     } catch (Exception t) {
+                        if (t instanceof ZMQException && t.getMessage().equals("Errno 4")) {
+                            break;
+                        }
                         log.warn("Caught exception: {}", t);
                         try {
                             Thread.sleep(100);
