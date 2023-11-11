@@ -18,31 +18,37 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq;
 
+import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.api.CommitFailedException;
+import org.apache.jackrabbit.oak.commons.IOUtils;
 import org.apache.jackrabbit.oak.spi.commit.CommitInfo;
 import org.apache.jackrabbit.oak.spi.commit.EmptyHook;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Ignore;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.*;
 import org.junit.rules.TemporaryFolder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
-@Ignore("unfinished")
 public class SimpleNodeStoreTest {
 
     private static final String publisherUrl = "ipc://comm-hub-pub";
     private static final String subscriberUrl = "ipc://comm-hub-sub";
+    private static final Logger log = LoggerFactory.getLogger(SimpleNodeStoreTest.class);
 
     @Rule
     public TemporaryFolder temporaryFolder = new TemporaryFolder();
@@ -55,6 +61,15 @@ public class SimpleNodeStoreTest {
     private ZMQ.Socket pubSocket;
     private ZMQ.Socket subSocket;
     private ExecutorService threadPool;
+
+    private SimpleNodeStore newSimpleNodeStore(String journalId) throws IOException {
+        return SimpleNodeStore.builder()
+                .setBackendReaderURL(subscriberUrl)
+                .setBackendWriterURL(publisherUrl)
+                .setJournalId(journalId)
+                .setBlobCacheDir(temporaryFolder.newFolder().getAbsolutePath())
+                .build();
+    }
 
     @Before
     public void setup() throws IOException {
@@ -71,12 +86,7 @@ public class SimpleNodeStoreTest {
         threadPool.execute(() -> ZMQ.proxy(subSocket, pubSocket, null));
         threadPool.execute(reader);
         threadPool.execute(writer);
-        store = SimpleNodeStore.builder()
-            .setBackendReaderURL(subscriberUrl)
-            .setBackendWriterURL(publisherUrl)
-            .setJournalId("golden")
-            .setBlobCacheDir(temporaryFolder.newFolder().getAbsolutePath())
-            .build();
+        store = newSimpleNodeStore("golden");
     }
 
     @After
@@ -97,6 +107,112 @@ public class SimpleNodeStoreTest {
         child.setProperty("a-long", 99);
         child.setProperty("a-binary", "the-value".getBytes(StandardCharsets.UTF_8));
         store.merge(root, new EmptyHook(), CommitInfo.EMPTY);
+    }
+
+    @Test
+    public void testConcurrentReaders() {
+        SimpleRequestResponse reader1 = new SimpleRequestResponse(SimpleRequestResponse.Topic.READ, publisherUrl, subscriberUrl);
+        SimpleRequestResponse reader2 = new SimpleRequestResponse(SimpleRequestResponse.Topic.READ, publisherUrl, subscriberUrl);
+        reader1.requestString("journal", "golden");
+        reader1.receiveMore();
+        String ret1 = reader1.requestString("journal", "golden");
+        String ret2 = reader2.requestString("journal", "golden");
+        String ret4 = reader2.receiveMore();
+        String ret3 = reader1.receiveMore();
+        Assert.assertEquals("E", ret1);
+        Assert.assertEquals("E", ret2);
+        Assert.assertEquals("953A5B0E88B832A0122DB4EA380D6E12", ret3);
+        Assert.assertEquals("953A5B0E88B832A0122DB4EA380D6E12", ret4);
+
+        String rethas1 = reader1.requestString("hasblob", "953A5B0E88B832A0122DB4EA380D6E12");
+        Assert.assertEquals("E", rethas1);
+        String rethas2 = reader1.receiveMore();
+        Assert.assertTrue(Boolean.valueOf(rethas2));
+
+        String retblob1 = reader1.requestString("blob", "953A5B0E88B832A0122DB4EA380D6E12");
+        Assert.assertEquals("E", retblob1);
+        String retblob2 = reader1.receiveMore();
+        Assert.assertEquals("n:\n" +
+                "n+ checkpoints 00000000-0000-0000-0000-000000000000\n" +
+                "n+ root 00000000-0000-0000-0000-000000000000\n" +
+                "n!\n", retblob2);
+    }
+
+    @Test
+    public void testConcurrentWriters() throws IOException, InterruptedException {
+        SimpleNodeStore store2 = newSimpleNodeStore("golden");
+        Random random = new Random();
+        byte[] randomBlob = new byte[1024576];
+        for (int i = 0; i < randomBlob.length; ++i) {
+            randomBlob[i] = (byte) random.nextInt(256);
+        }
+        AtomicReference<Blob> blob1 = new AtomicReference<>();
+        AtomicReference<Blob> blob2 = new AtomicReference<>();
+        ExecutorService executorService = Executors.newFixedThreadPool(2);
+        executorService.execute( () -> {
+            try {
+                blob1.set(store.createBlob(new ByteArrayInputStream(randomBlob)));
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        executorService.execute( () -> {
+            try {
+                blob2.set(store.createBlob(new ByteArrayInputStream(randomBlob)));
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        executorService.shutdown();
+        executorService.awaitTermination(1, TimeUnit.HOURS);
+        log.info("blobs written");
+        Assert.assertEquals(blob1.get().getReference(), blob2.get().getReference());
+        Assert.assertTrue(store.getBlob(blob1.get().getReference()) != null);
+        Assert.assertTrue(store2.getBlob(blob2.get().getReference()) != null);
+        ByteArrayOutputStream bos = new ByteArrayOutputStream(1024576);
+        IOUtils.copy(store.getBlob(blob1.get().getReference()).getNewStream(), bos);
+        Assert.assertArrayEquals(randomBlob, bos.toByteArray());
+    }
+
+    /*
+    This sometimes fails with 23:06:55.372 [main] ERROR org.apache.jackrabbit.oak.store.zeromq.SimpleRequestResponse - Request id does not match, actual: [0, 0, 0, 0, 0, 0, 0, 0], expected: [0, 0, 0, 0, 0, 0, 0, 2]
+    java.lang.IllegalStateException: java.io.FileNotFoundException: /var/folders/4k/0rck0w3s49vbwm062m2yx39c0000gn/T/junit14112334235295906039/junit15436517003978018593/8E/29/9F/8E299FCB7AF0105D714D1FF1637E3D5B (No such file or directory)
+    */
+    @Test
+    public void testConcurrent() throws IOException, CommitFailedException, InterruptedException {
+        SimpleNodeStore store2 = newSimpleNodeStore("golden");
+
+        NodeBuilder root = store.getRoot().builder();
+        NodeBuilder root2 = store2.getRoot().builder();
+
+        NodeBuilder child = root.child("content");
+        child.setProperty("a-string", "the-value");
+        child.setProperty("a-long", 99);
+        child.setProperty("a-binary", "the-value".getBytes(StandardCharsets.UTF_8));
+
+        NodeBuilder child2 = root.child("content");
+        child2.setProperty("a-string", "the-value");
+        child2.setProperty("a-long", 97);
+        child2.setProperty("a-binary", "the-value".getBytes(StandardCharsets.UTF_8));
+
+        ExecutorService executorService = Executors.newFixedThreadPool(2);
+        executorService.execute(() -> {
+            try {
+                store.merge(root, new EmptyHook(), CommitInfo.EMPTY);
+            } catch (CommitFailedException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        executorService.execute(() -> {
+            try {
+                store2.merge(root, new EmptyHook(), CommitInfo.EMPTY);
+            } catch (CommitFailedException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        executorService.shutdown();
+        executorService.awaitTermination(1, TimeUnit.HOURS);
+        store2.close();
     }
 
     @Test
