@@ -19,6 +19,7 @@
 package org.apache.jackrabbit.oak.store.zeromq;
 
 import org.apache.commons.codec.digest.DigestUtils;
+import org.apache.jackrabbit.oak.commons.Buffer;
 import org.apache.jackrabbit.oak.store.zeromq.SimpleBlobStore;
 import org.junit.After;
 import org.junit.Before;
@@ -79,84 +80,117 @@ public class SimpleBlobReaderServiceTest {
 
     @Test
     public void handleReaderServiceJournal() {
-        request.send("journal /etc/passwd");
+        long msgid = 123L;
+        sendReadRequestString(msgid, "journal", "/etc/password");
         SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
+        assertEquals(msgid, Util.longFromBytes(request.recv()));
+        assertEquals(0, Util.longFromBytes(request.recv()));
         assertEquals("F", request.recvStr());
         assertEquals("IllegalArgument", request.recvStr());
 
-        request.send("journal ../../../../../../../../../../../../../../../../../../../../etc/passwd");
+        sendReadRequestString(++msgid, "journal", "../../../../../../../../../../../../../../../../../../../../etc/passwd");
         SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
+        assertEquals(msgid, Util.longFromBytes(request.recv()));
+        assertEquals(0, Util.longFromBytes(request.recv()));
         assertEquals("F", request.recvStr());
         assertEquals("IllegalArgument", request.recvStr());
 
-        request.send("journal golden");
+        sendReadRequestString(++msgid, "journal", "golden");
         SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
+        assertEquals(msgid, Util.longFromBytes(request.recv()));
+        assertEquals(0, Util.longFromBytes(request.recv()));
         assertEquals("E", request.recvStr());
         assertEquals(new UUID(0, 0).toString(), request.recvStr());
 
-        request.send("journal mytestjournal");
+        sendReadRequestString(++msgid, "journal", "mytestjournal");
         SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
+        assertEquals(msgid, Util.longFromBytes(request.recv()));
+        assertEquals(0, Util.longFromBytes(request.recv()));
         assertEquals("E", request.recvStr());
         assertEquals(TestUtils.testNodeStateHash, request.recvStr());
     }
 
     @Test
     public void handleReaderServiceHasBlob() {
-        request.send("hasblob /etc/passwd");
+        long msgid = 456;
+        sendReadRequestString(msgid, "hasblob", "/etc/passwd");
         SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
+        assertEquals(msgid, Util.longFromBytes(request.recv()));
+        assertEquals(0, Util.longFromBytes(request.recv()));
         assertEquals("F", request.recvStr());
         assertEquals("IllegalArgument", request.recvStr());
 
-        request.send("hasblob ../../../../../../../../../../../../../../../../../../../../etc/passwd");
+        sendReadRequestString(++msgid, "hasblob", "../../../../../../../../../../../../../../../../../../../../etc/passwd");
         SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
+        assertEquals(msgid, Util.longFromBytes(request.recv()));
+        assertEquals(0, Util.longFromBytes(request.recv()));
         assertEquals("F", request.recvStr());
         assertEquals("IllegalArgument", request.recvStr());
 
-        request.send("hasblob 0");
+        sendReadRequestString(++msgid, "hasblob", "0");
         SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
+        assertEquals(msgid, Util.longFromBytes(request.recv()));
+        assertEquals(0, Util.longFromBytes(request.recv()));
         assertEquals("E", request.recvStr());
         assertEquals("false", request.recvStr());
 
-        request.send("hasblob " + new UUID(0, 0).toString());
+        sendReadRequestString(++msgid, "hasblob", new UUID(0, 0).toString());
         SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
+        assertEquals(msgid, Util.longFromBytes(request.recv()));
+        assertEquals(0, Util.longFromBytes(request.recv()));
         assertEquals("E", request.recvStr());
         assertEquals("false", request.recvStr());
 
-        request.send("hasblob " + TestUtils.testNodeStateHash);
+        sendReadRequestString(++msgid, "hasblob", TestUtils.testNodeStateHash);
         SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
+        assertEquals(msgid, Util.longFromBytes(request.recv()));
+        assertEquals(0, Util.longFromBytes(request.recv()));
         assertEquals("E", request.recvStr());
         assertEquals("true", request.recvStr());
     }
 
     @Test
     public void handleReaderServiceBlob() {
-        request.send("blob /etc/passwd");
+        long msgid = 789L;
+        sendReadRequestString(msgid, "blob", "/etc/passwd");
         SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
+        assertEquals(msgid, Util.longFromBytes(request.recv()));
+        assertEquals(0, Util.longFromBytes(request.recv()));
         assertEquals("F", request.recvStr());
         assertEquals("IllegalArgument", request.recvStr());
 
-        request.send("blob ../../../../../../../../../../../../../../../../../../../../etc/passwd");
+        sendReadRequestString(++msgid, "blob", "../../../../../../../../../../../../../../../../../../../../etc/passwd");
         SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
+        assertEquals(msgid, Util.longFromBytes(request.recv()));
+        assertEquals(0, Util.longFromBytes(request.recv()));
         assertEquals("F", request.recvStr());
         assertEquals("IllegalArgument", request.recvStr());
 
-        request.send("blob 0");
+        sendReadRequestString(++msgid, "blob", "0");
         SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
+        assertEquals(msgid, Util.longFromBytes(request.recv()));
+        assertEquals(0, Util.longFromBytes(request.recv()));
         assertEquals("N", request.recvStr());
         assertEquals("", request.recvStr());
 
-        request.send("blob " + new UUID(0, 0).toString());
+        sendReadRequestString(++msgid, "blob", new UUID(0, 0).toString());
         SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
+        assertEquals(msgid, Util.longFromBytes(request.recv()));
+        assertEquals(0, Util.longFromBytes(request.recv()));
         assertEquals("N", request.recvStr());
         assertEquals("", request.recvStr());
 
-        request.send("blob " + DigestUtils.md5Hex("someArbitraryData").toUpperCase());
+        sendReadRequestString(++msgid, "blob", DigestUtils.md5Hex("someArbitraryData").toUpperCase());
         SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
+        assertEquals(msgid, Util.longFromBytes(request.recv()));
+        assertEquals(0, Util.longFromBytes(request.recv()));
         assertEquals("N", request.recvStr());
         assertEquals("", request.recvStr());
 
-        request.send("blob " + TestUtils.testNodeStateHash);
+        sendReadRequestString(++msgid, "blob", TestUtils.testNodeStateHash);
         SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
+        assertEquals(msgid, Util.longFromBytes(request.recv()));
+        assertEquals(0, Util.longFromBytes(request.recv()));
         assertEquals("E", request.recvStr());
         assertEquals(TestUtils.testNodeState, request.recvStr());
     }
@@ -172,8 +206,10 @@ public class SimpleBlobReaderServiceTest {
             ref = e.getRef();
         }
         for (int count = 0; count < blobSize;) {
-            request.send("blob " + ref + " " + count + " -1");
+            sendReadRequestString(999, "blob", ref + " " + count + " -1");
             SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
+            assertEquals(999, Util.longFromBytes(request.recv()));
+            assertEquals(0, Util.longFromBytes(request.recv()));
             String code = request.recvStr();
             byte[] chunk = request.recv();
             assertEquals(count % 10, chunk[0]);
@@ -185,6 +221,18 @@ public class SimpleBlobReaderServiceTest {
                 assertEquals("E", code);
                 assertEquals(blobSize, count);
             }
+        }
+    }
+
+    private void sendReadRequestString(long msgid, String op, String msg) {
+        Buffer b = Buffer.allocate(Long.BYTES);
+        b.putLong(msgid);
+        request.sendMore(b.array());
+        request.sendMore(op);
+        if (msg == null) {
+            request.send("");
+        } else {
+            request.send(msg);
         }
     }
 }
