@@ -76,20 +76,32 @@ public class SimpleBlobWriterServiceTest {
     public void handleWriterService() throws IOException {
         sendWriteRequestString("thread-1", 123, "b64+", "CDBA3AE79386D3CF3DAAE8EC7F760588");
         SimpleBlobWriterService.handleWriterService(reply, simpleRecordHandler);
+        assertEquals(123, Util.longFromBytes(request.recv()));
+        assertEquals(0, Util.longFromBytes(request.recv()));
         assertEquals("E", request.recvStr());
         assertEquals("", request.recvStr());
+
         sendWriteRequestString("thread-1", 124, "b64d", "bjoKbisgOmFzeW5jIDQzRDA3MjI5N0MwOTM3NUZBNjBGOUE2RDEzNzI0QkIzCm4rIDpjbHVzdGVyQ29uZmlnIEVFQkFCNTBCMkJBNEFFMzY5RjVGMTlGOTRFRkFDQzdECm4rIGFwcHMgQUNGMjQ3OTZBRjk3NTA1REFDMEYxMzU4Q0NENUVBNUMKbisgYmluIEM2RDREQjMxMjIxNjQ3RUQwQTlFMzVENTI0RjdCRDFBCm4rIGNvbmYgMUMwMUU3NUFEQTY3QkU3NURCNzhBNzg1MzA4MDMyN0EKbisgY29udGVudCA2NzFGODVCMUYwMUI5NEMwMDU3MzAzNDRFNEVGQTQ2MwpuKyBldGMgREU5OTMxNkExNTlCRDg4QkI5MDlFMERBOUQ0MDhBNzcKbisgaG9tZSBFQTYyMkZENDMwMzI3NTkyMEJCODQ5MjFEMEE5NkFGRApuKyBqY3I6c3lzdGVtIDgyOUVBRDdEQTlGQjFGRUNGRUM1MzUxMTM5MjhEODE1Cm4rIGxpYnMgMjZFMkRGMDM0NjRENjgzQzFDQjhDODczMEJBQUU3MEQKbisgb2FrOmluZGV4IDVBMjI1RDBFNTgwQkQ4QkNDMDIzRDJEMTQ5QjZGODBFCm4rIHJlcDpwb2xpY3kgQzVEMzA3RTkwQjBGQ0UxMDEyN0VFNzE4RjVDMzY2QzMKbisgcmVwOnJlcG9Qb2xpY3kgM0ExQzdFMTUxMUM1RUMyQjUyM0JCRkRDRTg5MEEwNkUKbisgc3lzdGVtIERDOEZDMTJFREUwMTU0MUUyQjg2N0MwNTYxMjE1OEQ1Cm4rIHRtcCAyRDczNEI0MTA1N0JENDQ3RTZFRkU5N0M1MEM4MUJBOApuKyB2YXIgMUJGRDMwNUM3QzcxMkFDMEVBOUJCQjVFODBBQUU4NzMKcCsgamNyOm1peGluVHlwZXMgPE5BTUVTPiBbcmVwOkFjY2Vzc0NvbnRyb2xsYWJsZSxyZXA6UmVwb0FjY2Vzc0NvbnRyb2xsYWJsZV0KcCsgamNyOnByaW1hcnlUeXBlIDxOQU1FPiByZXA6cm9vdApwKyBzbGluZzpyZXNvdXJjZVR5cGUgPFNUUklORz4gc2xpbmc6cmVkaXJlY3QKcCsgc2xpbmc6dGFyZ2V0IDxTVFJJTkc+IC9pbmRleC5odG1sCm4hCg==");
         SimpleBlobWriterService.handleWriterService(reply, simpleRecordHandler);
+        assertEquals(124, Util.longFromBytes(request.recv()));
+        assertEquals(0, Util.longFromBytes(request.recv()));
         assertEquals("E", request.recvStr());
         assertEquals("", request.recvStr());
+
         sendWriteRequestString("thread-1", 125, "b64!", null);
         SimpleBlobWriterService.handleWriterService(reply, simpleRecordHandler);
+        assertEquals(125, Util.longFromBytes(request.recv()));
+        assertEquals(0, Util.longFromBytes(request.recv()));
         assertEquals("E", request.recvStr());
         assertEquals("", request.recvStr());
+
         sendWriteRequestString("thread-1", 126, "journal", "mytestjournal CDBA3AE79386D3CF3DAAE8EC7F760588 " + new UUID(0, 0).toString());
         SimpleBlobWriterService.handleWriterService(reply, simpleRecordHandler);
+        assertEquals(126, Util.longFromBytes(request.recv()));
+        assertEquals(0, Util.longFromBytes(request.recv()));
         assertEquals("E", request.recvStr());
         assertEquals("", request.recvStr());
+
         File journalFile = simpleBlobStore.getSpecificFile("journal-mytestjournal");
         assertTrue(journalFile.exists());
         String head = IOUtils.readString(new FileInputStream(journalFile));
@@ -122,29 +134,38 @@ public class SimpleBlobWriterServiceTest {
     @Test
     public void writeLargeBlob() throws IOException {
         final String largeBlobRef = "4F52C56A56541C133E684BFD3DA7AEB3";
+        final int blobSize = 1_000_000_000;
         final int chunkSize = 256 * 1000;
         final String blobDataMessage = TestUtils.getLargeChunkEncoded(chunkSize);
 
         sendWriteRequestString("thread-1", 501, "b64+", largeBlobRef);
         SimpleBlobWriterService.handleWriterService(reply, simpleRecordHandler);
+        assertEquals(501, Util.longFromBytes(request.recv()));
+        assertEquals(0, Util.longFromBytes(request.recv()));
         assertEquals("E", request.recvStr());
         assertEquals("", request.recvStr());
 
         int i;
-        for (i = 0; i <= 1_000_000_000 / chunkSize; ++i) {
-            sendWriteRequestString("thread-1", 501 + i, "b64d", blobDataMessage);
+        for (i = 0; i < blobSize / chunkSize; ++i) {
+            sendWriteRequestString("thread-1", 502 + i, "b64d", blobDataMessage);
             SimpleBlobWriterService.handleWriterService(reply, simpleRecordHandler);
+            assertEquals(502 + i, Util.longFromBytes(request.recv()));
+            assertEquals(0, Util.longFromBytes(request.recv()));
             assertEquals("E", request.recvStr());
             assertEquals("", request.recvStr());
         }
-        int remaining = 1_000_000_000 % chunkSize;
-        sendWriteRequestString("thread-1", 501 + i++, "b64d", TestUtils.getLargeChunkEncoded(remaining));
+        int remaining = blobSize % chunkSize;
+        sendWriteRequestString("thread-1", 502 + i, "b64d", TestUtils.getLargeChunkEncoded(remaining));
         SimpleBlobWriterService.handleWriterService(reply, simpleRecordHandler);
+        assertEquals(502 + i++, Util.longFromBytes(request.recv()));
+        assertEquals(0, Util.longFromBytes(request.recv()));
         assertEquals("E", request.recvStr());
         assertEquals("", request.recvStr());
 
-        sendWriteRequestString("thread-1", 501 + i, "b64!", null);
+        sendWriteRequestString("thread-1", 502 + i, "b64!", null);
         SimpleBlobWriterService.handleWriterService(reply, simpleRecordHandler);
+        assertEquals(502 + i, Util.longFromBytes(request.recv()));
+        assertEquals(0, Util.longFromBytes(request.recv()));
         String code = request.recvStr();
         String info = request.recvStr();
         if (code.equals("F")) {
@@ -154,7 +175,7 @@ public class SimpleBlobWriterServiceTest {
         assertEquals("", info);
 
         assertTrue(simpleBlobStore.hasBlob(largeBlobRef));
-        assertEquals(1_000_000_000, simpleBlobStore.getLength(largeBlobRef));
+        assertEquals(blobSize, simpleBlobStore.getLength(largeBlobRef));
         File blobFile = simpleBlobStore.getFile(largeBlobRef);
         FileInputStream fis = new FileInputStream(blobFile);
         byte[] ba = new byte[1];
@@ -167,29 +188,38 @@ public class SimpleBlobWriterServiceTest {
     @Test
     public void writeLargeBlobRaw() throws IOException {
         final String largeBlobRef = "4F52C56A56541C133E684BFD3DA7AEB3";
+        final int blobSize = 1_000_000_000;
         final int chunkSize = 256 * 1000;
         final byte[] blobDataMessage = TestUtils.getLargeChunk(chunkSize);
 
         sendWriteRequestString("thread-1", 501, "b64+", largeBlobRef);
         SimpleBlobWriterService.handleWriterService(reply, simpleRecordHandler);
+        assertEquals(501, Util.longFromBytes(request.recv()));
+        assertEquals(0, Util.longFromBytes(request.recv()));
         assertEquals("E", request.recvStr());
         assertEquals("", request.recvStr());
 
         int i;
-        for (i = 0; i <= 1_000_000_000 / chunkSize; ++i) {
-            sendWriteRequestBytes("thread-1", 501 + i, "braw", blobDataMessage);
+        for (i = 0; i < blobSize / chunkSize; ++i) {
+            sendWriteRequestBytes("thread-1", 502 + i, "braw", blobDataMessage);
             SimpleBlobWriterService.handleWriterService(reply, simpleRecordHandler);
+            assertEquals(502 + i, Util.longFromBytes(request.recv()));
+            assertEquals(0, Util.longFromBytes(request.recv()));
             assertEquals("E", request.recvStr());
             assertEquals("", request.recvStr());
         }
-        int remaining = 1_000_000_000 % chunkSize;
-        sendWriteRequestBytes("thread-1", 501 + i++, "braw", TestUtils.getLargeChunk(remaining));
+        int remaining = blobSize % chunkSize;
+        sendWriteRequestBytes("thread-1", 502 + i, "braw", TestUtils.getLargeChunk(remaining));
         SimpleBlobWriterService.handleWriterService(reply, simpleRecordHandler);
+        assertEquals(502 + i++, Util.longFromBytes(request.recv()));
+        assertEquals(0, Util.longFromBytes(request.recv()));
         assertEquals("E", request.recvStr());
         assertEquals("", request.recvStr());
 
-        sendWriteRequestString("thread-1", 501 + i, "b64!", null);
+        sendWriteRequestString("thread-1", 502 + i, "b64!", null);
         SimpleBlobWriterService.handleWriterService(reply, simpleRecordHandler);
+        assertEquals(502 + i, Util.longFromBytes(request.recv()));
+        assertEquals(0, Util.longFromBytes(request.recv()));
         String code = request.recvStr();
         String info = request.recvStr();
         if (code.equals("F")) {
@@ -199,7 +229,7 @@ public class SimpleBlobWriterServiceTest {
         assertEquals("", info);
 
         assertTrue(simpleBlobStore.hasBlob(largeBlobRef));
-        assertEquals(1_000_000_000, simpleBlobStore.getLength(largeBlobRef));
+        assertEquals(blobSize, simpleBlobStore.getLength(largeBlobRef));
         File blobFile = simpleBlobStore.getFile(largeBlobRef);
         FileInputStream fis = new FileInputStream(blobFile);
         byte[] ba = new byte[1];
