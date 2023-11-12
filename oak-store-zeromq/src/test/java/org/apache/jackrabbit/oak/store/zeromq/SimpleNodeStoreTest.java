@@ -190,7 +190,7 @@ public class SimpleNodeStoreTest {
         child.setProperty("a-long", 99);
         child.setProperty("a-binary", "the-value".getBytes(StandardCharsets.UTF_8));
 
-        NodeBuilder child2 = root.child("content");
+        NodeBuilder child2 = root2.child("content");
         child2.setProperty("a-string", "the-value");
         child2.setProperty("a-long", 97);
         child2.setProperty("a-binary", "the-value".getBytes(StandardCharsets.UTF_8));
@@ -205,7 +205,7 @@ public class SimpleNodeStoreTest {
         });
         executorService.execute(() -> {
             try {
-                store2.merge(root, new EmptyHook(), CommitInfo.EMPTY);
+                store2.merge(root2, new EmptyHook(), CommitInfo.EMPTY);
             } catch (CommitFailedException e) {
                 throw new RuntimeException(e);
             }
