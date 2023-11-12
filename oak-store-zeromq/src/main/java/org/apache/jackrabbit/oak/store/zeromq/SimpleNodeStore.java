@@ -207,15 +207,25 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                             journalRoot = newUuid;
                             roots.put(newUuid);
                             log.info("new root: {}", journalRoot);
+                        } else if (newUuid.equals(journalRoot)) {
+                            log.info("Already applied");
+                            Pair<Object, CommitInfo> monitorInfo = expectedRoots.remove(newUuid);
+                            if (monitorInfo != null) {
+                                confirmedRoots.put(newUuid, monitorInfo);
+                                synchronized (monitorInfo.fst) {
+                                    monitorInfo.fst.notify();
+                                }
+                            }
+                            continue;
                         } else {
-                            log.warn("Conflicting updates, commit failed: journal {} {} {}", journalId, newUuid, oldUuid);
+                            log.warn("Conflicting updates, commit failed: journal {} new: {} old: {} journalRoot: {}", journalId, newUuid, oldUuid, journalRoot);
                             commitFailed = true;
                         }
                         Pair<Object, CommitInfo> monitorInfo = expectedRoots.remove(newUuid);
                         if (monitorInfo != null) {
                             log.info("Found our commit {}", newUuid);
+                            confirmedRoots.put(newUuid, monitorInfo);
                             if (!commitFailed) {
-                                confirmedRoots.put(newUuid, monitorInfo);
                                 if (changeDispatcher != null) {
                                     changeDispatcher.contentChanged(after.getChildNode(ROOT_NODE_NAME), monitorInfo.snd);
                                 }
@@ -224,9 +234,12 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                                 monitorInfo.fst.notify();
                             }
                         } else {
-                            commitFailed = false;
-                            if (changeDispatcher != null) {
-                                changeDispatcher.contentChanged(after.getChildNode(ROOT_NODE_NAME), CommitInfo.EMPTY_EXTERNAL);
+                            if (commitFailed) {
+                                commitFailed = false;
+                            } else {
+                                if (changeDispatcher != null) {
+                                    changeDispatcher.contentChanged(after.getChildNode(ROOT_NODE_NAME), CommitInfo.EMPTY_EXTERNAL);
+                                }
                             }
                         }
                     } catch (Exception t) {
@@ -430,12 +443,15 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
             try {
                 for (int i = 0; ; ++i) {
                     setRootRemote(null, uuid, oldUuid);
-                    monitor.wait(1000);
+                    monitor.wait(10000);
                     if (confirmedRoots.containsKey(uuid)) {
                         if (confirmedRoots.remove(uuid) != null) {
+                            if (commitFailed) {
+                                commitFailed = false;
+                                throw new CommitFailedException("Conflict", 0, "");
+                            }
                             break;
                         }
-                        throw new CommitFailedException("Conflict", 0, "");
                     } else if (i > 8) {
                         throw new CommitFailedException("Error", 0, "Unsuccessful after " + i + " retries");
                     } else {
@@ -500,6 +516,9 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         final NodeState before = builder.getBaseState();
 
         for (int retried = 0;; ++retried) {
+            if (retried > 0) {
+                log.info("Retrying merge: #{}", retried);
+            }
             final NodeState newBase = getRoot();
             final NodeState afterConflict;
             if (!before.equals(newBase)) {
