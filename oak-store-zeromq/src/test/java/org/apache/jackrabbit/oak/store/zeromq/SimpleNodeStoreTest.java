@@ -21,6 +21,7 @@ package org.apache.jackrabbit.oak.store.zeromq;
 import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.api.CommitFailedException;
 import org.apache.jackrabbit.oak.commons.IOUtils;
+import org.apache.jackrabbit.oak.jcr.Jcr;
 import org.apache.jackrabbit.oak.spi.commit.CommitInfo;
 import org.apache.jackrabbit.oak.spi.commit.EmptyHook;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
@@ -32,6 +33,8 @@ import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
 
+import javax.jcr.*;
+import javax.jcr.lock.Lock;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -44,6 +47,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 public class SimpleNodeStoreTest {
 
@@ -136,7 +142,7 @@ public class SimpleNodeStoreTest {
         String rethas1 = reader1.requestString("hasblob", "953A5B0E88B832A0122DB4EA380D6E12");
         Assert.assertEquals("E", rethas1);
         String rethas2 = reader1.receiveMore();
-        Assert.assertTrue(Boolean.valueOf(rethas2));
+        assertTrue(Boolean.valueOf(rethas2));
 
         String retblob1 = reader1.requestString("blob", "953A5B0E88B832A0122DB4EA380D6E12");
         Assert.assertEquals("E", retblob1);
@@ -176,8 +182,8 @@ public class SimpleNodeStoreTest {
         executorService.awaitTermination(1, TimeUnit.HOURS);
         log.info("blobs written");
         Assert.assertEquals(blob1.get().getReference(), blob2.get().getReference());
-        Assert.assertTrue(store.getBlob(blob1.get().getReference()) != null);
-        Assert.assertTrue(store2.getBlob(blob2.get().getReference()) != null);
+        assertTrue(store.getBlob(blob1.get().getReference()) != null);
+        assertTrue(store2.getBlob(blob2.get().getReference()) != null);
         ByteArrayOutputStream bos = new ByteArrayOutputStream(1024576);
         IOUtils.copy(store.getBlob(blob1.get().getReference()).getNewStream(), bos);
         Assert.assertArrayEquals(randomBlob, bos.toByteArray());
@@ -239,5 +245,34 @@ public class SimpleNodeStoreTest {
         for (String cp : store.checkpoints()) {
             System.out.println(cp);
         }
+    }
+
+    @Test
+    public void testJcr() throws RepositoryException, IOException {
+        final Jcr jcr1 = new Jcr(store);
+        final Repository repo1 = jcr1.createRepository();
+        final Session session1 = repo1.login(new SimpleCredentials("admin", "admin".toCharArray()));
+        final Node test1 = session1.getRootNode().addNode("test");
+        test1.addMixin("mix:lockable");
+        session1.save();
+        assertFalse(test1.isLocked());
+
+        final SimpleNodeStore store2 = newSimpleNodeStore("golden");
+        final Jcr jcr2 = new Jcr(store2);
+        final Repository repo2 = jcr2.createRepository();
+        final Session session2 = repo2.login(new SimpleCredentials("admin", "admin".toCharArray()));
+        final Node test2 = session2.getRootNode().getNode("test");
+        assertFalse(test2.isLocked());
+
+        Lock lock = test1.lock(false, false);
+        assertTrue(test1.isLocked());
+        assertFalse(test2.isLocked());
+        session2.refresh(true);
+        final Node test3 = session2.getRootNode().getNode("test");
+        assertTrue(test3.isLocked());
+        test1.unlock();
+        assertFalse(test1.isLocked());
+        session2.logout();
+        store2.close();
     }
 }
