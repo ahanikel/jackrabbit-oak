@@ -104,23 +104,28 @@ public class SimpleRequestResponse implements Closeable {
     public byte[] requestBytes(String op, byte[] args) {
         lastReq.set(thisReq.get());
         thisReq.set(op + " " + args);
-        final ZMQ.Socket writer = writerSocket.get();
-        final ZMQ.Socket reader = readerSocket.get();
+        ZMQ.Socket writer = writerSocket.get();
+        ZMQ.Socket reader = readerSocket.get();
         byte[] ret;
         byte[] msgid = getAndIncThreadLocalRequestMessageIdAsBytes();
         resetThreadLocalResponseMessageId();
+        byte[] reqId;
+        byte[] repId;
         do {
-            writer.sendMore(prefixOut.get());
-            writer.sendMore(msgid);
-            writer.sendMore(op);
-            writer.send(args);
-            ret = reader.recv();
-        } while (ret == null); // ret will contain the response type plus thread id
-        byte[] reqId = reader.recv();
-        byte[] repId = reader.recv();
-        if (!Arrays.equals(reqId, msgid)) {
-            log.error("Request id does not match, actual: {}, expected: {}", reqId, msgid);
-        }
+            do {
+                writer.sendMore(prefixOut.get());
+                writer.sendMore(msgid);
+                writer.sendMore(op);
+                writer.send(args);
+                ret = reader.recv();
+            } while (ret == null); // ret will contain the response type plus thread id
+            reqId = reader.recv();
+            repId = reader.recv();
+            if (!Arrays.equals(reqId, msgid)) {
+                log.warn("Request id does not match, actual: {}, expected: {}", reqId, msgid);
+                while (reader.recv() != null); // flush garbage
+            }
+        } while (!Arrays.equals(reqId, msgid));
         if (!Arrays.equals(repId, Util.LONG_ZERO)) {
             log.error("Reply id does not match, actual: {}", repId);
         }
