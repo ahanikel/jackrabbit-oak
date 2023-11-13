@@ -23,7 +23,6 @@ import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.hash.BloomFilter;
 import com.google.common.hash.Funnels;
-import org.apache.felix.scr.annotations.Service;
 import org.apache.jackrabbit.commons.SimpleValueFactory;
 import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.api.CommitFailedException;
@@ -91,7 +90,6 @@ import static org.apache.jackrabbit.oak.spi.cluster.ClusterRepositoryInfo.getOrC
         configurationPolicy = ConfigurationPolicy.REQUIRE,
         property = "oak.nodestore.description=nodeStoreType=simple"
 )
-@Service
 public class SimpleNodeStore implements NodeStore, Observable, Closeable, GarbageCollectableBlobStore, Clusterable {
 
     private static final Logger log = LoggerFactory.getLogger(SimpleNodeStore.class.getName());
