@@ -36,6 +36,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.util.Random;
 import java.util.concurrent.ExecutorService;
@@ -46,8 +47,6 @@ import java.util.concurrent.atomic.AtomicReference;
 
 public class SimpleNodeStoreTest {
 
-    private static final String publisherUrl = "ipc://comm-hub-pub";
-    private static final String subscriberUrl = "ipc://comm-hub-sub";
     private static final Logger log = LoggerFactory.getLogger(SimpleNodeStoreTest.class);
 
     @Rule
@@ -61,6 +60,8 @@ public class SimpleNodeStoreTest {
     private ZMQ.Socket pubSocket;
     private ZMQ.Socket subSocket;
     private ExecutorService threadPool;
+    private String publisherUrl;
+    private String subscriberUrl;
 
     private SimpleNodeStore newSimpleNodeStore(String journalId) throws IOException {
         return SimpleNodeStore.builder()
@@ -73,6 +74,14 @@ public class SimpleNodeStoreTest {
 
     @Before
     public void setup() throws IOException {
+        // I used ipc://comm-hub-pub and ipc://comm-hub-sub but that doesn't
+        // seem to work on all machines
+        ServerSocket sock = new ServerSocket(0);
+        publisherUrl = "tcp://localhost:" + sock.getLocalPort();
+        sock.close();
+        sock = new ServerSocket(0);
+        subscriberUrl = "tcp://localhost:" + sock.getLocalPort();
+        sock.close();
         context = new ZContext();
         pubSocket = context.createSocket(SocketType.PUB);
         pubSocket.bind(subscriberUrl);
