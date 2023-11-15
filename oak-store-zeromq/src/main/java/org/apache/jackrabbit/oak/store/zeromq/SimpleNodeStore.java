@@ -679,7 +679,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
             } catch (IllegalStateException e) {
                 throw new IllegalArgumentException(e);
             }
-            head.compareAgainstBaseState( base, new ConflictAnnotatingRebaseDiff(builder));
+            head.compareAgainstBaseState( base, new MergingApplyDiff(builder));
             head = (SimpleNodeState) builder.getNodeState();
         }
         return head;
