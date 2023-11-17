@@ -517,6 +517,11 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         for (int retried = 0;; ++retried) {
             if (retried > 0) {
                 log.info("Retrying merge: #{}", retried);
+                try {
+                    Thread.sleep(5000);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
             }
             final NodeState newBase = getRoot();
             final NodeState afterConflict;
