@@ -20,16 +20,53 @@ package org.apache.jackrabbit.oak.store.zeromq;
 
 import org.apache.jackrabbit.oak.api.PropertyState;
 import org.apache.jackrabbit.oak.api.Type;
+import org.apache.jackrabbit.oak.plugins.memory.EmptyNodeState;
 import org.apache.jackrabbit.oak.spi.state.ApplyDiff;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
+import org.apache.jackrabbit.oak.spi.state.NodeState;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class MergingApplyDiff extends ApplyDiff {
 
+    private final boolean delete;
+
     public MergingApplyDiff(NodeBuilder builder) {
         super(builder);
+        this.delete = true;
+    }
+
+    public MergingApplyDiff(NodeBuilder builder, boolean delete) {
+        super(builder);
+        this.delete = delete;
+    }
+
+    @Override
+    public boolean childNodeAdded(String name, NodeState after) {
+        /*
+        if (this.builder.hasChildNode(name)) {
+            return after.compareAgainstBaseState(EmptyNodeState.EMPTY_NODE, new MergingApplyDiff(this.builder.getChildNode(name), false));
+        }
+        */
+        this.builder.setChildNode(name, after);
+        return true;
+    }
+    @Override
+    public boolean childNodeChanged(String name, NodeState before, NodeState after) {
+        if (this.builder.hasChildNode(name)) {
+            return after.compareAgainstBaseState(before, new MergingApplyDiff(this.builder.getChildNode(name), false));
+        }
+        this.builder.setChildNode(name, after);
+        return true;
+    }
+
+    @Override
+    public boolean childNodeDeleted(String name, NodeState before) {
+        if (delete) {
+            super.childNodeDeleted(name, before);
+        }
+        return true;
     }
 
     @Override
@@ -48,6 +85,14 @@ public class MergingApplyDiff extends ApplyDiff {
             mergeArray((SimplePropertyState) before, (SimplePropertyState) after);
         } else {
             super.propertyChanged(before, after);
+        }
+        return true;
+    }
+
+    @Override
+    public boolean propertyDeleted(PropertyState before) {
+        if (delete) {
+            super.propertyDeleted(before);
         }
         return true;
     }
