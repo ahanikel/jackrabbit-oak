@@ -30,6 +30,7 @@ import org.apache.jackrabbit.oak.api.Descriptors;
 import org.apache.jackrabbit.oak.api.PropertyState;
 import org.apache.jackrabbit.oak.api.jmx.CheckpointMBean;
 import org.apache.jackrabbit.oak.osgi.OsgiWhiteboard;
+import org.apache.jackrabbit.oak.plugins.commit.ConflictHook;
 import org.apache.jackrabbit.oak.plugins.memory.MemoryNodeBuilder;
 import org.apache.jackrabbit.oak.spi.blob.BlobOptions;
 import org.apache.jackrabbit.oak.spi.blob.GarbageCollectableBlobStore;
@@ -665,10 +666,14 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     @NotNull
     public NodeState rebase(@NotNull NodeBuilder builder) {
         final NodeState newBase = getRoot();
-        return rebase(builder, newBase);
+        try {
+            return rebase(builder, newBase);
+        } catch (CommitFailedException e) {
+            throw new RuntimeException(e);
+        }
     }
 
-    public NodeState rebase(@NotNull NodeBuilder builder, NodeState newBase) {
+    public NodeState rebase(@NotNull NodeBuilder builder, NodeState newBase) throws CommitFailedException {
         checkArgument(builder instanceof SimpleNodeBuilder);
         checkArgument(newBase instanceof SimpleNodeState);
         SimpleNodeState head = (SimpleNodeState) checkNotNull(builder).getNodeState();
@@ -679,8 +684,10 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
             } catch (IllegalStateException e) {
                 throw new IllegalArgumentException(e);
             }
-            head.compareAgainstBaseState( base, new MergingApplyDiff(builder));
+            head.compareAgainstBaseState(base, new ConflictAnnotatingRebaseDiff(builder));
+            ConflictHook conflictHook = new ConflictHook(new SimpleConflictHandler());
             head = (SimpleNodeState) builder.getNodeState();
+            return conflictHook.processCommit(newBase, head, CommitInfo.EMPTY);
         }
         return head;
     }
