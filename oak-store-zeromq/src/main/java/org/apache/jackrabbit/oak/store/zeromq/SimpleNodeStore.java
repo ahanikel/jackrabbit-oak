@@ -72,6 +72,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
@@ -201,7 +202,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                         final String newUuid = journalSocket.recvStr();
                         final String oldUuid = journalSocket.recvStr();
                         log.info("Received {} {} ({})", journalId, newUuid, oldUuid);
-                        final NodeState after = readNodeState(newUuid);
+                        final NodeState newHead = readNodeState(newUuid);
                         if (oldUuid.equals(journalRoot)) {
                             journalRoot = newUuid;
                             roots.put(newUuid);
@@ -217,8 +218,23 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                             }
                             continue;
                         } else {
-                            log.warn("Conflicting updates, commit failed: journal {} new: {} old: {} journalRoot: {}", journalId, newUuid, oldUuid, journalRoot);
-                            commitFailed = true;
+                            NodeState oldBase = readNodeState(oldUuid);
+                            NodeState newBase = readNodeState(journalRoot);
+                            NodeBuilder newBuilder = newBase.builder();
+                            NodeState newRoot = null;
+                            try {
+                                newRoot = rebase(newHead, oldBase, newBase, newBuilder);
+                            } catch (CommitFailedException cfe) {
+                                log.warn("Conflicting updates, commit failed: journal {} new: {} old: {} journalRoot: {}", journalId, newUuid, oldUuid, journalRoot);
+                                commitFailed = true;
+                            }
+                            if (!commitFailed) {
+                                journalRoot = ((SimpleNodeState) newRoot).getRef();
+                                roots.put(newUuid);
+                                roots.put(journalRoot);
+                                log.info("new root after resolution: {}", journalRoot);
+                                Thread.sleep(1000); // for composum
+                            }
                         }
                         Pair<Object, CommitInfo> monitorInfo = expectedRoots.remove(newUuid);
                         if (monitorInfo != null) {
@@ -226,7 +242,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                             confirmedRoots.put(newUuid, monitorInfo);
                             if (!commitFailed) {
                                 if (changeDispatcher != null) {
-                                    changeDispatcher.contentChanged(after.getChildNode(ROOT_NODE_NAME), monitorInfo.snd);
+                                    changeDispatcher.contentChanged(newHead.getChildNode(ROOT_NODE_NAME), monitorInfo.snd);
                                 }
                             }
                             synchronized (monitorInfo.fst) {
@@ -237,7 +253,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                                 commitFailed = false;
                             } else {
                                 if (changeDispatcher != null) {
-                                    changeDispatcher.contentChanged(after.getChildNode(ROOT_NODE_NAME), CommitInfo.EMPTY_EXTERNAL);
+                                    changeDispatcher.contentChanged(newHead.getChildNode(ROOT_NODE_NAME), CommitInfo.EMPTY_EXTERNAL);
                                 }
                             }
                         }
@@ -518,7 +534,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
             if (retried > 0) {
                 log.info("Retrying merge: #{}", retried);
                 try {
-                    Thread.sleep(5000);
+                    Thread.sleep(5000 + new Random().nextInt(5000));
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
                 }
@@ -689,12 +705,17 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
             } catch (IllegalStateException e) {
                 throw new IllegalArgumentException(e);
             }
-            head.compareAgainstBaseState(base, new ConflictAnnotatingRebaseDiff(builder));
-            ConflictHook conflictHook = new ConflictHook(new SimpleConflictHandler());
-            head = (SimpleNodeState) builder.getNodeState();
-            return conflictHook.processCommit(newBase, head, CommitInfo.EMPTY);
+            return rebase(head, base, newBase, builder);
         }
         return head;
+    }
+
+    public static NodeState rebase(NodeState newHead, NodeState oldBase, NodeState newBase, NodeBuilder newBuilder)
+            throws CommitFailedException {
+        newHead.compareAgainstBaseState(oldBase, new ConflictAnnotatingRebaseDiff(newBuilder));
+        ConflictHook conflictHook = new ConflictHook(new SimpleConflictHandler());
+        newHead = newBuilder.getNodeState();
+        return conflictHook.processCommit(newBase, newHead, CommitInfo.EMPTY);
     }
 
     @Override
