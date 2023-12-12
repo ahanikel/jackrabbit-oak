@@ -97,6 +97,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     private static final Logger log = LoggerFactory.getLogger(SimpleNodeStore.class.getName());
     public static final String ROOT_NODE_NAME = "root";
     public static final String CHECKPOINT_NODE_NAME = "checkpoints";
+    private ZeroMQBlobStoreAdapter blobStoreAdapter;
 
     public static SimpleNodeStoreBuilder builder() {
         return new SimpleNodeStoreBuilder();
@@ -113,9 +114,6 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     private KVStore<String, SimpleBlob> blobCache;
     private volatile ChangeDispatcher changeDispatcher;
 
-    private final Object mergeRootMonitor = new Object();
-    private final Object checkpointMonitor = new Object();
-
     private final Map<String, Pair<Object, CommitInfo>> expectedRoots = new ConcurrentHashMap<>();
     private final Map<String, Object> confirmedRoots = new ConcurrentHashMap<>();
     private volatile boolean commitFailed = false;
@@ -124,7 +122,6 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     private volatile String journalRoot;
     private volatile String checkpointRoot;
     private String initJournal;
-    private LoggingHook loggingHook;
     private volatile boolean configured;
     private final AtomicLong remoteReadNodeCounter = new AtomicLong();
     private final AtomicLong remoteWriteBlobCounter = new AtomicLong();
@@ -162,16 +159,20 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         this.initJournal = initJournal;
         this.blobCacheDir = new File(blobCacheDir);
         this.blobCacheDir.mkdirs();
-        try {
-            this.remoteBlobStore = new RemoteBlobStore(this::hasBlob, this::readBlob, this::writeBlob, new SimpleBlobStore(this.blobCacheDir));
-        } catch (IOException e) {
-            throw new IllegalStateException(e);
-        }
+
         this.EMPTY = SimpleNodeState.empty(this);
         this.MISSING = SimpleNodeState.missing(this);
 
         nodeStateReader = new SimpleRequestResponse(SimpleRequestResponse.Topic.READ, backendWriterURL, backendReaderURL);
         nodeStateWriter = new SimpleRequestResponse(SimpleRequestResponse.Topic.WRITE, backendWriterURL, backendReaderURL);
+
+        this.blobStoreAdapter = new ZeroMQBlobStoreAdapter(nodeStateReader, nodeStateWriter);
+        try {
+            this.remoteBlobStore = new SimpleRemoteBlobStore(blobStoreAdapter.getChecker(), blobStoreAdapter.getReader(),
+                    blobStoreAdapter.getWriter(), new SimpleBlobStore(this.blobCacheDir));
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
 
         final Cache<String, SimpleNodeState> cache =
                 CacheBuilder.newBuilder()
@@ -272,7 +273,6 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
             }
         };
         logProcessor.start();
-        loggingHook = LoggingHook.newLoggingHook(this::writeBlob);
     }
 
     @Override
@@ -638,41 +638,6 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         final long c = remoteReadNodeCounter.incrementAndGet();
         if (c % 1000 == 0) {
             log.info("Remote nodes read: {}", c);
-        }
-    }
-
-    private boolean hasBlob(String uuid) {
-        final String ret = nodeStateReader.requestString("hasblob", uuid);
-        if (!"E".equals(ret)) {
-            return false;
-        }
-        return "true".equals(nodeStateReader.receiveMore());
-    }
-
-    private InputStream readBlob(String uuid) {
-        countNodeRead();
-        return new ZeroMQBlobInputStream(nodeStateReader, uuid);
-    }
-
-    private void writeBlob(String op, byte[] args) {
-        while (true) {
-            try {
-                String msg = nodeStateWriter.requestString(op, args);
-                if (!msg.equals("E")) {
-                    log.error("lastReq: {}", nodeStateWriter.getLastReq());
-                    log.error("{}: {}", msg, nodeStateWriter.receiveMore());
-                } else {
-                    nodeStateWriter.receiveMore(); // ignore, should be ""
-                }
-                break;
-            } catch (Exception e1) {
-                log.error(e1.getMessage());
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException e) {
-                    // ignore
-                }
-            }
         }
     }
 
