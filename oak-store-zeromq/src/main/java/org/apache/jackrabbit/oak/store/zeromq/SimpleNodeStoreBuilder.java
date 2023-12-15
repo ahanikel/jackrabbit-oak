@@ -36,12 +36,16 @@ public class SimpleNodeStoreBuilder {
     public static final String PARAM_BACKEND_WRITER_URL = "backendWriterURL";
     public static final String PARAM_INIT_JOURNAL = "initJournal";
     private static final String PARAM_BLOB_CACHE_DIR = "blobCacheDir";
+    private static final String PARAM_AZURE_STORAGE_CONNECTION_STRING = "AZURE_STORAGE_CONNECTION_STRING";
+    private static final String PARAM_AZURE_CONTAINER_NAME = "containerName";
 
     private String journalId;
     private String backendReaderURL;
     private String backendWriterURL;
     private String initJournal;
     private String blobCacheDir;
+    private String azureStorageConnectionString;
+    private String azureContainerName;
 
     public SimpleNodeStoreBuilder() {
        journalId = "golden";
@@ -88,6 +92,19 @@ public class SimpleNodeStoreBuilder {
         }
         if (blobCacheDir == null) {
             blobCacheDir = "/tmp/blobCacheDir";
+        }
+        try {
+            azureStorageConnectionString = System.getenv(PARAM_AZURE_STORAGE_CONNECTION_STRING);
+        } catch (Exception e) {
+            // ignore
+        }
+        try {
+            azureContainerName = System.getenv(PARAM_AZURE_CONTAINER_NAME);
+        } catch (Exception e) {
+            // ignore
+        }
+        if (azureContainerName == null) {
+            azureContainerName = "simple-node-store";
         }
         return this;
     }
@@ -191,6 +208,22 @@ public class SimpleNodeStoreBuilder {
     public SimpleNodeStoreBuilder setBlobCacheDir(String blobCacheDir) {
        this.blobCacheDir = blobCacheDir;
        return this;
+    }
+
+    public String getAzureStorageConnectionString() {
+        return azureStorageConnectionString;
+    }
+
+    public void setAzureStorageConnectionString(String azureStorageConnectionString) {
+        this.azureStorageConnectionString = azureStorageConnectionString;
+    }
+
+    public String getAzureContainerName() {
+        return azureContainerName;
+    }
+
+    public void setAzureContainerName(String azureContainerName) {
+        this.azureContainerName = azureContainerName;
     }
 
     public SimpleNodeStore build() {

@@ -97,7 +97,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     private static final Logger log = LoggerFactory.getLogger(SimpleNodeStore.class.getName());
     public static final String ROOT_NODE_NAME = "root";
     public static final String CHECKPOINT_NODE_NAME = "checkpoints";
-    private ZeroMQBlobStoreAdapter blobStoreAdapter;
+    private BlobStoreAdapter blobStoreAdapter;
 
     public static SimpleNodeStoreBuilder builder() {
         return new SimpleNodeStoreBuilder();
@@ -139,7 +139,9 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
             builder.getInitJournal(),
             builder.getBackendReaderURL(),
             builder.getBackendWriterURL(),
-            builder.getBlobCacheDir());
+            builder.getBlobCacheDir(),
+            builder.getAzureStorageConnectionString(),
+            builder.getAzureContainerName());
     }
 
     private void configure(
@@ -147,7 +149,10 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         String initJournal,
         String backendReaderURL,
         String backendWriterURL,
-        String blobCacheDir) {
+        String blobCacheDir,
+        String azureStorageConnectionString,
+        String azureContainerName
+    ) {
 
         if (configured) {
             return;
@@ -166,7 +171,11 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         nodeStateReader = new SimpleRequestResponse(SimpleRequestResponse.Topic.READ, backendWriterURL, backendReaderURL);
         nodeStateWriter = new SimpleRequestResponse(SimpleRequestResponse.Topic.WRITE, backendWriterURL, backendReaderURL);
 
-        this.blobStoreAdapter = new ZeroMQBlobStoreAdapter(nodeStateReader, nodeStateWriter);
+        if (azureStorageConnectionString == null || azureStorageConnectionString.isEmpty()) {
+            blobStoreAdapter = new ZeroMQBlobStoreAdapter(nodeStateReader, nodeStateWriter);
+        } else {
+            blobStoreAdapter = new AzureBlobStoreAdapter(azureStorageConnectionString, azureContainerName);
+        }
         try {
             this.remoteBlobStore = new SimpleRemoteBlobStore(blobStoreAdapter.getChecker(), blobStoreAdapter.getReader(),
                     blobStoreAdapter.getWriter(), new SimpleBlobStore(this.blobCacheDir));
@@ -295,7 +304,9 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
             builder.getInitJournal(),
             builder.getBackendReaderURL(),
             builder.getBackendWriterURL(),
-            builder.getBlobCacheDir());
+            builder.getBlobCacheDir(),
+            builder.getAzureStorageConnectionString(),
+            builder.getAzureContainerName());
 
         init();
         OsgiWhiteboard whiteboard = new OsgiWhiteboard(ctx.getBundleContext());
