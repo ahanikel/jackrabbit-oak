@@ -3,4 +3,4 @@ rm -rf /tmp/blobCacheDir
 java -jar oak-run/target/oak-run-1.52.0-zeromq.jar comm-hub tcp://localhost:8001 tcp://localhost:8000 &
 java -Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=5006 -jar oak-run/target/oak-run-1.52.0-zeromq.jar simple-blob-reader-service simple:///tmp/nodestore tcp://localhost:8001 tcp://localhost:8000 &
 java -Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=5007 -jar oak-run/target/oak-run-1.52.0-zeromq.jar simple-blob-writer-service simple:///tmp/nodestore tcp://localhost:8001 tcp://localhost:8000 &
-#java -jar oak-run/target/oak-run-1.52.0-zeromq.jar simple-queue-listener > simple-queue-listener.log tcp://localhost:8000 &
+#java -jar oak-run/target/oak-run-1.52.0-zeromq.jar simple-queue-listener tcp://localhost:8001 > simple-queue-listener.log &

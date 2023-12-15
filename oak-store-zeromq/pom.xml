@@ -41,11 +41,13 @@
             <Import-Package>
               <!-- OAK-7182 -->${guava.osgi.import};resolution:=optional,
               com.neilalexander.*;resolution:=optional,
+              com.azure.*;resolution:=optional
               *
             </Import-Package>
             <Embed-Dependency>
-                jeromq
+                jeromq, azure-storage-blob;inline=true
             </Embed-Dependency>
+            <Embed-Transitive>true</Embed-Transitive>
           </instructions>
         </configuration>
         <executions>
