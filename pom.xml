@@ -84,7 +84,8 @@
     <module>oak-benchmarks-lucene</module>
     <module>oak-benchmarks-solr</module>
     <module>oak-benchmarks-elastic</module>
-      <module>oak-run-elastic</module>
+    <module>oak-run-elastic</module>
+    <module>oak-store-migration</module>
   </modules>
 
   <scm>
