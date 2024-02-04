@@ -37,7 +37,13 @@ public class SimpleNodeStoreBuilder {
     public static final String PARAM_INIT_JOURNAL = "initJournal";
     private static final String PARAM_BLOB_CACHE_DIR = "blobCacheDir";
     private static final String PARAM_AZURE_STORAGE_CONNECTION_STRING = "AZURE_STORAGE_CONNECTION_STRING";
-    private static final String PARAM_AZURE_CONTAINER_NAME = "containerName";
+    private static final String PARAM_AZURE_CONTAINER_NAME = "azureContainerName";
+    private static final String PARAM_S3_ENDPOINT = "s3Endpoint";
+    private static final String PARAM_S3_SIGNING_REGION = "s3SigningRegion";
+    private static final String PARAM_S3_ACCESSKEY = "s3AccessKey";
+    private static final String PARAM_S3_SECRETKEY = "s3SecretKey";
+    private static final String PARAM_S3_CONTAINERNAME = "s3ContainerName";
+    private static final String PARAM_S3_FOLDERNAME = "s3FolderName";
 
     private String journalId;
     private String backendReaderURL;
@@ -46,6 +52,12 @@ public class SimpleNodeStoreBuilder {
     private String blobCacheDir;
     private String azureStorageConnectionString;
     private String azureContainerName;
+    private String s3Endpoint;
+    private String s3SigningRegion;
+    private String s3AccessKey;
+    private String s3SecretKey;
+    private String s3ContainerName;
+    private String s3FolderName;
 
     public SimpleNodeStoreBuilder() {
        journalId = "golden";
@@ -106,10 +118,41 @@ public class SimpleNodeStoreBuilder {
         if (azureContainerName == null) {
             azureContainerName = "simple-node-store";
         }
+        try {
+            s3Endpoint = System.getenv(PARAM_S3_ENDPOINT);
+        } catch (Exception e) {
+            // ignore
+        }
+        try {
+            s3SigningRegion = System.getenv(PARAM_S3_SIGNING_REGION);
+        } catch (Exception e) {
+            // ignore
+        }
+        try {
+            s3AccessKey = System.getenv(PARAM_S3_ACCESSKEY);
+        } catch (Exception e) {
+            // ignore
+        }
+        try {
+            s3SecretKey = System.getenv(PARAM_S3_SECRETKEY);
+        } catch (Exception e) {
+            // ignore
+        }
+        try {
+            s3ContainerName = System.getenv(PARAM_S3_CONTAINERNAME);
+        } catch (Exception e) {
+            // ignore
+        }
+        try {
+            s3FolderName = System.getenv(PARAM_S3_FOLDERNAME);
+        } catch (Exception e) {
+            // ignore
+        }
         return this;
     }
 
     // simple://<journalid>?param=value...
+    @Deprecated
     public SimpleNodeStoreBuilder initFromURI(URI uri) {
         if (!"simple".equals(uri.getScheme())) {
             throw new IllegalArgumentException("Expected protocol is 'simple' but I got " + uri.getScheme());
@@ -224,6 +267,54 @@ public class SimpleNodeStoreBuilder {
 
     public void setAzureContainerName(String azureContainerName) {
         this.azureContainerName = azureContainerName;
+    }
+
+    public String getS3Endpoint() {
+        return s3Endpoint;
+    }
+
+    public void setS3Endpoint(String s3Endpoint) {
+        this.s3Endpoint = s3Endpoint;
+    }
+
+    public String getS3SigningRegion() {
+        return s3SigningRegion;
+    }
+
+    public void setS3SigningRegion(String s3SigningRegion) {
+        this.s3SigningRegion = s3SigningRegion;
+    }
+
+    public String getS3AccessKey() {
+        return s3AccessKey;
+    }
+
+    public void setS3AccessKey(String s3AccessKey) {
+        this.s3AccessKey = s3AccessKey;
+    }
+
+    public String getS3SecretKey() {
+        return s3SecretKey;
+    }
+
+    public void setS3SecretKey(String s3SecretKey) {
+        this.s3SecretKey = s3SecretKey;
+    }
+
+    public String getS3ContainerName() {
+        return s3ContainerName;
+    }
+
+    public void setS3ContainerName(String s3ContainerName) {
+        this.s3ContainerName = s3ContainerName;
+    }
+
+    public String getS3FolderName() {
+        return s3FolderName;
+    }
+
+    public void setS3FolderName(String s3FolderName) {
+        this.s3FolderName = s3FolderName;
     }
 
     public SimpleNodeStore build() {

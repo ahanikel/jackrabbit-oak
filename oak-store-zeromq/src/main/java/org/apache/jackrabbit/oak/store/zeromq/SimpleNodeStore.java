@@ -141,7 +141,13 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
             builder.getBackendWriterURL(),
             builder.getBlobCacheDir(),
             builder.getAzureStorageConnectionString(),
-            builder.getAzureContainerName());
+            builder.getAzureContainerName(),
+            builder.getS3Endpoint(),
+            builder.getS3SigningRegion(),
+            builder.getS3AccessKey(),
+            builder.getS3SecretKey(),
+            builder.getS3ContainerName(),
+            builder.getS3FolderName());
     }
 
     private void configure(
@@ -151,8 +157,14 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         String backendWriterURL,
         String blobCacheDir,
         String azureStorageConnectionString,
-        String azureContainerName
-    ) {
+        String azureContainerName,
+        String s3Endpoint,
+        String s3SigningRegion,
+        String s3AccessKey,
+        String s3SecretKey,
+        String s3ContainerName,
+        String s3FolderName
+        ) {
 
         if (configured) {
             return;
@@ -171,10 +183,15 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         nodeStateReader = new SimpleRequestResponse(SimpleRequestResponse.Topic.READ, backendWriterURL, backendReaderURL);
         nodeStateWriter = new SimpleRequestResponse(SimpleRequestResponse.Topic.WRITE, backendWriterURL, backendReaderURL);
 
-        if (azureStorageConnectionString == null || azureStorageConnectionString.isEmpty()) {
-            blobStoreAdapter = new ZeroMQBlobStoreAdapter(nodeStateReader, nodeStateWriter);
-        } else {
+        /*
+        if (azureStorageConnectionString != null && !azureStorageConnectionString.isEmpty()) {
             blobStoreAdapter = new AzureBlobStoreAdapter(azureStorageConnectionString, azureContainerName);
+        } else
+        */
+        if (s3Endpoint != null && !s3Endpoint.isEmpty()) {
+            blobStoreAdapter = new S3BlobStoreAdapter(s3Endpoint, s3SigningRegion, s3AccessKey, s3SecretKey, s3ContainerName, s3FolderName);
+        } else {
+            blobStoreAdapter = new ZeroMQBlobStoreAdapter(nodeStateReader, nodeStateWriter);
         }
         try {
             this.remoteBlobStore = new SimpleRemoteBlobStore(blobStoreAdapter.getChecker(), blobStoreAdapter.getReader(),
@@ -306,7 +323,13 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
             builder.getBackendWriterURL(),
             builder.getBlobCacheDir(),
             builder.getAzureStorageConnectionString(),
-            builder.getAzureContainerName());
+            builder.getAzureContainerName(),
+            builder.getS3Endpoint(),
+            builder.getS3SigningRegion(),
+            builder.getS3AccessKey(),
+            builder.getS3SecretKey(),
+            builder.getS3ContainerName(),
+            builder.getS3FolderName());
 
         init();
         OsgiWhiteboard whiteboard = new OsgiWhiteboard(ctx.getBundleContext());
