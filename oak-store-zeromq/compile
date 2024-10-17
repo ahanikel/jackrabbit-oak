@@ -1,1 +1,1 @@
-mvn -DskipTests clean install
+MAVEN_OPTS=-Xmx8g mvn -DskipTests clean install

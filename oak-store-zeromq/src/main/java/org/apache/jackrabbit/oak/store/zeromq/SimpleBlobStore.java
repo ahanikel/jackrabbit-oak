@@ -19,7 +19,6 @@
 package org.apache.jackrabbit.oak.store.zeromq;
 
 import org.apache.jackrabbit.oak.commons.IOUtils;
-import org.jetbrains.annotations.Nullable;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -30,7 +29,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.file.FileAlreadyExistsException;
 
 public class SimpleBlobStore implements BlobStore {
 

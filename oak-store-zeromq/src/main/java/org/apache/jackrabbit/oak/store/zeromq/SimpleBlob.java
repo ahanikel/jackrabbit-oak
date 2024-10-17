@@ -25,7 +25,7 @@ public class SimpleBlob implements Blob {
     @Override
     public @NotNull InputStream getNewStream() {
         try {
-            return store.getRemoteBlobStore().getInputStream(ref);
+            return store.getBlobStore().getInputStream(ref);
         } catch (IOException e) {
             throw new IllegalStateException(e);
         }
@@ -34,7 +34,7 @@ public class SimpleBlob implements Blob {
     @Override
     public long length() {
         try {
-            return store.getRemoteBlobStore().getLength(ref);
+            return store.getBlobStore().getLength(ref);
         } catch (IOException e) {
             throw new IllegalStateException(e);
         }

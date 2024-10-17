@@ -35,7 +35,7 @@ public class SimpleNodeStateDiffGenerator implements NodeStateDiff {
     }
 
     public SimpleNodeState getNodeState() throws IOException {
-        final BlobStore blobStore = store.getRemoteBlobStore();
+        final BlobStore blobStore = store.getBlobStore();
 
         final List<String> children = new ArrayList<>();
         for (Map.Entry<String, String> e : childrenMap.entrySet()) {
@@ -73,7 +73,7 @@ public class SimpleNodeStateDiffGenerator implements NodeStateDiff {
     @Override
     public boolean propertyAdded(PropertyState after) {
         try {
-            String ps = serializePropertyState(store.getRemoteBlobStore(), after);
+            String ps = serializePropertyState(store.getBlobStore(), after);
             propertiesMap.put(after.getName(), ps);
             return true;
         } catch (IOException e) {
@@ -84,7 +84,7 @@ public class SimpleNodeStateDiffGenerator implements NodeStateDiff {
     @Override
     public boolean propertyChanged(PropertyState before, PropertyState after) {
         try {
-            String ps = serializePropertyState(store.getRemoteBlobStore(), after);
+            String ps = serializePropertyState(store.getBlobStore(), after);
             propertiesMap.replace(after.getName(), ps);
             return true;
         } catch (IOException e) {

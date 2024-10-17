@@ -23,22 +23,20 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 
-public abstract class SimpleAbstractRemoteBlobStore implements LocalBlobStore {
+public class SimpleRemoteBlobStore implements BlobStore {
 
     private final SimpleBlobStore localCache;
+    private final RemoteBlobStore remoteBlobStore;
 
-    public SimpleAbstractRemoteBlobStore(SimpleBlobStore localCache) {
+    public SimpleRemoteBlobStore(SimpleBlobStore localCache, RemoteBlobStore remoteBlobStore) {
         this.localCache = localCache;
+        this.remoteBlobStore = remoteBlobStore;
     }
-
-    protected abstract void writeBlobRemote(String ref, File file) throws IOException;
-
-    protected abstract InputStream readBlobRemote(String ref) throws IOException;
 
     private void ensureBlobInCache(String ref) throws IOException {
         if (!localCache.hasBlob(ref)) {
             try {
-                localCache.putInputStream(readBlobRemote(ref));
+                localCache.putInputStream(remoteBlobStore.readBlob(ref));
             } catch (BlobAlreadyExistsException e) {
                 // should not happen
             }
@@ -66,8 +64,8 @@ public abstract class SimpleAbstractRemoteBlobStore implements LocalBlobStore {
     @Override
     public String putBytes(byte[] bytes) throws IOException, BlobAlreadyExistsException {
         final String ref = localCache.putBytes(bytes);
-        if (readBlobRemote(ref) == null) {
-            writeBlobRemote(ref, localCache.getFile(ref));
+        if (!remoteBlobStore.hasBlob(ref)) {
+            remoteBlobStore.writeBlob(ref, localCache.getFile(ref));
         }
         return ref;
     }
@@ -80,8 +78,8 @@ public abstract class SimpleAbstractRemoteBlobStore implements LocalBlobStore {
     @Override
     public String putInputStream(InputStream is) throws IOException, BlobAlreadyExistsException {
         final String ref = localCache.putInputStream(is);
-        if (readBlobRemote(ref) == null) {
-            writeBlobRemote(ref, localCache.getFile(ref));
+        if (!remoteBlobStore.hasBlob(ref)) {
+            remoteBlobStore.writeBlob(ref, localCache.getFile(ref));
         }
         return ref;
     }
@@ -94,7 +92,7 @@ public abstract class SimpleAbstractRemoteBlobStore implements LocalBlobStore {
     @Override
     public String putTempFile(File tempFile) throws BlobAlreadyExistsException, IOException {
         final String ref = localCache.putTempFile(tempFile);
-        writeBlobRemote(ref, localCache.getFile(ref));
+        remoteBlobStore.writeBlob(ref, localCache.getFile(ref));
         return ref;
     }
 
@@ -107,7 +105,7 @@ public abstract class SimpleAbstractRemoteBlobStore implements LocalBlobStore {
     public boolean hasBlob(String ref) throws IOException {
         if (!localCache.hasBlob(ref)) {
             try {
-                InputStream is = readBlobRemote(ref);
+                InputStream is = remoteBlobStore.readBlob(ref);
                 if (is == null) {
                     return false;
                 }

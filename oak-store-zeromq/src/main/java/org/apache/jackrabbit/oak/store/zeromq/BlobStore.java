@@ -24,10 +24,10 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 
-public interface LocalBlobStore {
+public interface BlobStore {
     byte[] getBytes(String ref) throws IOException;
     String getString(String ref) throws IOException;
-    FileInputStream getInputStream(String ref) throws FileNotFoundException, IOException;
+    FileInputStream getInputStream(String ref) throws IOException;
     String putBytes(byte[] bytes) throws IOException, BlobAlreadyExistsException;
     String putString(String string) throws IOException, BlobAlreadyExistsException;
     String putInputStream(InputStream is) throws IOException, BlobAlreadyExistsException;

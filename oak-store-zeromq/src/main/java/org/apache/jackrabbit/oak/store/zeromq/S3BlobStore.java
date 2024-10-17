@@ -14,14 +14,14 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import java.io.File;
 import java.io.InputStream;
 
-public class S3BlobStoreAdapter implements RemoteBlobStore {
-    private static final Logger log = LoggerFactory.getLogger(S3BlobStoreAdapter.class.getName());
+public class S3BlobStore implements RemoteBlobStore {
+    private static final Logger log = LoggerFactory.getLogger(S3BlobStore.class.getName());
     private final String containerName;
     private final String folderName;
 
     private S3Client s3Client;
 
-    public S3BlobStoreAdapter(String endpoint, String signingRegion, String accessKey, String secretKey, String containerName, String folderName) {
+    public S3BlobStore(String endpoint, String signingRegion, String accessKey, String secretKey, String containerName, String folderName) {
         this.containerName = containerName;
         this.folderName = folderName + "/";
         AwsCredentialsProvider credentialsProvider = StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKey, secretKey));

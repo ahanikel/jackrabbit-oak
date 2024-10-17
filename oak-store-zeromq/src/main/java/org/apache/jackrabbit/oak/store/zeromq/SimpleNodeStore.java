@@ -97,8 +97,6 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     private static final Logger log = LoggerFactory.getLogger(SimpleNodeStore.class.getName());
     public static final String ROOT_NODE_NAME = "root";
     public static final String CHECKPOINT_NODE_NAME = "checkpoints";
-    private BlobStoreAdapter blobStoreAdapter;
-
     public static SimpleNodeStoreBuilder builder() {
         return new SimpleNodeStoreBuilder();
     }
@@ -126,7 +124,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     private final AtomicLong remoteReadNodeCounter = new AtomicLong();
     private final AtomicLong remoteWriteBlobCounter = new AtomicLong();
     private File blobCacheDir;
-    private BlobStore remoteBlobStore;
+    private BlobStore blobStore;
     private String instanceId;
     private BloomFilter<CharSequence> roots = BloomFilter.create(Funnels.stringFunnel(Charsets.UTF_8), 9000000); // about 8MB
 
@@ -188,14 +186,14 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
             blobStoreAdapter = new AzureBlobStoreAdapter(azureStorageConnectionString, azureContainerName);
         } else
         */
+        RemoteBlobStore remoteBlobStore;
         if (s3Endpoint != null && !s3Endpoint.isEmpty()) {
-            blobStoreAdapter = new S3BlobStoreAdapter(s3Endpoint, s3SigningRegion, s3AccessKey, s3SecretKey, s3ContainerName, s3FolderName);
+            remoteBlobStore = new S3BlobStore(s3Endpoint, s3SigningRegion, s3AccessKey, s3SecretKey, s3ContainerName, s3FolderName);
         } else {
-            blobStoreAdapter = new ZeroMQBlobStoreAdapter(nodeStateReader, nodeStateWriter);
+            remoteBlobStore = new ZeroMQBlobStore(nodeStateReader, nodeStateWriter);
         }
         try {
-            this.remoteBlobStore = new SimpleRemoteBlobStore(blobStoreAdapter.getChecker(), blobStoreAdapter.getReader(),
-                    blobStoreAdapter.getWriter(), new SimpleBlobStore(this.blobCacheDir));
+            this.blobStore = new SimpleRemoteBlobStore(new SimpleBlobStore(this.blobCacheDir), remoteBlobStore);
         } catch (IOException e) {
             throw new IllegalStateException(e);
         }
@@ -729,7 +727,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     public Blob createBlob(InputStream inputStream) throws IOException {
         String ref;
         try {
-            ref = remoteBlobStore.putInputStream(inputStream);
+            ref = blobStore.putInputStream(inputStream);
             countBlobWritten();
         } catch (BlobAlreadyExistsException e) {
             ref = e.getRef();
@@ -997,7 +995,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     @Override
     public String writeBlob(String tempFileName) throws IOException {
         try {
-            return getRemoteBlobStore().putTempFile(new File(tempFileName));
+            return getBlobStore().putTempFile(new File(tempFileName));
         } catch (BlobAlreadyExistsException e) {
             return e.getRef();
         }
@@ -1039,7 +1037,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         return blobId;
     }
 
-    public BlobStore getRemoteBlobStore() {
-        return remoteBlobStore;
+    public BlobStore getBlobStore() {
+        return blobStore;
     }
 }
