@@ -3,6 +3,9 @@ package org.apache.jackrabbit.oak.store.zeromq;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
@@ -29,7 +32,8 @@ public class ZeroMQBlobStoreAdapter implements BlobStoreAdapter {
         return new ZeroMQBlobInputStream(queueReader, uuid);
     }
 
-    private void writeBlob(String ref, InputStream is) {
+    private void writeBlob(String ref, File file) throws FileNotFoundException {
+        InputStream is = new FileInputStream(file);
         LoggingHook.writeBlob(ref, is, this::writeBlobChunk);
     }
 
@@ -65,7 +69,7 @@ public class ZeroMQBlobStoreAdapter implements BlobStoreAdapter {
     }
 
     @Override
-    public BiConsumer<String, InputStream> getWriter() {
+    public BiConsumer<String, File> getWriter() {
         return this::writeBlob;
     }
 }
