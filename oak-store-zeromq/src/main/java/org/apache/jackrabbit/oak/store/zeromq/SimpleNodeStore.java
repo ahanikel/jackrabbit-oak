@@ -405,27 +405,6 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         return msg;
     }
 
-    /*
-    private String readCPRootRemote() {
-        String msg;
-        while (true) {
-            try {
-                nodeStateReader.requestString("journal", journalId + "-checkpoints").equals("E"); // verb, always "E"
-                msg = nodeStateReader.receiveMore();
-                break;
-            } catch (Throwable t) {
-                log.warn(t.toString());
-                try {
-                    Thread.sleep(100);
-                } catch (InterruptedException ex) {
-                    // ignore
-                }
-            }
-        }
-        return msg;
-    }
-    */
-
     @Override
     @NotNull
     public NodeState getRoot() {
@@ -441,10 +420,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     }
 
     private SimpleNodeState getCheckpointSuperRoot() {
-        if ("undefined".equals(checkpointRoot) || checkpointRoot == null) {
-            throw new IllegalStateException("checkpointRoot is undefined, forgot to call init()?");
-        }
-        return readNodeState(checkpointRoot);
+        return getSuperRoot();
     }
 
     private SimpleNodeState getCheckpointRoot() {
@@ -478,14 +454,6 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
             }
         }
     }
-
-    /*
-    private void setCheckpointRoot(String uuid) {
-        final String oldUuid = checkpointRoot;
-        checkpointRoot = uuid;
-        setRootRemote(CHECKPOINT_NODE_NAME, uuid, oldUuid);
-    }
-    */
 
     private void setRootRemote(String type, String uuid, String oldUuid) {
         while (true) {
@@ -571,15 +539,15 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         }
     }
 
-    private synchronized void mergeCheckpointRoot(NodeState cpRoot, CommitInfo info) throws CommitFailedException {
+    private void mergeCheckpointRoot(NodeState cpRoot, CommitInfo info) throws CommitFailedException {
         final SimpleNodeState superRoot = getCheckpointSuperRoot();
         final NodeBuilder superRootBuilder = superRoot.builder();
         superRootBuilder.setChildNode(CHECKPOINT_NODE_NAME, cpRoot);
         final SimpleNodeState newSuperRoot = (SimpleNodeState) superRootBuilder.getNodeState();
-        checkpointRoot = newSuperRoot.getRef();
+        setRoot(newSuperRoot.getRef(), superRoot.getRef(), info);
     }
 
-    private synchronized void mergeCheckpoint(NodeBuilder builder) throws CommitFailedException {
+    private void mergeCheckpoint(NodeBuilder builder) throws CommitFailedException {
         int retried = 0;
         final NodeState before = builder.getBaseState();
         final NodeState after = builder.getNodeState();
@@ -587,9 +555,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
             final NodeState newBase = getCheckpointRoot();
             final NodeState afterConflict;
             if (!before.equals(newBase)) {
-                final NodeBuilder newBuilder = newBase.builder();
-                after.compareAgainstBaseState(before, new ApplyDiff(newBuilder));
-                afterConflict = newBuilder.getNodeState();
+                afterConflict = rebase(builder, newBase);
             } else {
                 afterConflict = after;
             }
@@ -605,7 +571,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                 ((SimpleNodeBuilder) builder).reset(committed);
                 return;
             } catch (CommitFailedException e) {
-                if (++retried > 0) {
+                if (++retried > 9) {
                     log.error("Commit unsuccessful after trying {} times. Giving up", retried);
                     throw e;
                 }
@@ -613,7 +579,6 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                     Thread.sleep(1000);
                 } catch (InterruptedException ex) {
                 }
-                continue;
             }
         }
     }
