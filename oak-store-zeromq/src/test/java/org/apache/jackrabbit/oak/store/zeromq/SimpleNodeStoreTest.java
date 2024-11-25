@@ -79,12 +79,12 @@ public class SimpleNodeStoreTest {
     public void setup() throws IOException {
         // I used ipc://comm-hub-pub and ipc://comm-hub-sub but that doesn't
         // seem to work on all machines
-        ServerSocket sock = new ServerSocket(0);
-        publisherUrl = "tcp://localhost:" + sock.getLocalPort();
-        sock.close();
-        sock = new ServerSocket(0);
-        subscriberUrl = "tcp://localhost:" + sock.getLocalPort();
-        sock.close();
+        ServerSocket pubSock = new ServerSocket(0);
+        publisherUrl = "tcp://localhost:" + pubSock.getLocalPort();
+        ServerSocket subSock = new ServerSocket(0);
+        subscriberUrl = "tcp://localhost:" + subSock.getLocalPort();
+        pubSock.close();
+        subSock.close();
         context = new ZContext();
         pubSocket = context.createSocket(SocketType.PUB);
         pubSocket.bind(subscriberUrl);
@@ -161,14 +161,14 @@ public class SimpleNodeStoreTest {
         AtomicReference<Blob> blob1 = new AtomicReference<>();
         AtomicReference<Blob> blob2 = new AtomicReference<>();
         ExecutorService executorService = Executors.newFixedThreadPool(2);
-        executorService.execute( () -> {
+        executorService.execute(() -> {
             try {
                 blob1.set(store.createBlob(new ByteArrayInputStream(randomBlob)));
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
         });
-        executorService.execute( () -> {
+        executorService.execute(() -> {
             try {
                 blob2.set(store.createBlob(new ByteArrayInputStream(randomBlob)));
             } catch (IOException e) {
@@ -246,23 +246,24 @@ public class SimpleNodeStoreTest {
             child2.setProperty("a-long", 97);
             child2.setProperty("a-binary", "the-second-value".getBytes(StandardCharsets.UTF_8));
 
-            ExecutorService executorService = Executors.newFixedThreadPool(2);
-            executorService.execute(() -> {
-                try {
-                    store.merge(rootBuilder, new EmptyHook(), CommitInfo.EMPTY);
-                } catch (CommitFailedException e) {
-                    throw new RuntimeException(e);
-                }
-            });
-            executorService.execute(() -> {
-                try {
-                    store2.merge(rootBuilder2, new EmptyHook(), CommitInfo.EMPTY);
-                } catch (CommitFailedException e) {
-                    throw new RuntimeException(e);
-                }
-            });
-            executorService.shutdown();
-            executorService.awaitTermination(1, TimeUnit.HOURS);
+            try {
+                store.merge(rootBuilder, new EmptyHook(), CommitInfo.EMPTY);
+            } catch (CommitFailedException e) {
+                throw new RuntimeException(e);
+            }
+            try {
+                store2.merge(rootBuilder2, new EmptyHook(), CommitInfo.EMPTY);
+            } catch (CommitFailedException e) {
+                throw new RuntimeException(e);
+            }
+
+            Assert.assertEquals("the-value", rootBuilder.getChildNode("content").getProperty("a-string").getValue(Type.STRING));
+            Assert.assertEquals(99, rootBuilder.getChildNode("content").getProperty("a-long").getValue(Type.LONG).longValue());
+            Assert.assertArrayEquals("the-value".getBytes(StandardCharsets.UTF_8), rootBuilder.getChildNode("content").getProperty("a-binary").getValue(Type.BINARY).getNewStream().readAllBytes());
+
+            Assert.assertEquals("the-second-value", rootBuilder2.getChildNode("content").getProperty("a-string").getValue(Type.STRING));
+            Assert.assertEquals(97, rootBuilder2.getChildNode("content").getProperty("a-long").getValue(Type.LONG).longValue());
+            Assert.assertArrayEquals("the-second-value".getBytes(StandardCharsets.UTF_8), rootBuilder2.getChildNode("content").getProperty("a-binary").getValue(Type.BINARY).getNewStream().readAllBytes());
 
             NodeState root3 = store.getRoot();
             String s3 = root3.getChildNode("content").getString("a-string");
@@ -276,31 +277,65 @@ public class SimpleNodeStoreTest {
             Assert.assertEquals(97, l3);
             Assert.assertArrayEquals("the-second-value".getBytes(StandardCharsets.UTF_8), b3);
 
-            Assert.assertEquals("the-value", rootBuilder.getChildNode("content").getProperty("a-string").getValue(Type.STRING));
-            Assert.assertEquals(99, rootBuilder.getChildNode("content").getProperty("a-long").getValue(Type.LONG).longValue());
-            Assert.assertArrayEquals("the-value".getBytes(StandardCharsets.UTF_8), rootBuilder.getChildNode("content").getProperty("a-binary").getValue(Type.BINARY).getNewStream().readAllBytes());
-
-            Assert.assertEquals("the-second-value", rootBuilder2.getChildNode("content").getProperty("a-string").getValue(Type.STRING));
-            Assert.assertEquals(97, rootBuilder2.getChildNode("content").getProperty("a-long").getValue(Type.LONG).longValue());
-            Assert.assertArrayEquals("the-second-value".getBytes(StandardCharsets.UTF_8), rootBuilder2.getChildNode("content").getProperty("a-binary").getValue(Type.BINARY).getNewStream().readAllBytes());
-
-            root3 = store.getRoot();
-            s3 = root3.getChildNode("content").getString("a-string");
-            l3 = root3.getChildNode("content").getLong("a-long");
-            blob3 = root3.getChildNode("content").getProperty("a-binary");
-            b3 = blob3 != null ? blob3.getValue(Type.BINARY).getNewStream().readAllBytes() : new byte[0];
-            System.out.println("s3: " + s3);
-            System.out.println("l3: " + l3);
-            System.out.println("b3: " + new String(b3, StandardCharsets.UTF_8));
-            Assert.assertEquals("the-second-value", s3);
-            Assert.assertEquals(97, l3);
-            Assert.assertArrayEquals("the-second-value".getBytes(StandardCharsets.UTF_8), b3);
-
             NodeState root4 = store2.getRoot();
             Assert.assertEquals("the-second-value", root4.getChildNode("content").getProperty("a-string").getValue(Type.STRING));
             Assert.assertEquals(97, root4.getChildNode("content").getProperty("a-long").getValue(Type.LONG).longValue());
             Assert.assertArrayEquals("the-second-value".getBytes(StandardCharsets.UTF_8), root4.getChildNode("content").getProperty("a-binary").getValue(Type.BINARY).getNewStream().readAllBytes());
         }
+    }
+
+    @Test
+    public void testConcurrent3() throws IOException, CommitFailedException, InterruptedException {
+        SimpleNodeStore store2 = newSimpleNodeStore("golden");
+
+        NodeBuilder root = store.getRoot().builder();
+        NodeBuilder root2 = store2.getRoot().builder();
+
+        NodeBuilder child = root.child("content");
+        child.setProperty("a-string", "the-value");
+        child.setProperty("a-long", 99);
+        child.setProperty("a-binary", "the-value".getBytes(StandardCharsets.UTF_8));
+
+        NodeBuilder child2 = root2.child("content2");
+        child2.setProperty("a-string", "the-second-value");
+        child2.setProperty("a-long", 97);
+        child2.setProperty("a-binary", "the-second-value".getBytes(StandardCharsets.UTF_8));
+
+        ExecutorService executorService = Executors.newFixedThreadPool(2);
+        executorService.execute(() -> {
+            try {
+                store.merge(root, new EmptyHook(), CommitInfo.EMPTY);
+            } catch (CommitFailedException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        executorService.execute(() -> {
+            try {
+                store2.merge(root2, new EmptyHook(), CommitInfo.EMPTY);
+            } catch (CommitFailedException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        executorService.shutdown();
+        executorService.awaitTermination(1, TimeUnit.HOURS);
+
+        NodeState root3 = store.getRoot();
+        Assert.assertEquals("the-value", root3.getChildNode("content").getProperty("a-string").getValue(Type.STRING));
+        Assert.assertEquals(99, root3.getChildNode("content").getProperty("a-long").getValue(Type.LONG).longValue());
+        Assert.assertArrayEquals("the-value".getBytes(StandardCharsets.UTF_8), root3.getChildNode("content").getProperty("a-binary").getValue(Type.BINARY).getNewStream().readAllBytes());
+        Assert.assertEquals("the-second-value", root3.getChildNode("content2").getProperty("a-string").getValue(Type.STRING));
+        Assert.assertEquals(97, root3.getChildNode("content2").getProperty("a-long").getValue(Type.LONG).longValue());
+        Assert.assertArrayEquals("the-second-value".getBytes(StandardCharsets.UTF_8), root3.getChildNode("content2").getProperty("a-binary").getValue(Type.BINARY).getNewStream().readAllBytes());
+
+        NodeState root4 = store2.getRoot();
+        Assert.assertEquals("the-value", root4.getChildNode("content").getProperty("a-string").getValue(Type.STRING));
+        Assert.assertEquals(99, root4.getChildNode("content").getProperty("a-long").getValue(Type.LONG).longValue());
+        Assert.assertArrayEquals("the-value".getBytes(StandardCharsets.UTF_8), root4.getChildNode("content").getProperty("a-binary").getValue(Type.BINARY).getNewStream().readAllBytes());
+        Assert.assertEquals("the-second-value", root4.getChildNode("content2").getProperty("a-string").getValue(Type.STRING));
+        Assert.assertEquals(97, root4.getChildNode("content2").getProperty("a-long").getValue(Type.LONG).longValue());
+        Assert.assertArrayEquals("the-second-value".getBytes(StandardCharsets.UTF_8), root4.getChildNode("content2").getProperty("a-binary").getValue(Type.BINARY).getNewStream().readAllBytes());
+
+        store2.close();
     }
 
     @Test
