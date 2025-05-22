@@ -116,7 +116,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     private final Map<String, Pair<Object, CommitInfo>> expectedRoots = new ConcurrentHashMap<>();
     private final Map<String, Object> confirmedRoots = new ConcurrentHashMap<>();
-    private volatile boolean commitFailed = false;
+    private final Map<String, CommitState> commitStates = new ConcurrentHashMap<>();
     private Thread logProcessor;
     private ZMQ.Socket journalSocket;
     private volatile String journalRoot;
@@ -226,10 +226,13 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                             try {
                                 newRoot = rebase(newHead, oldBase, newBase, newBuilder);
                             } catch (CommitFailedException cfe) {
-                                log.warn("Conflicting updates, commit failed: journal {} new: {} old: {} journalRoot: {}", journalId, newUuid, oldUuid, journalRoot);
-                                commitFailed = true;
+                                log.warn("Conflicting updates, commit failed: journal {} new: {} old: {} journalRoot: {}", 
+                                        journalId, newUuid, oldUuid, journalRoot);
+                                handleCommitResult(newUuid, CommitResult.conflict(cfe.getMessage()));
+                                return;
                             }
-                            if (!commitFailed) {
+                            if (!commitStates.containsKey(newUuid)) {
+                                handleCommitResult(newUuid, CommitResult.success());
                                 journalRoot = ((SimpleNodeState) newRoot).getRef();
                                 roots.put(newUuid);
                                 roots.put(journalRoot);
@@ -241,7 +244,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                         if (monitorInfo != null) {
                             log.info("Found our commit {}", newUuid);
                             confirmedRoots.put(newUuid, monitorInfo);
-                            if (!commitFailed) {
+                            if (!commitStates.containsKey(newUuid)) {
                                 if (changeDispatcher != null) {
                                     changeDispatcher.contentChanged(newHead.getChildNode(ROOT_NODE_NAME), monitorInfo.snd);
                                 }
@@ -250,8 +253,8 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                                 monitorInfo.fst.notify();
                             }
                         } else {
-                            if (commitFailed) {
-                                commitFailed = false;
+                            if (commitStates.containsKey(newUuid)) {
+                                commitStates.remove(newUuid);
                             } else {
                                 if (changeDispatcher != null) {
                                     changeDispatcher.contentChanged(newHead.getChildNode(ROOT_NODE_NAME), CommitInfo.EMPTY_EXTERNAL);
@@ -430,26 +433,34 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     private void setRoot(String uuid, String oldUuid, CommitInfo info) throws CommitFailedException {
         final Object monitor = new Object();
         expectedRoots.put(uuid, Pair.of(monitor, info));
+        commitStates.put(uuid, CommitState.PENDING);
+
         synchronized (monitor) {
             try {
                 for (int i = 0; ; ++i) {
                     setRootRemote(null, uuid, oldUuid);
                     monitor.wait(10000);
-                    if (confirmedRoots.containsKey(uuid)) {
-                        if (confirmedRoots.remove(uuid) != null) {
-                            if (commitFailed) {
-                                commitFailed = false;
-                                throw new CommitFailedException("Conflict", 0, "");
-                            }
-                            break;
-                        }
-                    } else if (i > 8) {
-                        throw new CommitFailedException("Error", 0, "Unsuccessful after " + i + " retries");
-                    } else {
-                        // timeout => try again
+
+                    CommitState state = commitStates.get(uuid);
+                    if (state == null) {
+                        // Commit was removed from tracking
+                        break;
                     }
+
+                    if (state == CommitState.CONFIRMED) {
+                        commitStates.remove(uuid);
+                        break;
+                    } else if (state == CommitState.CONFLICT) {
+                        commitStates.remove(uuid);
+                        throw new CommitFailedException("Conflict", 0, "");
+                    } else if (i > 8) {
+                        commitStates.remove(uuid);
+                        throw new CommitFailedException("Error", 0, "Unsuccessful after " + i + " retries");
+                    }
+                    // PENDING state - continue waiting
                 }
             } catch (InterruptedException e) {
+                commitStates.remove(uuid);
                 throw new IllegalStateException(e);
             }
         }
@@ -972,5 +983,51 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     public BlobStore getRemoteBlobStore() {
         return remoteBlobStore;
+    }
+
+    private enum CommitState {
+        PENDING,
+        CONFLICT,
+        CONFIRMED,
+        FAILED
+    }
+
+    private static class CommitResult {
+        private final CommitState state;
+        private final String message;
+
+        private CommitResult(CommitState state, String message) {
+            this.state = state;
+            this.message = message;
+        }
+
+        public static CommitResult success() {
+            return new CommitResult(CommitState.CONFIRMED, null);
+        }
+
+        public static CommitResult conflict(String message) {
+            return new CommitResult(CommitState.CONFLICT, message);
+        }
+
+        public static CommitResult failed(String message) {
+            return new CommitResult(CommitState.FAILED, message);
+        }
+    }
+
+    private void handleCommitResult(String newUuid, CommitResult result) {
+        CommitState state = commitStates.get(newUuid);
+        if (state != null) {
+            switch (result.state) {
+                case CONFIRMED:
+                    commitStates.put(newUuid, CommitState.CONFIRMED);
+                    break;
+                case CONFLICT:
+                    commitStates.put(newUuid, CommitState.CONFLICT);
+                    break;
+                case FAILED:
+                    commitStates.remove(newUuid);
+                    break;
+            }
+        }
     }
 }
