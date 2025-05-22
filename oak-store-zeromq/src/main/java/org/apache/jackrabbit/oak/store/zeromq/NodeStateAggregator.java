@@ -1,7 +1,5 @@
 package org.apache.jackrabbit.oak.store.zeromq;
 
-import org.apache.jackrabbit.oak.api.Blob;
-
 import java.io.Closeable;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
