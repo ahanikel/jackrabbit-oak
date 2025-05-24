@@ -42,7 +42,6 @@ import org.apache.jackrabbit.oak.spi.commit.Observable;
 import org.apache.jackrabbit.oak.spi.commit.Observer;
 import org.apache.jackrabbit.oak.spi.commit.ObserverTracker;
 import org.apache.jackrabbit.oak.spi.descriptors.GenericDescriptors;
-import org.apache.jackrabbit.oak.spi.state.ApplyDiff;
 import org.apache.jackrabbit.oak.spi.state.Clusterable;
 import org.apache.jackrabbit.oak.spi.state.ConflictAnnotatingRebaseDiff;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
@@ -208,58 +207,37 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                             journalRoot = newUuid;
                             roots.put(newUuid);
                             log.info("new root: {}", journalRoot);
+                            handleCommitResult(CommitResult.success(newUuid, newHead));
                         } else if (newUuid.equals(journalRoot)) {
                             log.info("Already applied");
-                            Pair<Object, CommitInfo> monitorInfo = expectedRoots.remove(newUuid);
-                            if (monitorInfo != null) {
-                                confirmedRoots.put(newUuid, monitorInfo);
-                                synchronized (monitorInfo.fst) {
-                                    monitorInfo.fst.notify();
-                                }
-                            }
-                            continue;
                         } else {
                             NodeState oldBase = readNodeState(oldUuid);
                             NodeState newBase = readNodeState(journalRoot);
                             NodeBuilder newBuilder = newBase.builder();
-                            NodeState newRoot = null;
+                            NodeState newRoot;
                             try {
                                 newRoot = rebase(newHead, oldBase, newBase, newBuilder);
-                            } catch (CommitFailedException cfe) {
-                                log.warn("Conflicting updates, commit failed: journal {} new: {} old: {} journalRoot: {}", 
-                                        journalId, newUuid, oldUuid, journalRoot);
-                                handleCommitResult(newUuid, CommitResult.conflict(cfe.getMessage()));
-                                return;
-                            }
-                            if (!commitStates.containsKey(newUuid)) {
-                                handleCommitResult(newUuid, CommitResult.success());
                                 journalRoot = ((SimpleNodeState) newRoot).getRef();
                                 roots.put(newUuid);
                                 roots.put(journalRoot);
                                 log.info("new root after resolution: {}", journalRoot);
-                                Thread.sleep(1000); // for composum
+                                // we need to pass the rebased newRoot to the contentChanged handlers
+                                handleCommitResult(CommitResult.success(newUuid, newRoot));
+                            } catch (CommitFailedException cfe) {
+                                log.warn("Conflicting updates, commit failed: journal {} new: {} old: {} journalRoot: {}",
+                                        journalId, newUuid, oldUuid, journalRoot);
+                                handleCommitResult(CommitResult.conflict(newUuid, cfe.getMessage()));
                             }
                         }
                         Pair<Object, CommitInfo> monitorInfo = expectedRoots.remove(newUuid);
                         if (monitorInfo != null) {
                             log.info("Found our commit {}", newUuid);
                             confirmedRoots.put(newUuid, monitorInfo);
-                            if (!commitStates.containsKey(newUuid)) {
-                                if (changeDispatcher != null) {
-                                    changeDispatcher.contentChanged(newHead.getChildNode(ROOT_NODE_NAME), monitorInfo.snd);
-                                }
-                            }
                             synchronized (monitorInfo.fst) {
                                 monitorInfo.fst.notify();
                             }
                         } else {
-                            if (commitStates.containsKey(newUuid)) {
-                                commitStates.remove(newUuid);
-                            } else {
-                                if (changeDispatcher != null) {
-                                    changeDispatcher.contentChanged(newHead.getChildNode(ROOT_NODE_NAME), CommitInfo.EMPTY_EXTERNAL);
-                                }
-                            }
+                            commitStates.remove(newUuid);
                         }
                     } catch (Exception t) {
                         if (t instanceof ZMQException && t.getMessage().equals("Errno 4")) {
@@ -444,6 +422,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                     CommitState state = commitStates.get(uuid);
                     if (state == null) {
                         // Commit was removed from tracking
+                        log.error("Commit {} was removed from tracking", uuid);
                         break;
                     }
 
@@ -994,40 +973,50 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     private static class CommitResult {
         private final CommitState state;
+        private final String newUuid;
+        private final NodeState newHead;
         private final String message;
 
-        private CommitResult(CommitState state, String message) {
+        private CommitResult(CommitState state, String newUuid, NodeState newHead, String message) {
             this.state = state;
+            this.newUuid = newUuid;
+            this.newHead = newHead;
             this.message = message;
         }
 
-        public static CommitResult success() {
-            return new CommitResult(CommitState.CONFIRMED, null);
+        public static CommitResult success(String newUuid, NodeState newHead) {
+            return new CommitResult(CommitState.CONFIRMED, newUuid, newHead, null);
         }
 
-        public static CommitResult conflict(String message) {
-            return new CommitResult(CommitState.CONFLICT, message);
+        public static CommitResult conflict(String newUuid, String message) {
+            return new CommitResult(CommitState.CONFLICT, newUuid, null, message);
         }
 
-        public static CommitResult failed(String message) {
-            return new CommitResult(CommitState.FAILED, message);
+        public static CommitResult failed(String newUuid, String message) {
+            return new CommitResult(CommitState.FAILED, newUuid, null, message);
         }
     }
 
-    private void handleCommitResult(String newUuid, CommitResult result) {
-        CommitState state = commitStates.get(newUuid);
-        if (state != null) {
-            switch (result.state) {
-                case CONFIRMED:
-                    commitStates.put(newUuid, CommitState.CONFIRMED);
-                    break;
-                case CONFLICT:
-                    commitStates.put(newUuid, CommitState.CONFLICT);
-                    break;
-                case FAILED:
-                    commitStates.remove(newUuid);
-                    break;
-            }
+    private void handleCommitResult(CommitResult result) {
+        switch (result.state) {
+            case CONFIRMED:
+                commitStates.put(result.newUuid, CommitState.CONFIRMED);
+                try {
+                    Pair<Object, CommitInfo> monitorInfo = expectedRoots.get(result.newUuid);
+                    if (changeDispatcher != null && monitorInfo != null) {
+                        // result.newHead must be the root after a potential rebase
+                        changeDispatcher.contentChanged(result.newHead, monitorInfo.snd);
+                    }
+                } catch (Exception e) {
+                    log.warn("Error while calling changeDispatcher", e);
+                }
+                break;
+            case CONFLICT:
+                commitStates.put(result.newUuid, CommitState.CONFLICT);
+                break;
+            case FAILED:
+                commitStates.remove(result.newUuid);
+                break;
         }
     }
 }
