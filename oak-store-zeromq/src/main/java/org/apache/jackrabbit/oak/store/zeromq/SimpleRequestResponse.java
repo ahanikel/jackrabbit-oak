@@ -45,6 +45,7 @@ public class SimpleRequestResponse implements Closeable {
 
     public SimpleRequestResponse(Topic topic, String pubAddr, String subAddr) {
 
+        @SuppressWarnings("resource")
         final ZContext context = new ZContext();
         this.thisInstanceId = UUID.randomUUID().toString();
         this.prefixOut = ThreadLocal.withInitial(() -> topic.toString()  + "-req " + thisInstanceId + "-" + Thread.currentThread().getId());
@@ -77,10 +78,6 @@ public class SimpleRequestResponse implements Closeable {
         return requestString(op, msg.getBytes());
     }
 
-    private long getThreadLocalRequestMessageId() {
-        return requestMsgId.get();
-    }
-
     private byte[] getAndIncThreadLocalRequestMessageIdAsBytes() {
         ByteBuffer buf = ByteBuffer.allocate(Long.BYTES);
         long lastMessageId = requestMsgId.get();
@@ -89,16 +86,8 @@ public class SimpleRequestResponse implements Closeable {
         return buf.array();
     }
 
-    private long getThreadLocalResponseMessageId() {
-        return requestMsgId.get();
-    }
-
     private void resetThreadLocalResponseMessageId() {
         responseMsgId.set(0L);
-    }
-
-    private void incThreadLocalResponseMessageId() {
-        responseMsgId.set(responseMsgId.get() + 1);
     }
 
     public byte[] requestBytes(String op, byte[] args) {
@@ -133,7 +122,6 @@ public class SimpleRequestResponse implements Closeable {
     }
 
     public String receiveMore() {
-        ZMQ.Socket reader = readerSocket.get();
         return readerSocket.get().recvStr();
     }
 

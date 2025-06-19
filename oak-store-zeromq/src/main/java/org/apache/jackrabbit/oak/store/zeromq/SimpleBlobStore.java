@@ -19,7 +19,6 @@
 package org.apache.jackrabbit.oak.store.zeromq;
 
 import org.apache.jackrabbit.oak.commons.IOUtils;
-
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;

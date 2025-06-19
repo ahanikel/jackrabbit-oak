@@ -420,7 +420,6 @@ public class SimpleRecordHandler {
         private Map<String, String> properties;
         private volatile boolean serialised = false;
         private final boolean skip;
-        private long msgIdLastSeen;
 
         private SimpleMutableNodeState(String uuid) {
             this.uuid = uuid;
@@ -497,17 +496,12 @@ public class SimpleRecordHandler {
         }
 
         private void checkImmutable() {
-            if (false && serialised) {
+            if (serialised) {
                 throw new IllegalStateException("NodeState is immutable");
             }
         }
 
-        private long getMsgIdLastSeen() {
-            return msgIdLastSeen;
-        }
-
         private void setMsgIdLastSeen(long msgIdLastSeen) {
-            this.msgIdLastSeen = msgIdLastSeen;
         }
     }
 }

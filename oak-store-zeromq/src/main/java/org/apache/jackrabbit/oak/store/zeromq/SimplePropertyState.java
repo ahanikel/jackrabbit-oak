@@ -34,8 +34,6 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.GregorianCalendar;
@@ -48,13 +46,11 @@ public class SimplePropertyState implements PropertyState {
     private static final Logger log = LoggerFactory.getLogger(
             SimplePropertyState.class);
 
-    private static final DateFormat dateParser = new SimpleDateFormat(
-            "yyyy-MM-dd'T'HH:mm:ss.SSSXXX");
-
     private final SimpleNodeStore store;
 
     private final String name;
 
+    @SuppressWarnings("rawtypes")
     private final Type type;
 
     private final List<String> stringValues;
@@ -63,6 +59,7 @@ public class SimplePropertyState implements PropertyState {
 
     private volatile String serialised;
 
+    @SuppressWarnings("unchecked")
     private <T> T convertTo(String value, Type<T> type) {
         if (isStringBased(type)) {
             return (T) value;
@@ -102,6 +99,7 @@ public class SimplePropertyState implements PropertyState {
         this.values = null;
     }
 
+    @SuppressWarnings({ "unchecked", "rawtypes" })
     private <T> SimplePropertyState(SimpleNodeStore store, String name, Type<T> type, T value) {
         this.store = store;
         this.name = name;
@@ -133,6 +131,7 @@ public class SimplePropertyState implements PropertyState {
             for (int i = 0; i < ps.count(); ++i) {
                 if (type.getBaseType()
                         .equals(Type.BINARY)) {
+                    @SuppressWarnings("unchecked")
                     Blob blob = (Blob) ps.getValue(type.getBaseType(), i);
                     try {
                         blob = store.createBlob(blob.getNewStream()); // ensure blob exists in the blobstore
@@ -145,12 +144,16 @@ public class SimplePropertyState implements PropertyState {
                 }
                 else {
                     stringValues.add(ps.getValue(Type.STRING, i));
-                    values.add(ps.getValue(type.getBaseType(), i));
+                    @SuppressWarnings("unchecked")
+                    @NotNull
+                    Object value = ps.getValue(type.getBaseType(), i);
+                    values.add(value);
                 }
             }
         }
         else {
             if (type.equals(Type.BINARY)) {
+                @SuppressWarnings("unchecked")
                 Blob blob = (Blob) ps.getValue(type);
                 try {
                     blob = store.createBlob(blob.getNewStream()); // ensure blob exists in the blobstore
@@ -163,7 +166,9 @@ public class SimplePropertyState implements PropertyState {
             }
             else {
                 stringValues.add(ps.getValue(Type.STRING));
-                values.add(ps.getValue(type));
+                @SuppressWarnings("unchecked")
+                Object value = ps.getValue(type);
+                values.add(value);
             }
         }
     }
@@ -188,6 +193,7 @@ public class SimplePropertyState implements PropertyState {
         return new SimplePropertyState(store, p);
     }
 
+    @SuppressWarnings("unchecked")
     static <T> List<String> fromValueToInternal(SimpleNodeStore store, String name, Type<T> type, T value) {
         final List<String> ret = new ArrayList<>();
         switch (type.tag()) {
@@ -297,7 +303,8 @@ public class SimplePropertyState implements PropertyState {
         return ret;
     }
 
-    static SimplePropertyState fromValue(SimpleNodeStore store, String name, Type type, Object value) {
+    static SimplePropertyState fromValue(SimpleNodeStore store, String name, @SuppressWarnings("rawtypes") Type type, Object value) {
+        @SuppressWarnings("unchecked")
         final List<String> props = fromValueToInternal(store, name, type, value);
         return new SimplePropertyState(store, name, type.toString(), props);
     }
@@ -371,13 +378,7 @@ public class SimplePropertyState implements PropertyState {
                         Type.WEAKREFERENCE) || type.equals(Type.URI);
     }
 
-    private static boolean areStringBased(Type<?> type) {
-        return type.equals(Type.STRINGS) || type.equals(Type.DATES) || type.equals(Type.NAMES)
-                       || type.equals(Type.PATHS) || type.equals(Type.REFERENCES) || type
-                .equals(
-                        Type.WEAKREFERENCES) || type.equals(Type.URIS);
-    }
-
+    @SuppressWarnings({ "unchecked", "rawtypes" })
     @Override
     public <T> @NotNull T getValue(Type<T> type) {
         if (type.isArray()) {
@@ -434,6 +435,7 @@ public class SimplePropertyState implements PropertyState {
         }
     }
 
+    @SuppressWarnings({ "unchecked", "rawtypes" })
     @Override
     public <T> @NotNull T getValue(Type<T> type, int index) {
         if (index < 0 || index >= this.count()) {
@@ -602,7 +604,6 @@ public class SimplePropertyState implements PropertyState {
     }
 
     public static SimplePropertyState deSerialise(SimpleNodeStore store, String s) throws ParseFailure {
-        final Parser parser = new Parser(s);
         FinalVar<String> pName = new FinalVar<>();
         FinalVar<String> pType = new FinalVar<>();
         List<String> pValues   = new ArrayList<>();
@@ -626,6 +627,7 @@ public class SimplePropertyState implements PropertyState {
         T get() throws E;
     }
 
+    @SuppressWarnings("hiding")
     private static final class FinalVar<Type> {
         private Type val;
         private boolean assigned = false;
@@ -649,7 +651,6 @@ public class SimplePropertyState implements PropertyState {
     }
 
     private static class Parser {
-        private static final Pattern tabSeparatedPattern = Pattern.compile("([^\\t]+\\t).*", Pattern.DOTALL);
         private static final Pattern spaceSeparatedPattern = Pattern.compile("([^ ]+ ).*", Pattern.DOTALL);
         private static final Pattern propertyTypePattern = Pattern.compile("([^>]+> ).*", Pattern.DOTALL);
         private static final Pattern allTheRestPattern = Pattern.compile("(.*)", Pattern.DOTALL);
@@ -668,13 +669,6 @@ public class SimplePropertyState implements PropertyState {
             }
             s = s.substring(t.length());
             last = t;
-            return this;
-        }
-
-        private Parser parseLine() throws ParseFailure {
-            int nNewLine = s.indexOf('\n');
-            last = s.substring(0, nNewLine);
-            s = s.substring(nNewLine + 1);
             return this;
         }
 
@@ -702,11 +696,6 @@ public class SimplePropertyState implements PropertyState {
             return this;
         }
 
-        private Parser appendTo(List<String> list) {
-            list.add(last);
-            return this;
-        }
-
         private Parser appendToValues(List<String> list) {
             try {
                 // TODO: BUG: this means that a STRINGS value like [""] is not possible
@@ -725,19 +714,6 @@ public class SimplePropertyState implements PropertyState {
             } catch (UnsupportedEncodingException e) {
                 throw new IllegalArgumentException(e);
             }
-            return this;
-        }
-
-        private Parser parseRegexpUntil(SupplierWithException<Parser, ParseFailure> f, Pattern p, int nTrimEnd) throws ParseFailure {
-            Parser parser = this;
-            Matcher m = p.matcher(parser.s);
-            while (!m.matches()) {
-                parser = f.get();
-                m = p.matcher(parser.s);
-            }
-            last = m.group(1);
-            s = s.substring(last.length());
-            last = last.substring(0, last.length() - nTrimEnd);
             return this;
         }
     }
