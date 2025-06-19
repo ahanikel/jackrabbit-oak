@@ -35,6 +35,7 @@ import java.util.Date;
  */
 public class SimpleCheckpointMBean extends AbstractCheckpointMBean {
     private final Logger log = LoggerFactory.getLogger(getClass());
+    @SuppressWarnings("unused")
     private final SimpleNodeStore store;
 
     public SimpleCheckpointMBean(SimpleNodeStore store) {
@@ -50,6 +51,7 @@ public class SimpleCheckpointMBean extends AbstractCheckpointMBean {
         return 0;
     }
 
+    @SuppressWarnings("unused")
     private static String getDate(NodeState checkpoint, String name) {
         PropertyState p = checkpoint.getProperty(name);
         if (p == null) {

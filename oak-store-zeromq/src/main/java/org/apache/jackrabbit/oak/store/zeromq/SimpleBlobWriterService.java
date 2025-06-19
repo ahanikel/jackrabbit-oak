@@ -39,6 +39,7 @@ import java.util.concurrent.Executors;
 
 public class SimpleBlobWriterService implements Runnable {
 
+    @SuppressWarnings("unused")
     private static final Logger log = LoggerFactory.getLogger(SimpleBlobWriterService.class);
     private static final String WRITER_REQ_TOPIC = SimpleRequestResponse.Topic.WRITE.toString() + "-req";
     private static final String WRITER_REP_TOPIC = SimpleRequestResponse.Topic.WRITE.toString() + "-rep";
@@ -60,6 +61,7 @@ public class SimpleBlobWriterService implements Runnable {
 
     @Override
     public void run() {
+        @SuppressWarnings("resource")
         final ZContext context = new ZContext();
         threadPool = Executors.newFixedThreadPool(5);
         final ZMQ.Socket requestSubscriber = context.createSocket(SocketType.SUB);
@@ -174,6 +176,7 @@ public class SimpleBlobWriterService implements Runnable {
         public void run() {
             shutDown = false;
 
+            @SuppressWarnings("resource")
             final ZContext context = new ZContext();
             final ZMQ.Poller poller = context.createPoller(2);
             poller.register(requestSubscriber, ZMQ.Poller.POLLIN);

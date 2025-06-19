@@ -187,6 +187,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         blobCache = new NodeStateCache<>(bCache, ref -> SimpleBlob.get(this, ref));
 
         logProcessor = new Thread("ZeroMQ Log Processor") {
+            @SuppressWarnings("resource")
             public void run() {
                 journalSocket = new ZeroMQSocketProvider(backendReaderURL, context, SocketType.SUB).get();
                 journalSocket.subscribe(SimpleRequestResponse.Topic.JOURNAL.toString());

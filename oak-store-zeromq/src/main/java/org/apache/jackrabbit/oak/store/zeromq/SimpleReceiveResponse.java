@@ -18,24 +18,18 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq;
 
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
 import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
-
-import java.util.concurrent.TimeUnit;
 
 public class SimpleReceiveResponse extends Thread {
 
     private final String pubAddr;
     private final String subAddr;
-    private final Cache<String, TransactionContext> cache;
 
     public SimpleReceiveResponse(String pubAddr, String subAddr) {
         this.pubAddr = pubAddr;
         this.subAddr = subAddr;
-        this.cache = CacheBuilder.newBuilder().expireAfterWrite(10, TimeUnit.MINUTES).build();
     }
 
     @Override
@@ -53,11 +47,5 @@ public class SimpleReceiveResponse extends Thread {
 
         sub.close();
         context.close();
-    }
-
-    private static class TransactionContext {
-        private long msgid;
-        private TransactionContext() {
-        }
     }
 }

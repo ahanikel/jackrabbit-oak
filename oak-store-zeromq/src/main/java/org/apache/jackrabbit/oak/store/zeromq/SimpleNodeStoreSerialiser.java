@@ -137,10 +137,6 @@ public class SimpleNodeStoreSerialiser {
         writer.accept(s);
     }
 
-    private void writeLine() {
-        write("\n");
-    }
-
     private void writeLine(String s) {
         write(s);
         write("\n");
