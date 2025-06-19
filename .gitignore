@@ -17,3 +17,6 @@ TAGS
 .cpcache
 .nrepl-port
 .vscode
+.clj-kondo
+\#*
+.lsp
