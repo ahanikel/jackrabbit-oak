@@ -203,10 +203,11 @@ public class Template {
         return reader.readProperty(rid, properties[index]);
     }
 
-    MapRecord getChildNodeMap(RecordId recordId) {
+    public MapRecord getChildNodeMap(RecordId recordId) {
         checkState(childName != ZERO_CHILD_NODES);
         Segment segment = recordId.getSegment();
         RecordId childNodesId = segment.readRecordId(recordId.getRecordNumber(), 2 * RECORD_ID_BYTES);
+        System.out.println("getChildNodeMap: childNodesId: " + childNodesId.getRecordNumber());
         return reader.readMap(childNodesId);
     }
 

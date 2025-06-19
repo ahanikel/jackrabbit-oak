@@ -73,9 +73,9 @@ public class SegmentNodeState extends Record implements NodeState {
 
     private final MeterStats readStats;
 
-    private volatile RecordId templateId = null;
+    public volatile RecordId templateId = null;
 
-    private volatile Template template = null;
+    public volatile Template template = null;
 
     SegmentNodeState(
         @NotNull SegmentReader reader,
@@ -110,16 +110,17 @@ public class SegmentNodeState extends Record implements NodeState {
         this(reader, Suppliers.ofInstance(writer), blobStore, id, readStats);
     }
 
-    RecordId getTemplateId() {
+    public RecordId getTemplateId() {
         if (templateId == null) {
             // no problem if updated concurrently,
             // as each concurrent thread will just get the same value
+            System.out.println("Template recordNumber: " + getRecordNumber());
             templateId = getSegment().readRecordId(getRecordNumber(), 0, 1);
         }
         return templateId;
     }
 
-    Template getTemplate() {
+    public Template getTemplate() {
         if (template == null) {
             // no problem if updated concurrently,
             // as each concurrent thread will just get the same value
@@ -128,8 +129,9 @@ public class SegmentNodeState extends Record implements NodeState {
         return template;
     }
 
-    MapRecord getChildNodeMap() {
+    public MapRecord getChildNodeMap() {
         Segment segment = getSegment();
+        System.out.println("readRecordId: " + getRecordNumber() + " 0 2 => " + segment.readRecordId(getRecordNumber(), 0, 2));
         return reader.readMap(segment.readRecordId(getRecordNumber(), 0, 2));
     }
 
@@ -273,6 +275,7 @@ public class SegmentNodeState extends Record implements NodeState {
         }
 
         if (propertyTemplates.length > 0) {
+            System.out.println("list getRecordNumber(): " + getRecordNumber() + ", segment.readRecordId: " + segment.readRecordId(getRecordNumber(), 0, ids) + "propertyTemplates.length: " + propertyTemplates.length);
             ListRecord pIds = new ListRecord(segment.readRecordId(getRecordNumber(), 0, ids), propertyTemplates.length);
             for (int i = 0; i < propertyTemplates.length; i++) {
                 RecordId propertyId = pIds.getEntry(i);

@@ -46,14 +46,18 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.jackrabbit.guava.common.util.concurrent.Monitor;
 import org.apache.jackrabbit.guava.common.util.concurrent.Monitor.Guard;
 import org.apache.jackrabbit.oak.api.Blob;
+import org.apache.jackrabbit.oak.api.PropertyState;
 import org.apache.jackrabbit.oak.plugins.memory.AbstractBlob;
 import org.apache.jackrabbit.oak.plugins.memory.ArrayBasedBlob;
 import org.apache.jackrabbit.oak.plugins.memory.EmptyNodeState;
 import org.apache.jackrabbit.oak.segment.DefaultSegmentWriter;
 import org.apache.jackrabbit.oak.segment.RecordId;
+import org.apache.jackrabbit.oak.segment.Segment;
+import org.apache.jackrabbit.oak.segment.SegmentId;
 import org.apache.jackrabbit.oak.segment.SegmentNodeBuilder;
 import org.apache.jackrabbit.oak.segment.SegmentNodeState;
 import org.apache.jackrabbit.oak.segment.SegmentTestConstants;
+import org.apache.jackrabbit.oak.segment.Template;
 import org.apache.jackrabbit.oak.segment.file.tar.GCGeneration;
 import org.apache.jackrabbit.oak.spi.state.ChildNodeEntry;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
@@ -355,4 +359,36 @@ public class FileStoreIT {
         }
     }
 
+    @Test
+    public void bla() throws InvalidFileStoreVersionException, IOException {
+        ReadOnlyFileStore fs = fileStoreBuilder(
+                new File("/Users/axel/Downloads/org.apache.sling.feature.launcher-1.3.0/launcher/repository/segmentstore"))
+                .buildReadOnly();
+        ReadOnlyRevisions revisions = fs.getRevisions();
+        RecordId head = revisions.getHead();
+        System.out.println("Head: " + head);
+        Segment rootSegment = fs.readSegment(head.getSegmentId());
+        int offsetHead = rootSegment.getOffset(head.getRecordNumber());
+        System.out.println("recordNumber: " + head.getRecordNumber());
+        System.out.println("offsetHead: " + offsetHead);
+        SegmentNodeState segmentNodeState = fs.getReader().readNode(head);
+        System.out.println("SNS recid: " + segmentNodeState.getRecordId());
+        System.out.println("SNS templateid: " + segmentNodeState.getTemplateId());
+        System.out.println("SNS template: " + segmentNodeState.getTemplate());
+        //System.out.println("SNS map: getBuckets: " + segmentNodeState.getChildNodeMap().debugBuckets());
+        System.out.println("SNS map: getEntry: " + segmentNodeState.getChildNode("root"));
+        /*
+        for (PropertyState ps : segmentNodeState.getProperties()) {
+            System.out.println(ps);
+        }
+        for (String name : segmentNodeState.getChildNodeNames()) {
+            System.out.println(name);
+        }
+        */
+    }
+    @Test
+    public void blurb() {
+        System.out.println(Integer.BYTES);
+        System.out.println(Long.BYTES);
+    }
 }

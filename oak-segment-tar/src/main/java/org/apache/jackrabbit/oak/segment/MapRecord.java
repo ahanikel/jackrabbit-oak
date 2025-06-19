@@ -59,7 +59,10 @@ public class MapRecord extends Record {
      * Generates a hash code for the value, using a random number generator
      * to improve the distribution of the hash values.
      */
-    static int getHash(String name) {
+    public static int getHash(String name) {
+        System.out.println("name hash: " + name);
+        System.out.println("java hash: " + name.hashCode());
+        System.out.println("oak  hash: " + ((name.hashCode() ^ M) * M + A));
         return (name.hashCode() ^ M) * M + A;
     }
 
@@ -83,14 +86,14 @@ public class MapRecord extends Record {
      * Number of bits needed to indicate the current trie level.
      * Currently 4.
      */
-    protected static final int LEVEL_BITS = // 4, using nextPowerOfTwo():
+    public static final int LEVEL_BITS = // 4, using nextPowerOfTwo():
             numberOfTrailingZeros(highestOneBit(MAX_NUMBER_OF_LEVELS) << 1);
 
     /**
      * Number of bits used to indicate the size of a map.
      * Currently 28.
      */
-    protected static final int SIZE_BITS = 32 - LEVEL_BITS;
+    public static final int SIZE_BITS = 32 - LEVEL_BITS;
 
     /**
      * Maximum size of a map.
@@ -122,6 +125,25 @@ public class MapRecord extends Record {
     MapRecord(@NotNull SegmentReader reader, @NotNull RecordId id) {
         super(id);
         this.reader = checkNotNull(reader);
+        debug();
+    }
+
+    public void debug() {
+        Segment segment = getSegment();
+        int recordNumber = getRecordNumber();
+        System.out.println("map recordNumber: " + recordNumber);
+        int head = segment.readInt(recordNumber);
+        boolean isDiff = isDiff(head);
+        System.out.println("map segmentId: " + segment.getSegmentId());
+        System.out.println("map recordNumber: " + recordNumber);
+        System.out.println("map head: " + head);
+        System.out.println("map isDiff: " + isDiff);
+        System.out.println("map size: " + getSize(head));
+        System.out.println("map level: " + getLevel(head));
+        if (isDiff) {
+            RecordId base = segment.readRecordId(recordNumber, 8, 2);
+            System.out.println("map base: " + base);
+        }
     }
 
     boolean isLeaf() {
@@ -138,10 +160,19 @@ public class MapRecord extends Record {
         return isDiff(getSegment().readInt(getRecordNumber()));
     }
 
-    MapRecord[] getBuckets() {
+    public MapRecord[] debugBuckets() {
+        if (isDiff()) {
+            RecordId base = getSegment().readRecordId(getRecordNumber(), 8, 2);
+            return reader.readMap(base).getBuckets();
+        }
+        return getBuckets();
+    }
+
+    public MapRecord[] getBuckets() {
         Segment segment = getSegment();
         MapRecord[] buckets = new MapRecord[BUCKETS_PER_LEVEL];
         int bitmap = segment.readInt(getRecordNumber(), 4);
+        System.out.println("map getBuckets: bitmap: " + Integer.toBinaryString(bitmap));
         int ids = 0;
         for (int i = 0; i < BUCKETS_PER_LEVEL; i++) {
             if ((bitmap & (1 << i)) != 0) {
@@ -179,6 +210,7 @@ public class MapRecord extends Record {
     MapEntry getEntry(String name) {
         checkNotNull(name);
         int hash = getHash(name);
+        System.out.println("map: getEntry: hash: " + hash);
         Segment segment = getSegment();
 
         int head = segment.readInt(getRecordNumber());

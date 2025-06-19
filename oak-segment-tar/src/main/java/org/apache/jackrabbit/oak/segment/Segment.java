@@ -52,6 +52,7 @@ import org.apache.jackrabbit.oak.plugins.memory.PropertyStates;
 import org.apache.jackrabbit.oak.segment.RecordNumbers.Entry;
 import org.apache.jackrabbit.oak.segment.data.RecordIdData;
 import org.apache.jackrabbit.oak.segment.data.SegmentData;
+import org.apache.jackrabbit.oak.segment.data.SegmentDataV12;
 import org.apache.jackrabbit.oak.segment.data.StringData;
 import org.apache.jackrabbit.oak.segment.file.tar.GCGeneration;
 import org.jetbrains.annotations.NotNull;
@@ -421,10 +422,20 @@ public class Segment {
         return data.readBytes(recordNumbers.getOffset(recordNumber) + position, length);
     }
 
+    public int getOffset(int recordNumber) {
+        System.out.println(((SegmentDataV12) data).getRecordReferenceNumber(recordNumber));
+        System.out.println(((SegmentDataV12) data).getRecordReferenceType(recordNumber));
+        System.out.println(((SegmentDataV12) data).getRecordReferenceOffset(recordNumber));
+        System.out.println(256*1024 - ((SegmentDataV12) data).getRecordReferenceOffset(recordNumber));
+        return data.size() - (256*1024 - ((SegmentDataV12) data).getRecordReferenceOffset(recordNumber));
+        //return ((SegmentDataV12) data).index(recordNumbers.getOffset(recordNumber));
+    }
+
     @NotNull
     RecordId readRecordId(int recordNumber, int rawOffset, int recordIdOffset) {
         int offset = recordNumbers.getOffset(recordNumber) + rawOffset + recordIdOffset * RecordIdData.BYTES;
         RecordIdData recordIdData = data.readRecordId(offset);
+        System.out.println("readRecordId: segref: " + recordIdData.getSegmentReference() + ", recnum: " + recordIdData.getRecordNumber());
         return new RecordId(dereferenceSegmentId(recordIdData.getSegmentReference()), recordIdData.getRecordNumber());
     }
 
@@ -519,12 +530,15 @@ public class Segment {
 
     private PropertyTemplate[] readProps(int propertyCount, int recordNumber, int offset) {
         PropertyTemplate[] properties = new PropertyTemplate[propertyCount];
+        System.out.println("tpl offset: " + offset);
         if (propertyCount > 0) {
             RecordId id = readRecordId(recordNumber, offset);
             ListRecord propertyNames = new ListRecord(id, properties.length);
             offset += RECORD_ID_BYTES;
             for (int i = 0; i < propertyCount; i++) {
+                System.out.println("tpl offset: " + offset);
                 byte type = readByte(recordNumber, offset++);
+                System.out.println("tpl type: " + type);
                 properties[i] = new PropertyTemplate(i,
                         reader.readString(propertyNames.getEntry(i)), Type.fromTag(
                                 Math.abs(type), type < 0));

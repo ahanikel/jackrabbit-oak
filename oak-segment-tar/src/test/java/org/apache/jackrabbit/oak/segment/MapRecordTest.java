@@ -25,15 +25,22 @@ import static org.easymock.EasyMock.expect;
 import static org.easymock.EasyMock.replay;
 import static org.easymock.EasyMock.verify;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.Set;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
 import org.apache.jackrabbit.guava.common.collect.Sets;
+import org.apache.jackrabbit.oak.segment.file.FileStore;
+import org.apache.jackrabbit.oak.segment.file.FileStoreBuilder;
+import org.apache.jackrabbit.oak.segment.file.InvalidFileStoreVersionException;
+import org.apache.jackrabbit.oak.segment.file.ReadOnlyFileStore;
 import org.apache.jackrabbit.oak.segment.memory.MemoryStore;
 import org.apache.jackrabbit.oak.spi.state.NodeBuilder;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.apache.jackrabbit.oak.spi.state.NodeStateDiff;
+import org.jetbrains.annotations.NotNull;
 import org.junit.Test;
 
 /**
@@ -98,4 +105,19 @@ public class MapRecordTest {
         verify(diff);
     }
 
+    @Test
+    public void bla() throws InvalidFileStoreVersionException, IOException {
+        try (@NotNull ReadOnlyFileStore fs = FileStoreBuilder
+                .fileStoreBuilder(new File("/Users/axel/Downloads/org.apache.sling.feature.launcher-1.3.0/launcher/repository/segmentstore"))
+                .buildReadOnly()) {
+            UUID segId = UUID.fromString("4422F4FF-7C49-4CEF-A5B7-8954096B9F22");
+            System.out.println(segId.getMostSignificantBits());
+            System.out.println(segId.getLeastSignificantBits());
+            SegmentId id = new SegmentId(fs, 4909755921926278383L, -6505580142685085918L);
+            Segment seg = fs.readSegment(id);
+            SegmentNodeState node = fs.getReader().readNode(new RecordId(id, 44));
+            MapRecord map = node.getChildNodeMap();
+            System.out.println(map);
+        }
+    }
 }

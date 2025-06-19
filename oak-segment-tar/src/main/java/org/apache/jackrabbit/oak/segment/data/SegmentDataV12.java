@@ -24,7 +24,7 @@ import org.apache.jackrabbit.oak.commons.Buffer;
 
 import org.apache.jackrabbit.guava.common.base.Charsets;
 
-class SegmentDataV12 implements SegmentData {
+public class SegmentDataV12 implements SegmentData {
 
     private static final int HEADER_SIZE = 32;
 
@@ -146,7 +146,7 @@ class SegmentDataV12 implements SegmentData {
         return buffer.getLong(getSegmentReferenceBase(i) + SEGMENT_REFERENCE_LSB_OFFSET);
     }
 
-    private int index(int recordReferenceOffset) {
+    public int index(int recordReferenceOffset) {
         return SegmentDataUtils.index(buffer, recordReferenceOffset);
     }
 
@@ -207,8 +207,11 @@ class SegmentDataV12 implements SegmentData {
     }
 
     private RecordIdData internalReadRecordId(int index) {
+        System.out.println("internalReadRecordId: read id at offset: " + index);
         int segmentReference = buffer.getShort(index) & 0xffff;
+        System.out.println("internalReadRecordId: found segmentRef: " + segmentReference);
         int recordNumber = buffer.getInt(index + Short.BYTES);
+        System.out.println("internalReadRecordId: found recordNumber: " + recordNumber);
         return new RecordIdData(segmentReference, recordNumber);
     }
 
@@ -219,6 +222,7 @@ class SegmentDataV12 implements SegmentData {
 
     @Override
     public int readInt(int recordReferenceOffset) {
+        System.out.println("SegmentData: readInt: offset: " + index(recordReferenceOffset));
         return buffer.getInt(index(recordReferenceOffset));
     }
 
