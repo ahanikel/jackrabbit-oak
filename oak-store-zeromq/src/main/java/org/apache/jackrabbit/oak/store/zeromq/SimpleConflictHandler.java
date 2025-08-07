@@ -59,7 +59,7 @@ public class SimpleConflictHandler implements ThreeWayConflictHandler {
     @NotNull
     @Override
     public Resolution addExistingNode(@NotNull NodeBuilder parent, @NotNull String name, @NotNull NodeState ours, @NotNull NodeState theirs) {
-        return Resolution.IGNORED;
+        return Resolution.OURS;
     }
 
     @NotNull
