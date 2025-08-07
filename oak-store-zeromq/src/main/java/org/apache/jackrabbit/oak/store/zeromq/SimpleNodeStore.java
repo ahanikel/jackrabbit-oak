@@ -173,14 +173,14 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
             throw new IllegalStateException(e);
         }
 
-        final Cache<String, SimpleNodeState> cache =
+        Cache<String, SimpleNodeState> cache =
                 CacheBuilder.newBuilder()
                         .concurrencyLevel(10)
                         .maximumSize(200000).build();
 
         nodeStateCache = new NodeStateCache<>(cache, ref -> SimpleNodeState.get(this, ref));
 
-        final Cache<String, SimpleBlob> bCache =
+        Cache<String, SimpleBlob> bCache =
                 CacheBuilder.newBuilder()
                         .concurrencyLevel(10)
                         .maximumSize(100000).build();
@@ -192,17 +192,17 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                 journalSocket.subscribe(SimpleRequestResponse.Topic.JOURNAL.toString());
                 while (!Thread.currentThread().isInterrupted()) {
                     try {
-                        final String journalId = journalSocket.recvStr();
+                        String journalId = journalSocket.recvStr();
                         // this test is necessary because the subscription only matches
                         // the beginning of the string
                         // e.g. golden-checkpoints matches, too.
                         if (!journalId.equals(SimpleNodeStore.this.journalId)) {
                             continue;
                         }
-                        final String newUuid = journalSocket.recvStr();
-                        final String oldUuid = journalSocket.recvStr();
+                        String newUuid = journalSocket.recvStr();
+                        String oldUuid = journalSocket.recvStr();
                         log.info("Received {} {} ({})", journalId, newUuid, oldUuid);
-                        final NodeState newHead = readNodeState(newUuid);
+                        NodeState newHead = readNodeState(newUuid);
                         if (oldUuid.equals(journalRoot)) {
                             journalRoot = newUuid;
                             roots.put(newUuid);
@@ -213,10 +213,9 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                         } else {
                             NodeState oldBase = readNodeState(oldUuid);
                             NodeState newBase = readNodeState(journalRoot);
-                            NodeBuilder newBuilder = newBase.builder();
                             NodeState newRoot;
                             try {
-                                newRoot = rebase(newHead, oldBase, newBase, newBuilder);
+                                newRoot = rebase(newHead, oldBase, newBase);
                                 journalRoot = ((SimpleNodeState) newRoot).getRef();
                                 roots.put(newUuid);
                                 roots.put(journalRoot);
@@ -269,7 +268,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         instanceId = UUID.randomUUID().toString();
 
         // TODO: configure using OSGi config
-        final SimpleNodeStoreBuilder builder = new SimpleNodeStoreBuilder();
+        SimpleNodeStoreBuilder builder = new SimpleNodeStoreBuilder();
         builder.initFromEnvironment();
         configure(
             builder.getJournalId(),
@@ -309,7 +308,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     }
 
     void init() {
-        final String uuid = readRootRemote();
+        String uuid = readRootRemote();
         log.info("Journal root initialised with {}", uuid);
         journalRoot = uuid;
         if ("undefined".equals(uuid) || SimpleNodeState.UUID_NULL.toString().equals(uuid)) {
@@ -336,10 +335,10 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     private void resetRoot() {
         emptyCaches();
-        final NodeBuilder builder = EMPTY.builder();
+        NodeBuilder builder = EMPTY.builder();
         builder.setChildNode(ROOT_NODE_NAME);
         builder.setChildNode(CHECKPOINT_NODE_NAME);
-        final SimpleNodeState newSuperRoot = (SimpleNodeState) builder.getNodeState();
+        SimpleNodeState newSuperRoot = (SimpleNodeState) builder.getNodeState();
         journalRoot = EMPTY.getRef(); // the new journalRoot is set by the log processor
         try {
             setRoot(newSuperRoot.getRef(), EMPTY.getRef(), CommitInfo.EMPTY);
@@ -393,7 +392,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     }
 
     public SimpleNodeState getSuperRoot() {
-        final String uuid = readRoot();
+        String uuid = readRoot();
         if ("undefined".equals(uuid)) {
             throw new IllegalStateException("root is undefined, forgot to call init()?");
         }
@@ -409,7 +408,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     }
 
     private void setRoot(String uuid, String oldUuid, CommitInfo info) throws CommitFailedException {
-        final Object monitor = new Object();
+        Object monitor = new Object();
         expectedRoots.put(uuid, Pair.of(monitor, info));
         commitStates.put(uuid, CommitState.PENDING);
 
@@ -471,22 +470,39 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         }
     }
 
-    private void mergeRoot(NodeState ns, CommitInfo info) throws CommitFailedException {
-        final SimpleNodeState superRoot = getSuperRoot();
-        final NodeBuilder superRootBuilder = superRoot.builder();
-        superRootBuilder.setChildNode(ROOT_NODE_NAME, ns);
-        final SimpleNodeState newSuperRoot = (SimpleNodeState) superRootBuilder.getNodeState();
+    private void mergeRoot(NodeState ns, NodeState base, CommitInfo info) throws CommitFailedException {
+        SimpleNodeState superRoot = getSuperRoot();
+        NodeState root = superRoot.getChildNode(ROOT_NODE_NAME);
+        NodeState rebased = rebase(ns, base, root);
+        NodeBuilder superRootBuilder = superRoot.builder();
+        superRootBuilder.setChildNode(ROOT_NODE_NAME, rebased);
+        SimpleNodeState newSuperRoot = (SimpleNodeState) superRootBuilder.getNodeState();
         setRoot(newSuperRoot.getRef(), superRoot.getRef(), info);
     }
 
     @Override
     @NotNull
     public NodeState merge(@NotNull NodeBuilder builder, @NotNull CommitHook commitHook, @NotNull CommitInfo info) throws CommitFailedException {
+        boolean beforeExists = false;
+        boolean afterExists = false;
+        String beforeJournal = journalRoot;
+        log.info("NodeStore: {}", this);
+        log.info("Composum node befjou: {}", beforeJournal);
+
         if (!(builder instanceof SimpleNodeBuilder)) {
             throw new IllegalArgumentException();
         }
         checkArgument(((SimpleNodeBuilder) builder).isRoot());
-        final NodeState before = builder.getBaseState();
+        NodeState before = builder.getBaseState();
+        NodeState after = builder.getNodeState();
+
+        beforeExists = composumExists(getRoot());
+        NodeState afterHook = commitHook.processCommit(before, after, info);
+        if (afterHook.equals(before)) {
+            log.info("No changes detected, returning before state.");
+            return before;
+        }
+        boolean afterHookExists = composumExists(afterHook);
 
         for (int retried = 0;; ++retried) {
             if (retried > 0) {
@@ -497,26 +513,28 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                     throw new RuntimeException(e);
                 }
             }
-            final NodeState newBase = getRoot();
-            final NodeState afterConflict;
-            if (!before.equals(newBase)) {
-                afterConflict = rebase(builder, newBase);
-            } else {
-                afterConflict = builder.getNodeState();
-            }
             try {
-                final NodeState afterHook = commitHook.processCommit(newBase, afterConflict, info);
-                if (afterHook.equals(newBase)) {
-                    return newBase;
-                }
-                mergeRoot(afterHook, info);
+                mergeRoot(afterHook, before, info);
+                String afterJournal = journalRoot;
+                log.info("Composum node afjou: {}", afterJournal);
                 NodeState committed = getRoot();
                 if (retried > 0) {
                     log.info("Commit successful after retrying {} times.", retried);
                 }
                 ((SimpleNodeBuilder) builder).reset(committed);
+                afterExists = composumExists(committed);
+                log.info("Composum node before: {}, afterHook: {}, after: {}", beforeExists, afterHookExists, afterExists);
+                if (beforeExists && !afterExists) {
+                    log.warn("Composum node disappeared after merge");
+                    LoggingHook.newLoggingHook((op, bytes) -> {
+                        log.warn("{} {}", op, new String(bytes));
+                    }).processCommit(before, afterHook, info);
+                }
                 return committed;
             } catch (CommitFailedException e) {
+                if (e.getMessage().contains("OakState0001: Unresolved conflicts")) {
+                    throw e;
+                }
                 if (retried > 90) {
                     log.error("Commit unsuccessful after retrying {} times. Giving up", retried);
                     throw e;
@@ -529,31 +547,41 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         }
     }
 
+    private static boolean composumExists(NodeState ns) {
+        try {
+            // /var/composum/clientlibs/categorycache/composum.nodes.console.browser.min.css
+            // /var/composum/clientlibs/categorycache/composum.nodes.console.base.min.css
+            NodeState composum = ns
+                    .getChildNode("var")
+                    .getChildNode("composum")
+                    .getChildNode("clientlibs")
+                    .getChildNode("categorycache")
+                    .getChildNode("composum.nodes.console.base.min.css");
+            return composum.exists();
+        } catch (Exception e) {
+            log.info(e.toString());
+            return false;
+        }
+    }
+
     private void mergeCheckpointRoot(NodeState cpRoot, CommitInfo info) throws CommitFailedException {
-        final SimpleNodeState superRoot = getCheckpointSuperRoot();
-        final NodeBuilder superRootBuilder = superRoot.builder();
+        SimpleNodeState superRoot = getCheckpointSuperRoot();
+        NodeBuilder superRootBuilder = superRoot.builder();
         superRootBuilder.setChildNode(CHECKPOINT_NODE_NAME, cpRoot);
-        final SimpleNodeState newSuperRoot = (SimpleNodeState) superRootBuilder.getNodeState();
+        SimpleNodeState newSuperRoot = (SimpleNodeState) superRootBuilder.getNodeState();
         setRoot(newSuperRoot.getRef(), superRoot.getRef(), info);
     }
 
     private void mergeCheckpoint(NodeBuilder builder) throws CommitFailedException {
         int retried = 0;
-        final NodeState before = builder.getBaseState();
-        final NodeState after = builder.getNodeState();
+        NodeState before = builder.getBaseState();
+        NodeState after = builder.getNodeState();
         while (true) {
-            final NodeState newBase = getCheckpointRoot();
-            final NodeState afterConflict;
-            if (!before.equals(newBase)) {
-                afterConflict = rebase(builder, newBase);
-            } else {
-                afterConflict = after;
-            }
             try {
-                if (afterConflict.equals(newBase)) {
+                if (after.equals(before)) {
                     return;
                 }
-                mergeCheckpointRoot(afterConflict, CommitInfo.EMPTY);
+                mergeCheckpointRoot(after, CommitInfo.EMPTY);
                 NodeState committed = getCheckpointRoot();
                 if (retried > 0) {
                     log.info("Commit successful after retrying {} times.", retried);
@@ -590,14 +618,14 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     }
 
     private void countNodeRead() {
-        final long c = remoteReadNodeCounter.incrementAndGet();
+        long c = remoteReadNodeCounter.incrementAndGet();
         if (c % 1000 == 0) {
             log.info("Remote nodes read: {}", c);
         }
     }
 
     private void countBlobWritten() {
-        final long c = remoteWriteBlobCounter.incrementAndGet();
+        long c = remoteWriteBlobCounter.incrementAndGet();
         if (c % 1000 == 0) {
             log.info("Remote blobs written: {}", c);
         }
@@ -606,7 +634,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     @Override
     @NotNull
     public NodeState rebase(@NotNull NodeBuilder builder) {
-        final NodeState newBase = getRoot();
+        NodeState newBase = getRoot();
         try {
             return rebase(builder, newBase);
         } catch (CommitFailedException e) {
@@ -614,33 +642,50 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         }
     }
 
-    public NodeState rebase(@NotNull NodeBuilder builder, NodeState newBase) throws CommitFailedException {
+    NodeState rebase(@NotNull NodeBuilder builder, NodeState newBase) throws CommitFailedException {
         checkArgument(builder instanceof SimpleNodeBuilder);
         checkArgument(newBase instanceof SimpleNodeState);
-        SimpleNodeState head = (SimpleNodeState) checkNotNull(builder).getNodeState();
-        SimpleNodeState base = (SimpleNodeState) builder.getBaseState();
+        NodeState head = checkNotNull(builder).getNodeState();
+        NodeState base = builder.getBaseState();
         if (!base.equals(newBase)) {
+            head = rebase(head, base, newBase);
             try {
-                ((SimpleNodeBuilder) builder).reset(newBase);
+                ((SimpleNodeBuilder) builder).reset(head);
             } catch (IllegalStateException e) {
                 throw new IllegalArgumentException(e);
             }
-            return rebase(head, base, newBase, builder);
         }
         return head;
     }
 
-    public static NodeState rebase(NodeState newHead, NodeState oldBase, NodeState newBase, NodeBuilder newBuilder)
+    static NodeState rebase(NodeState newHead, NodeState oldBase, NodeState newBase)
             throws CommitFailedException {
+        if (oldBase.hasChildNode(ROOT_NODE_NAME)) {
+            log.info("rebase: oldBase: {}", composumExists(oldBase.getChildNode(ROOT_NODE_NAME)));
+            log.info("rebase: newBase: {}", composumExists(newBase.getChildNode(ROOT_NODE_NAME)));
+            log.info("rebase: newHead: {}", composumExists(newHead.getChildNode(ROOT_NODE_NAME)));
+            log.info("rebase: oldBase: {}, newBase: {}, newHead: {}",
+                    ((SimpleNodeState) oldBase).getRef(),
+                    ((SimpleNodeState) newBase).getRef(),
+                    ((SimpleNodeState) newHead).getRef());
+        }
+        NodeBuilder newBuilder = newBase.builder();
         newHead.compareAgainstBaseState(oldBase, new ConflictAnnotatingRebaseDiff(newBuilder));
-        ConflictHook conflictHook = new ConflictHook(new SimpleConflictHandler());
         newHead = newBuilder.getNodeState();
-        return conflictHook.processCommit(newBase, newHead, CommitInfo.EMPTY);
+        if (oldBase.hasChildNode(ROOT_NODE_NAME)) {
+            log.info("rebase: newHead: {}", composumExists(newHead.getChildNode(ROOT_NODE_NAME)));
+        }
+        ConflictHook conflictHook = new ConflictHook(new SimpleConflictHandler());
+        NodeState ret = conflictHook.processCommit(oldBase, newHead, CommitInfo.EMPTY);
+        if (oldBase.hasChildNode(ROOT_NODE_NAME)) {
+            log.info("rebase: ret: {}", composumExists(ret.getChildNode(ROOT_NODE_NAME)));
+        }
+        return ret;
     }
 
     @Override
     public NodeState reset(@NotNull NodeBuilder builder) {
-        final NodeState newBase = getRoot();
+        NodeState newBase = getRoot();
         ((MemoryNodeBuilder) builder).reset(newBase);
         return newBase;
     }
@@ -655,7 +700,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         } catch (BlobAlreadyExistsException e) {
             ref = e.getRef();
         }
-        final SimpleBlob blob = SimpleBlob.get(this, ref);
+        SimpleBlob blob = SimpleBlob.get(this, ref);
         blobCache.put(blob.getReference(), blob);
         return blob;
     }
@@ -670,7 +715,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         try {
             return blobCache.get(reference);
         } catch (Exception e) {
-            final String msg = "Blob " + reference + " not found";
+            String msg = "Blob " + reference + " not found";
             log.warn(msg);
         }
         return null;
@@ -690,8 +735,8 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
             }
         }
 
-        final SimpleNodeState currentRoot = (SimpleNodeState) getRoot();
-        final String name = UUID.randomUUID().toString();
+        SimpleNodeState currentRoot = (SimpleNodeState) getRoot();
+        String name = UUID.randomUUID().toString();
 
         NodeBuilder cp = checkpoints.child(name);
         if (Long.MAX_VALUE - now > lifetime) {
@@ -740,7 +785,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     @Override
     @NotNull
     public Iterable<String> checkpoints() {
-        final NodeState cpRoot = getCheckpointRoot();
+        NodeState cpRoot = getCheckpointRoot();
         return cpRoot.getChildNodeNames();
     }
 
@@ -748,8 +793,8 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     @Nullable
     public NodeState retrieve(@NotNull String checkpoint) {
         checkNotNull(checkpoint);
-        final NodeState cpRoot = getCheckpointRoot();
-        final NodeState cp = cpRoot.getChildNode(checkpoint).getChildNode(ROOT_NODE_NAME);
+        NodeState cpRoot = getCheckpointRoot();
+        NodeState cp = cpRoot.getChildNode(checkpoint).getChildNode(ROOT_NODE_NAME);
         if (cp.exists()) {
             return cp;
         }
@@ -759,7 +804,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     @Override
     public boolean release(@NotNull String checkpoint) {
         checkNotNull(checkpoint);
-        final NodeBuilder cpRoot = getCheckpointRoot().builder();
+        NodeBuilder cpRoot = getCheckpointRoot().builder();
         boolean ret = cpRoot.getChildNode(checkpoint).remove();
         if (ret) {
             try {
@@ -936,7 +981,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     @Override
     public int readBlob(String blobId, long pos, byte[] buff, int off, int length) throws IOException {
-        final Blob blob = getBlob(blobId);
+        Blob blob = getBlob(blobId);
         return blob.getNewStream().read(buff, off, length);
     }
 
@@ -1005,7 +1050,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                     Pair<Object, CommitInfo> monitorInfo = expectedRoots.get(result.newUuid);
                     if (changeDispatcher != null && monitorInfo != null) {
                         // result.newHead must be the root after a potential rebase
-                        changeDispatcher.contentChanged(result.newHead, monitorInfo.snd);
+                        changeDispatcher.contentChanged(result.newHead.getChildNode(ROOT_NODE_NAME), monitorInfo.snd);
                     }
                 } catch (Exception e) {
                     log.warn("Error while calling changeDispatcher", e);
