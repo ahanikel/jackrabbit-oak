@@ -484,12 +484,6 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     @Override
     @NotNull
     public NodeState merge(@NotNull NodeBuilder builder, @NotNull CommitHook commitHook, @NotNull CommitInfo info) throws CommitFailedException {
-        boolean beforeExists = false;
-        boolean afterExists = false;
-        String beforeJournal = journalRoot;
-        log.info("NodeStore: {}", this);
-        log.info("Composum node befjou: {}", beforeJournal);
-
         if (!(builder instanceof SimpleNodeBuilder)) {
             throw new IllegalArgumentException();
         }
@@ -497,13 +491,11 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         NodeState before = builder.getBaseState();
         NodeState after = builder.getNodeState();
 
-        beforeExists = composumExists(getRoot());
         NodeState afterHook = commitHook.processCommit(before, after, info);
         if (afterHook.equals(before)) {
             log.info("No changes detected, returning before state.");
             return before;
         }
-        boolean afterHookExists = composumExists(afterHook);
 
         for (int retried = 0;; ++retried) {
             if (retried > 0) {
@@ -516,21 +508,11 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
             }
             try {
                 mergeRoot(afterHook, before, info);
-                String afterJournal = journalRoot;
-                log.info("Composum node afjou: {}", afterJournal);
                 NodeState committed = getRoot();
                 if (retried > 0) {
                     log.info("Commit successful after retrying {} times.", retried);
                 }
                 ((SimpleNodeBuilder) builder).reset(committed);
-                afterExists = composumExists(committed);
-                log.info("Composum node before: {}, afterHook: {}, after: {}", beforeExists, afterHookExists, afterExists);
-                if (beforeExists && !afterExists) {
-                    log.warn("Composum node disappeared after merge");
-                    LoggingHook.newLoggingHook((op, bytes) -> {
-                        log.warn("{} {}", op, new String(bytes));
-                    }).processCommit(before, afterHook, info);
-                }
                 return committed;
             } catch (CommitFailedException e) {
                 if (e.getMessage().contains("OakState0001: Unresolved conflicts")) {
@@ -545,23 +527,6 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                 } catch (InterruptedException ex) {
                 }
             }
-        }
-    }
-
-    private static boolean composumExists(NodeState ns) {
-        try {
-            // /var/composum/clientlibs/categorycache/composum.nodes.console.browser.min.css
-            // /var/composum/clientlibs/categorycache/composum.nodes.console.base.min.css
-            NodeState composum = ns
-                    .getChildNode("var")
-                    .getChildNode("composum")
-                    .getChildNode("clientlibs")
-                    .getChildNode("categorycache")
-                    .getChildNode("composum.nodes.console.base.min.css");
-            return composum.exists();
-        } catch (Exception e) {
-            log.info(e.toString());
-            return false;
         }
     }
 
@@ -661,27 +626,11 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     static NodeState rebase(NodeState newHead, NodeState oldBase, NodeState newBase)
             throws CommitFailedException {
-        if (oldBase.hasChildNode(ROOT_NODE_NAME)) {
-            log.info("rebase: oldBase: {}", composumExists(oldBase.getChildNode(ROOT_NODE_NAME)));
-            log.info("rebase: newBase: {}", composumExists(newBase.getChildNode(ROOT_NODE_NAME)));
-            log.info("rebase: newHead: {}", composumExists(newHead.getChildNode(ROOT_NODE_NAME)));
-            log.info("rebase: oldBase: {}, newBase: {}, newHead: {}",
-                    ((SimpleNodeState) oldBase).getRef(),
-                    ((SimpleNodeState) newBase).getRef(),
-                    ((SimpleNodeState) newHead).getRef());
-        }
         NodeBuilder newBuilder = newBase.builder();
         newHead.compareAgainstBaseState(oldBase, new ConflictAnnotatingRebaseDiff(newBuilder));
         newHead = newBuilder.getNodeState();
-        if (oldBase.hasChildNode(ROOT_NODE_NAME)) {
-            log.info("rebase: newHead: {}", composumExists(newHead.getChildNode(ROOT_NODE_NAME)));
-        }
         ConflictHook conflictHook = new ConflictHook(new SimpleConflictHandler());
-        NodeState ret = conflictHook.processCommit(oldBase, newHead, CommitInfo.EMPTY);
-        if (oldBase.hasChildNode(ROOT_NODE_NAME)) {
-            log.info("rebase: ret: {}", composumExists(ret.getChildNode(ROOT_NODE_NAME)));
-        }
-        return ret;
+        return conflictHook.processCommit(oldBase, newHead, CommitInfo.EMPTY);
     }
 
     @Override
