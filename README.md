@@ -1,3 +1,67 @@
+The ZeroMQ NodeStore
+====================
+
+This fork of Apache Jackrabbit Oak is for developing `oak-store-zeromq`,
+the ZeroMQ NodeStore. The name stems from the fact that instances of
+it communicate by sending and receiving messages via ZeroMQ (or, to be
+more precise, jeromq, which is a pure Java implementation of the original).
+
+See https://ahanikel.github.io/jackrabbit-oak/ for a description of its
+workings.
+
+Building
+--------
+
+Use Java 17 and maven 3.9.11. Other versions may work as well but this is
+what worked for me. If you're on a Mac, install maven manually, not via
+homebrew (java from homebrew is ok). My homebrew maven kept using the
+latest installed java version instead of the one I've configured via
+`JAVA_VERSION`.
+
+Then do simply `mvn -DskipTests clean install`
+
+Running
+-------
+
+First start the backend jobs: `./start-jobs`
+The easiest way to run Sling with the ZeroMQ NodeStore is to modify
+the `org-apache-sling-starter` module. Replace the oak version `1.82.0`
+with `1.82.0-zeromq` in `pom.xml` and replace segment-tar with
+oak-store-zeromq in `src/main/features/oak/persistence/oak_persistence_sns.json` so that it looks like this:
+
+```
+{
+    "bundles":[
+        {
+            "id":"org.apache.jackrabbit:oak-store-zeromq:${oak.version}",
+            "start-order":"15"
+        }
+    ],
+    "configurations":{
+        "org.apache.jackrabbit.oak.store.zeromq.SimpleNodeStore":{
+            "name":"Default NodeStore"
+        }
+    }
+}
+```
+
+Then create a `start-launcher` script with:
+
+```
+rm -rf launcher
+mvn clean package
+export backendReaderURL=tcp://localhost:8000
+export backendWriterURL=tcp://localhost:8001
+JAVA_OPTS="-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=5005" target/dependency/org.apache.sling.feature.launcher/bin/launcher -f targe\
+t/slingfeature-tmp/feature-oak_tar.json
+```
+
+Then monitor `launcher/logs/error.log` to see what's going on.
+
+Enjoy!
+
+Here is the original README:
+
 [![ASF Jira](https://img.shields.io/badge/ASF%20JIRA-OAK-orange)](https://issues.apache.org/jira/projects/OAK/summary)
 [![Maven Central](https://img.shields.io/maven-central/v/org.apache.jackrabbit/oak-core.svg?label=Maven%20Central)](https://central.sonatype.com/artifact/org.apache.jackrabbit/oak-core)
 [![Build](https://github.com/apache/jackrabbit-oak/actions/workflows/build.yml/badge.svg)](https://github.com/apache/jackrabbit-oak/actions/workflows/build.yml)
