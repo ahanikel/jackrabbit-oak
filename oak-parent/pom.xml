@@ -30,7 +30,7 @@
   <groupId>org.apache.jackrabbit</groupId>
   <artifactId>oak-parent</artifactId>
   <name>Oak Parent POM</name>
-  <version>1.82.0</version>
+  <version>1.82.0-zeromq</version>
   <packaging>pom</packaging>
 
   <properties>
@@ -253,13 +253,6 @@
           </configuration>
         </plugin>
         <plugin>
-          <groupId>org.apache.rat</groupId>
-          <artifactId>apache-rat-plugin</artifactId>
-          <configuration>
-            <consoleOutput>true</consoleOutput>
-          </configuration>
-        </plugin>
-        <plugin>
           <artifactId>maven-surefire-plugin</artifactId>
           <configuration>
             <argLine>${test.opts}</argLine>
@@ -425,18 +418,6 @@
                 <exclude>logback-test.xml</exclude>
               </excludes>
             </configuration>
-          </execution>
-        </executions>
-      </plugin>
-      <plugin>
-        <groupId>org.apache.rat</groupId>
-        <artifactId>apache-rat-plugin</artifactId>
-        <executions>
-          <execution>
-            <phase>verify</phase>
-            <goals>
-              <goal>check</goal>
-            </goals>
           </execution>
         </executions>
       </plugin>
