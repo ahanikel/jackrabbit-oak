@@ -45,7 +45,7 @@ class SegmentFixtureProvider {
 
     static NodeStore create(String path, BlobStore blobStore, Whiteboard wb, Closer closer, boolean readOnly)
             throws IOException, InvalidFileStoreVersionException {
-        StatisticsProvider statisticsProvider = checkNotNull(getService(wb, StatisticsProvider.class));
+        StatisticsProvider statisticsProvider = requireNonNull(getService(wb, StatisticsProvider.class));
 
         FileStore.Builder builder = FileStore.builder(new File(path))
                 .withMaxFileSize(256).withDefaultMemoryMapping();

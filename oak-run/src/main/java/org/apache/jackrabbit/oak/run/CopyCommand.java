@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.jackrabbit.oak.copy;
+package org.apache.jackrabbit.oak.run;
 
 import com.google.common.base.Stopwatch;
 import joptsimple.OptionParser;
