@@ -27,13 +27,12 @@ import java.io.InputStream;
 public interface BlobStore {
     byte[] getBytes(String ref) throws IOException;
     String getString(String ref) throws IOException;
-    FileInputStream getInputStream(String ref) throws FileNotFoundException, IOException;
+    InputStream getInputStream(String ref) throws IOException;
     String putBytes(byte[] bytes) throws IOException, BlobAlreadyExistsException;
-    String putString(String string) throws IOException, BlobAlreadyExistsException;
     String putInputStream(InputStream is) throws IOException, BlobAlreadyExistsException;
-    File getTempFile() throws IOException;
-    String putTempFile(File tempFile) throws BlobAlreadyExistsException, IOException;
-    File getSpecificFile(String name);
+    TemporaryBlob getTempBlob() throws IOException;
+    String putTempBlob(TemporaryBlob tempBlob) throws BlobAlreadyExistsException, IOException;
+    void putTempBlobAs(String ref, TemporaryBlob tempBlob) throws IOException;
     boolean hasBlob(String ref);
     long getLength(String ref) throws IOException;
 }

@@ -1,0 +1,76 @@
+package org.apache.jackrabbit.oak.store.zeromq;
+
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.FileInputStream;
+
+public class SimpleMemoryBlobStore implements BlobStore {
+
+  private final Cache<String, byte[]> cache;
+
+  public SimpleMemoryBlobStore() {
+    this.cache = CacheBuilder.newBuilder().maximumSize(10000).build();
+  }
+
+  @Override
+  public boolean hasBlob(String ref) {
+    return cache.getIfPresent(ref) != null;
+  }
+
+  @Override
+  public byte[] getBytes(String ref) throws IOException {
+    byte[] bytes = cache.getIfPresent(ref);
+    if (bytes == null) throw new IOException("Blob not found: " + ref);
+    return bytes;
+  }
+
+  @Override
+  public String getString(String ref) throws IOException {
+    return new String(getBytes(ref));
+  }
+
+  @Override
+  public FileInputStream getInputStream(String ref) throws IOException {
+    throw new UnsupportedOperationException("Memory store does not support FileInputStream.");
+  }
+
+  @Override
+  public String putBytes(byte[] bytes) throws IOException, BlobAlreadyExistsException {
+    String ref = String.valueOf(java.util.Arrays.hashCode(bytes));
+    if (hasBlob(ref)) {
+      throw new BlobAlreadyExistsException(ref);
+    }
+    cache.put(ref, bytes);
+    return ref;
+  }
+
+  @Override
+  public String putInputStream(InputStream is) throws IOException, BlobAlreadyExistsException {
+    byte[] bytes = is.readAllBytes();
+    return putBytes(bytes);
+  }
+
+  @Override
+  public TemporaryBlob getTempBlob() throws IOException {
+    return new MemoryTemporaryBlob();
+  }
+
+  @Override
+  public String putTempBlob(TemporaryBlob tempBlob) throws BlobAlreadyExistsException, IOException {
+    return putBytes(((ByteArrayOutputStream) tempBlob.getOutputStream()).toByteArray());
+  }
+
+  @Override
+  public void putTempBlobAs(String ref, TemporaryBlob tempBlob) throws IOException {
+    cache.put(ref, ((ByteArrayOutputStream) tempBlob.getOutputStream()).toByteArray());
+  }
+
+  @Override
+  public long getLength(String ref) throws IOException {
+    return getBytes(ref).length;
+  }
+}

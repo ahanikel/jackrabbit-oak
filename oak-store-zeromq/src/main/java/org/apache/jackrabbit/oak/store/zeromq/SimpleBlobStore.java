@@ -121,14 +121,9 @@ public class SimpleBlobStore implements BlobStore {
     }
 
     @Override
-    public String putString(String string) throws IOException, BlobAlreadyExistsException {
-        return putBytes(string.getBytes());
-    }
-
-    @Override
     public String putInputStream(InputStream is) throws BlobAlreadyExistsException, IOException {
-        final File tempFile = getTempFile();
-        try (OutputStream os = new FileOutputStream(tempFile)) {
+        final TemporaryBlob tempBlob = getTempBlob();
+        try (OutputStream os = tempBlob.getOutputStream()) {
             IOUtils.copy(is, os);
         } finally {
             try {
@@ -137,16 +132,18 @@ public class SimpleBlobStore implements BlobStore {
                 // ignore
             }
         }
-        return putTempFile(tempFile);
+        return putTempBlob(tempBlob);
+    }
+
+
+    @Override
+    public TemporaryBlob getTempBlob() throws IOException {
+        return new FileTemporaryBlob(File.createTempFile("b64temp", ".dat", blobDir));
     }
 
     @Override
-    public File getTempFile() throws IOException {
-        return File.createTempFile("b64temp", ".dat", blobDir);
-    }
-
-    @Override
-    public String putTempFile(File tempFile) throws BlobAlreadyExistsException {
+    public String putTempBlob(TemporaryBlob tempBlob) throws BlobAlreadyExistsException {
+        File tempFile = ((FileTemporaryBlob) tempBlob).getFile();
         final String ref = Util.getRefFromFile(tempFile);
         if (hasBlob(ref)) {
             tempFile.delete();
@@ -158,9 +155,15 @@ public class SimpleBlobStore implements BlobStore {
     }
 
     @Override
-    public File getSpecificFile(String name) {
-        checkRef(name);
-        return new File(blobDir, name);
+    public void putTempBlobAs(String ref, TemporaryBlob tempBlob) throws IOException {
+        checkRef(ref);
+        if (ref == null || ref.length() < 6) {
+            throw new IllegalArgumentException("Invalid ref: " + ref);
+        }
+        File tempFile = ((FileTemporaryBlob) tempBlob).getFile();
+        if (!tempFile.renameTo(getFileForRef(ref))) {
+            throw new IOException("Failed to rename temporary blob file to " + ref);
+        }
     }
 
     @Override
@@ -193,7 +196,7 @@ public class SimpleBlobStore implements BlobStore {
 
     private void checkRef(String ref) {
         if (ref.contains("/")) {
-            throw new IllegalArgumentException();
+            throw new IllegalArgumentException("Reference should not contain slashes: " + ref);
         }
     }
 }

@@ -50,20 +50,19 @@ public class SimpleNodeStateDiffGenerator implements NodeStateDiff {
         children.sort(Comparator.naturalOrder());
         properties.sort(Comparator.naturalOrder());
 
-        final File tempFile = blobStore.getTempFile();
-        try (OutputStream os = new FileOutputStream(tempFile)) {
-            writeLine(os, "n:");
-            for (String c : children) {
-                writeLine(os, c);
-            }
-            for (String p : properties) {
-                writeLine(os, p);
-            }
-            writeLine(os, "n!");
+        TemporaryBlob tempFile = blobStore.getTempBlob();
+        OutputStream os = tempFile.getOutputStream();
+        writeLine(os, "n:");
+        for (String c : children) {
+            writeLine(os, c);
         }
+        for (String p : properties) {
+            writeLine(os, p);
+        }
+        writeLine(os, "n!");
         String ref;
         try {
-            ref = blobStore.putTempFile(tempFile);
+            ref = blobStore.putTempBlob(tempFile);
         } catch (BlobAlreadyExistsException e) {
             ref = e.getRef();
         }

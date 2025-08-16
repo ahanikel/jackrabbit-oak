@@ -186,20 +186,19 @@ public class SimpleNodeStateStore implements NodeStateStore {
         children.sort(Comparator.naturalOrder());
         properties.sort(Comparator.naturalOrder());
 
-        final File tempFile = blobStore.getTempFile();
-        try (OutputStream os = new FileOutputStream(tempFile)) {
-            writeLine(os, "n:");
-            for (String c : children) {
-                writeLine(os, c);
-            }
-            for (String p : properties) {
-                writeLine(os, p);
-            }
-            writeLine(os, "n!");
+        TemporaryBlob tempBlob = blobStore.getTempBlob();
+        OutputStream os = tempBlob.getOutputStream();
+        writeLine(os, "n:");
+        for (String c : children) {
+            writeLine(os, c);
         }
+        for (String p : properties) {
+            writeLine(os, p);
+        }
+        writeLine(os, "n!");
         String ref;
         try {
-            ref = blobStore.putTempFile(tempFile);
+            ref = blobStore.putTempBlob(tempBlob);
         } catch (BlobAlreadyExistsException e) {
             ref = e.getRef();
         }
