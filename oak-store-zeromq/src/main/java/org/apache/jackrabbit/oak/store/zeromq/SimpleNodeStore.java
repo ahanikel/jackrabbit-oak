@@ -371,7 +371,13 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         String msg;
         while (true) {
             try {
-                nodeStateReader.requestString("journal", journalId).equals("E"); // verb, always "E"
+                String retCode = nodeStateReader.requestString("journal", journalId);
+                if (!retCode.equals("E")) {
+                    log.error("lastReq: {}", nodeStateReader.getLastReq());
+                    log.error("retCode: {}", retCode);
+                    log.error("Unexpected response from reader: {}", nodeStateReader.receiveMore());
+                    throw new IllegalStateException("Unable to read root, unexpected response from reader");
+                }
                 msg = nodeStateReader.receiveMore();
                 break;
             } catch (Exception e) {
@@ -913,7 +919,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     @Override
     public String writeBlob(String tempFileName) throws IOException {
         try {
-            return getRemoteBlobStore().putTempFile(new File(tempFileName));
+            return getRemoteBlobStore().putTempBlob(new FileTemporaryBlob(new File(tempFileName)));
         } catch (BlobAlreadyExistsException e) {
             return e.getRef();
         }

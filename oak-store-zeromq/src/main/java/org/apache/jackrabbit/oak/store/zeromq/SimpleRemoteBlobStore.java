@@ -84,11 +84,6 @@ public class SimpleRemoteBlobStore implements BlobStore {
     }
 
     @Override
-    public String putString(String string) throws IOException, BlobAlreadyExistsException {
-        return putBytes(string.getBytes());
-    }
-
-    @Override
     public String putInputStream(InputStream is) throws IOException, BlobAlreadyExistsException {
         final String ref = localCache.putInputStream(is);
         if (!checker.apply(ref)) {
@@ -98,20 +93,23 @@ public class SimpleRemoteBlobStore implements BlobStore {
     }
 
     @Override
-    public File getTempFile() throws IOException {
-        return localCache.getTempFile();
+    public TemporaryBlob getTempBlob() throws IOException {
+        return localCache.getTempBlob();
     }
 
     @Override
-    public String putTempFile(File tempFile) throws BlobAlreadyExistsException, IOException {
-        final String ref = localCache.putTempFile(tempFile);
+    public String putTempBlob(TemporaryBlob tempFile) throws BlobAlreadyExistsException, IOException {
+        final String ref = localCache.putTempBlob(tempFile);
         writer.accept(ref, localCache.getInputStream(ref));
         return ref;
     }
 
     @Override
-    public File getSpecificFile(String name) {
-        throw new UnsupportedOperationException("Does not work for remote blob stores, a File is local by definition.");
+    public void putTempBlobAs(String ref, TemporaryBlob tempBlob) throws IOException {
+        localCache.putTempBlobAs(ref, tempBlob);
+        if (!checker.apply(ref)) {
+            writer.accept(ref, localCache.getInputStream(ref));
+        }
     }
 
     @Override

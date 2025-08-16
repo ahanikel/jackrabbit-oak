@@ -29,6 +29,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -129,7 +130,7 @@ public class SimpleBlobReaderService implements Runnable {
                 }
                 ret = blobStore.hasBlob(ref) ? "true" : "false";
             } else if (msg.equals("blob")) {
-                FileInputStream fis = null;
+                InputStream is = null;
                 try {
                     msg = socket.recvStr();
                     final StringTokenizer st = new StringTokenizer(msg);
@@ -139,14 +140,11 @@ public class SimpleBlobReaderService implements Runnable {
                     }
                     final int offset = parseIntWithDefault(st, 0);
                     final int maxSize = parseIntWithDefault(st, -1);
-                    final ByteBuffer buffer = ByteBuffer.allocate(
-                            maxSize <= 0 || maxSize > 1048576 ? 1048576 : maxSize);
-                    fis = blobStore.getInputStream(reference);
-                    int nRead = fis.getChannel().read(buffer, offset);
-                    if (nRead > 0) {
-                        buffer.limit(nRead);
-                        buffer.rewind();
-                        if (offset + nRead == fis.getChannel().size()) {
+                    final byte[] buffer = new byte[maxSize <= 0 || maxSize > 1048576 ? 1048576 : maxSize];
+                    is = blobStore.getInputStream(reference);
+                    int nRead = is.read(buffer, offset, buffer.length);
+                    if (nRead >= 0) {
+                        if (nRead < buffer.length) {
                             socket.sendMore(msgId);
                             socket.sendMore(Util.LONG_ZERO);
                             socket.sendMore("E");
@@ -155,7 +153,7 @@ public class SimpleBlobReaderService implements Runnable {
                             socket.sendMore(Util.LONG_ZERO);
                             socket.sendMore("C");
                         }
-                        socket.sendByteBuffer(buffer, 0);
+                        socket.send(buffer, 0, nRead, 0);
                     } else {
                         socket.sendMore(msgId);
                         socket.sendMore(Util.LONG_ZERO);
@@ -179,8 +177,8 @@ public class SimpleBlobReaderService implements Runnable {
                     socket.sendMore("F");
                     socket.send("" + e.getMessage());
                 } finally {
-                    if (fis != null) {
-                        fis.close();
+                    if (is != null) {
+                        is.close();
                     }
                 }
                 return;
@@ -210,12 +208,15 @@ public class SimpleBlobReaderService implements Runnable {
     }
 
     private static String getJournalHead(String journalName, BlobStore blobStore) throws IOException {
-        final File journalFile = blobStore.getSpecificFile("journal-" + journalName);
-        try (FileInputStream is = new FileInputStream(journalFile)) {
-            return IOUtils.readString(is);
-        } catch (FileNotFoundException e) {
+        InputStream is = null;
+        try {
+            is = blobStore.getInputStream("journal-" + journalName);
+        } catch (IOException e) {
+        }
+        if (is == null) {
             return SimpleNodeState.UUID_NULL.toString();
         }
+        return IOUtils.readString(is);
     }
 
     private static int parseIntWithDefault(StringTokenizer st, int def) {

@@ -102,7 +102,7 @@ public class SimpleBlobWriterServiceTest {
         assertEquals("E", request.recvStr());
         assertEquals("", request.recvStr());
 
-        File journalFile = simpleBlobStore.getSpecificFile("journal-mytestjournal");
+        File journalFile = simpleBlobStore.getFile("journal-mytestjournal");
         assertTrue(journalFile.exists());
         String head = IOUtils.readString(new FileInputStream(journalFile));
         assertEquals("CDBA3AE79386D3CF3DAAE8EC7F760588", head);

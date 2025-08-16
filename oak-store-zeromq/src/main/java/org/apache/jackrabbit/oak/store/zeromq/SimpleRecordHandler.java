@@ -46,42 +46,34 @@ public class SimpleRecordHandler {
 
     private static class CurrentBlob {
         private String ref;
-        private File file;
-        private FileInputStream found;
-        private FileOutputStream fos;
-
-        public CurrentBlob() {}
+        private TemporaryBlob temporaryBlob;
+        private InputStream found;
 
         public String getRef() {
             return ref;
         }
 
-        public void setRef(String ref) {
+        public CurrentBlob setRef(String ref) {
             this.ref = ref;
+            return this;
         }
 
-        public File getFile() {
-            return file;
+        public TemporaryBlob getTemporaryBlob() {
+            return temporaryBlob;
         }
 
-        public void setFile(File file) {
-            this.file = file;
+        public CurrentBlob setTemporaryBlob(TemporaryBlob temporaryBlob) {
+            this.temporaryBlob = temporaryBlob;
+            return this;
         }
 
-        public FileInputStream getFound() {
+        public InputStream getFound() {
             return found;
         }
 
-        public void setFound(FileInputStream found) {
+        public CurrentBlob setFound(InputStream found) {
             this.found = found;
-        }
-
-        public FileOutputStream getFos() {
-            return fos;
-        }
-
-        public void setFos(FileOutputStream fos) {
-            this.fos = fos;
+            return this;
         }
     }
 
@@ -103,7 +95,7 @@ public class SimpleRecordHandler {
         this.journalPublisher = journalPublisher;
     }
 
-    public synchronized void handleRecord(String uuThreadId, long msgid, String op, byte[] value) {
+    public synchronized void handleRecord(String uuThreadId, long msgid, String op, byte[] value) throws IOException {
 
         ++line;
         if (line % 100000 == 0) {
@@ -138,7 +130,7 @@ public class SimpleRecordHandler {
                     } else {
                         try {
                             oldNode = cache.get(oldId, () -> {
-                                try (FileInputStream oldNodeSer = store.getInputStream(oldId)) {
+                                try (InputStream oldNodeSer = store.getInputStream(oldId)) {
                                     try {
                                         return SimpleMutableNodeState.deserialise(oldId, oldNodeSer);
                                     } catch (IOException e) {
@@ -169,13 +161,12 @@ public class SimpleRecordHandler {
                 }
                 if (!ns.skip) {
                     try {
-                        final File tempFile = store.getTempFile();
-                        try (OutputStream os = new FileOutputStream(tempFile)) {
-                            ns.serialise(os);
-                        }
+                        TemporaryBlob tempBlob = store.getTempBlob();
+                        OutputStream os = tempBlob.getOutputStream();
+                        ns.serialise(os);
                         String newRef;
                         try {
-                            newRef = store.putTempFile(tempFile);
+                            newRef = store.putTempBlob(tempBlob);
                         } catch (BlobAlreadyExistsException e) {
                             newRef = e.getRef();
                         }
@@ -259,6 +250,7 @@ public class SimpleRecordHandler {
                 CurrentBlob currentBlob = currentBlobMap.get(uuThreadId);
                 if (currentBlob == null) {
                     currentBlob = new CurrentBlob();
+                    currentBlob.setTemporaryBlob(store.getTempBlob());
                     currentBlobMap.put(uuThreadId, currentBlob);
                 }
                 final String currentBlobRef = currentBlob.getRef();
@@ -280,9 +272,8 @@ public class SimpleRecordHandler {
                     currentBlob.setRef(ref);
                     for (int i = 0; ; ++i) {
                         try {
-                            File tempFile = store.getTempFile();
-                            currentBlob.setFile(tempFile);
-                            currentBlob.setFos(new FileOutputStream(tempFile));
+                            TemporaryBlob tempBlob = store.getTempBlob();
+                            currentBlob.setTemporaryBlob(tempBlob);
                             break;
                         } catch (IOException ioe) {
                             if (i % 600 == 0) {
@@ -307,19 +298,14 @@ public class SimpleRecordHandler {
                 if (currentBlob.getFound() != null) {
                     currentBlob.setFound(null);
                 }
-                final OutputStream currentBlobFos = currentBlob.getFos();
-                if (currentBlobFos != null) {
+                final TemporaryBlob temporaryBlob = currentBlob.getTemporaryBlob();
+                if (temporaryBlob != null) {
                     try {
-                        currentBlobFos.close();
+                        temporaryBlob.delete();
                     } catch (IOException e) {
                         log.warn(e.getMessage());
                     }
-                    currentBlob.setFos(null);
-                }
-                final File currentBlobFile = currentBlob.getFile();
-                if (currentBlobFile != null) {
-                    currentBlobFile.delete();
-                    currentBlob.setFile(null);
+                    currentBlob.setTemporaryBlob(null);
                 }
                 currentBlob.setRef(null);
                 break;
@@ -336,12 +322,13 @@ public class SimpleRecordHandler {
                 if (currentBlob.getFound() != null) {
                     break;
                 }
-                final OutputStream currentBlobFos = currentBlob.getFos();
-                if (currentBlobFos == null) {
+                final TemporaryBlob temporaryBlob = currentBlob.getTemporaryBlob();
+                if (temporaryBlob == null) {
                     final String msg = "{}: Blob is not open";
                     log.error(msg, line);
                     throw new IllegalStateException(msg);
                 }
+                final OutputStream currentBlobFos = currentBlob.getTemporaryBlob().getOutputStream();
                 try {
                     if (raw) {
                         currentBlobFos.write(value);
@@ -367,17 +354,16 @@ public class SimpleRecordHandler {
                     }
                     break;
                 }
-                final OutputStream currentBlobFos = currentBlob.getFos();
-                if (currentBlobFos == null) {
+                final TemporaryBlob temporaryBlob = currentBlob.getTemporaryBlob();
+                if (temporaryBlob == null) {
                     final String msg = "Blob is not open";
                     log.error(msg);
                     throw new IllegalStateException(msg);
                 }
                 try {
-                    currentBlobFos.close();
                     String newRef;
                     try {
-                        newRef = store.putTempFile(currentBlob.getFile());
+                        newRef = store.putTempBlob(temporaryBlob);
                     } catch (BlobAlreadyExistsException e) {
                         newRef = e.getRef();
                     }
@@ -396,8 +382,10 @@ public class SimpleRecordHandler {
                 final String journalId = tokens.nextToken();
                 final String head = tokens.nextToken();
                 final String oldHead = tokens.nextToken();
-                try (OutputStream journalFile = new FileOutputStream(store.getSpecificFile("journal-" + journalId))) {
+                final TemporaryBlob journalBlob = store.getTempBlob();
+                try (OutputStream journalFile = journalBlob.getOutputStream()) {
                     IOUtils.writeString(journalFile, head);
+                    store.putTempBlobAs("journal-" + journalId, journalBlob);
                 } catch (IOException e) {
                     throw new IllegalStateException(e);
                 }
