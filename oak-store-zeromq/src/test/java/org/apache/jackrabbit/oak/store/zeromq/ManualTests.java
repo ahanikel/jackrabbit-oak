@@ -68,7 +68,7 @@ public class ManualTests {
         Thread t = new Thread() {
             public void run() {
                 ZMQ.Socket s = ctx.createSocket(SocketType.SUB);
-                s.bind("tcp://localhost:8000");
+                s.bind(Constants.DEFAULT_BACKEND_READER_URL);
                 s.subscribe("");
                 for (int i = 0; i < 100; ++i) {
                     System.out.println("Receiving...");
@@ -79,7 +79,7 @@ public class ManualTests {
         t.setDaemon(true);
         t.start();
         ZMQ.Socket sock = ctx.createSocket(SocketType.PUB);
-        System.out.println(sock.connect("tcp://localhost:8001"));
+        System.out.println(sock.connect(Constants.DEFAULT_BACKEND_WRITER_URL));
         Thread.sleep(1000);
         System.out.println(sock.sendMore("topic"));
         System.out.println(sock.send("hello"));
@@ -90,7 +90,7 @@ public class ManualTests {
     @Ignore
     public void testConnections() {
         SimpleRequestResponse r = new SimpleRequestResponse(SimpleRequestResponse.Topic.READ, "tcp://comm-hub:8001", "tcp://comm-hub:8000");
-        r.requestString("journal", "golden");
+        r.requestString("journal", Constants.DEFAULT_JOURNAL_ID);
         System.out.println(r.receiveMore());
     }
 

@@ -95,7 +95,7 @@ public class SimpleBlobReaderServiceTest {
         assertEquals("F", request.recvStr());
         assertEquals("IllegalArgument", request.recvStr());
 
-        sendReadRequestString(++msgid, "journal", "golden");
+        sendReadRequestString(++msgid, "journal", Constants.DEFAULT_JOURNAL_ID);
         SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);
         assertEquals(msgid, Util.longFromBytes(request.recv()));
         assertEquals(0, Util.longFromBytes(request.recv()));

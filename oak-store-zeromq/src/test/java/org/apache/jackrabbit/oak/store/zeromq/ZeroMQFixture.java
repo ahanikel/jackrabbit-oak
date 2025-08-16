@@ -64,8 +64,8 @@ public class ZeroMQFixture extends NodeStoreFixture {
             blobDir.mkdir();
 
             // Reader and writer services
-            reader = new SimpleBlobReaderService(blobDir, publisherUrl, subscriberUrl);
-            writer = new SimpleBlobWriterService(blobDir, publisherUrl, subscriberUrl);
+            reader = new SimpleBlobReaderService(new SimpleBlobStore(blobDir), publisherUrl, subscriberUrl);
+            writer = new SimpleBlobWriterService(new SimpleBlobStore(blobDir), publisherUrl, subscriberUrl);
 
             // Run services
             threadPool = Executors.newFixedThreadPool(3);
@@ -80,7 +80,7 @@ public class ZeroMQFixture extends NodeStoreFixture {
             store = SimpleNodeStore.builder()
                     .setBackendReaderURL(subscriberUrl)
                     .setBackendWriterURL(publisherUrl)
-                    .setJournalId("golden")
+                    .setJournalId(Constants.DEFAULT_JOURNAL_ID)
                     .setBlobCacheDir(blobCacheDir.getAbsolutePath())
                     .build();
         } catch (IOException e) {

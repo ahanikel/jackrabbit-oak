@@ -45,15 +45,15 @@ public class SimpleBlobReaderService implements Runnable {
     private static final String READER_REQ_TOPIC = SimpleRequestResponse.Topic.READ.toString() + "-req";
     private static final String READER_REP_TOPIC = SimpleRequestResponse.Topic.READ.toString() + "-rep";
 
-    private SimpleBlobStore blobStore;
+    private BlobStore blobStore;
     private final String publisherUrl;
     private final String subscriberUrl;
     private ZContext context;
     private ExecutorService threadPool;
     private Router readerFrontend;
 
-    public SimpleBlobReaderService(File blobDir, String publisherUrl, String subscriberUrl) throws IOException {
-        this.blobStore = new SimpleBlobStore(blobDir);
+    public SimpleBlobReaderService(BlobStore blobStore, String publisherUrl, String subscriberUrl) throws IOException {
+        this.blobStore = blobStore;
         this.publisherUrl = publisherUrl;
         this.subscriberUrl = subscriberUrl;
     }
