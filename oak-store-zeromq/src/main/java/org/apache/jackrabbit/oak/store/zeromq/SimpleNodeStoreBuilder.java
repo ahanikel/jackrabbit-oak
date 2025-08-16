@@ -27,15 +27,19 @@ import java.net.URLDecoder;
 import java.util.HashMap;
 import java.util.Map;
 
+import static org.apache.jackrabbit.oak.store.zeromq.Constants.DEFAULT_BACKEND_READER_URL;
+import static org.apache.jackrabbit.oak.store.zeromq.Constants.DEFAULT_BACKEND_WRITER_URL;
+import static org.apache.jackrabbit.oak.store.zeromq.Constants.DEFAULT_BLOB_CACHE_DIR;
+import static org.apache.jackrabbit.oak.store.zeromq.Constants.DEFAULT_JOURNAL_ID;
+import static org.apache.jackrabbit.oak.store.zeromq.Constants.PARAM_BACKEND_READER_URL;
+import static org.apache.jackrabbit.oak.store.zeromq.Constants.PARAM_BACKEND_WRITER_URL;
+import static org.apache.jackrabbit.oak.store.zeromq.Constants.PARAM_BLOB_CACHE_DIR;
+import static org.apache.jackrabbit.oak.store.zeromq.Constants.PARAM_INIT_JOURNAL;
+import static org.apache.jackrabbit.oak.store.zeromq.Constants.PARAM_JOURNAL_ID;
+
 public class SimpleNodeStoreBuilder {
 
     private static final Logger log = LoggerFactory.getLogger(SimpleNodeStoreBuilder.class.getName());
-
-    public static final String PARAM_JOURNAL_ID = "journalId";
-    public static final String PARAM_BACKEND_READER_URL = "backendReaderURL";
-    public static final String PARAM_BACKEND_WRITER_URL = "backendWriterURL";
-    public static final String PARAM_INIT_JOURNAL = "initJournal";
-    private static final String PARAM_BLOB_CACHE_DIR = "blobCacheDir";
 
     private String journalId;
     private String backendReaderURL;
@@ -44,11 +48,11 @@ public class SimpleNodeStoreBuilder {
     private String blobCacheDir;
 
     public SimpleNodeStoreBuilder() {
-       journalId = "golden";
+       journalId = DEFAULT_JOURNAL_ID;
        initJournal = null;
-       backendReaderURL = "tcp://localhost:8000";
-       backendWriterURL = "tcp://localhost:8001";
-       blobCacheDir = "/tmp/blobCacheDir";
+       backendReaderURL = DEFAULT_BACKEND_READER_URL;
+       backendWriterURL = DEFAULT_BACKEND_WRITER_URL;
+       blobCacheDir = DEFAULT_BLOB_CACHE_DIR;
     }
 
     public SimpleNodeStoreBuilder initFromEnvironment() {
@@ -58,7 +62,7 @@ public class SimpleNodeStoreBuilder {
             // ignore
         }
         if (journalId == null) {
-            journalId = "golden";
+            journalId = DEFAULT_JOURNAL_ID;
         }
         try {
             initJournal = System.getenv(PARAM_INIT_JOURNAL);
@@ -71,7 +75,7 @@ public class SimpleNodeStoreBuilder {
             // ignore
         }
         if (backendReaderURL == null) {
-            backendReaderURL = "tcp://localhost:8001";
+            backendReaderURL = DEFAULT_BACKEND_READER_URL;
         }
         try {
             backendWriterURL = System.getenv(PARAM_BACKEND_WRITER_URL);
@@ -79,7 +83,7 @@ public class SimpleNodeStoreBuilder {
             // ignore
         }
         if (backendWriterURL == null) {
-            backendWriterURL = "tcp://localhost:8000";
+            backendWriterURL = DEFAULT_BACKEND_WRITER_URL;
         }
         try {
             blobCacheDir = System.getenv(PARAM_BLOB_CACHE_DIR);
@@ -87,7 +91,7 @@ public class SimpleNodeStoreBuilder {
             // ignore
         }
         if (blobCacheDir == null) {
-            blobCacheDir = "/tmp/blobCacheDir";
+            blobCacheDir = DEFAULT_BLOB_CACHE_DIR;
         }
         return this;
     }

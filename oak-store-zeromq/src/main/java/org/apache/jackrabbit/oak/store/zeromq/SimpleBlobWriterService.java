@@ -26,7 +26,6 @@ import org.zeromq.ZMQ;
 import org.zeromq.ZMQException;
 
 import java.io.Closeable;
-import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -49,12 +48,12 @@ public class SimpleBlobWriterService implements Runnable {
     private Router writerFrontend;
     private SimpleRecordHandler recordHandler;
 
-    private final SimpleBlobStore simpleBlobStore;
+    private final BlobStore blobStore;
     private final String publisherUrl;
     private final String subscriberUrl;
 
-    public SimpleBlobWriterService(File blobStoreDir, String publisherUrl, String subscriberUrl) throws IOException {
-        this.simpleBlobStore = new SimpleBlobStore(blobStoreDir);
+    public SimpleBlobWriterService(BlobStore blobStore, String publisherUrl, String subscriberUrl) throws IOException {
+        this.blobStore = blobStore;
         this.publisherUrl = publisherUrl;
         this.subscriberUrl = subscriberUrl;
     }
@@ -77,7 +76,7 @@ public class SimpleBlobWriterService implements Runnable {
         writerFrontend = new Router(requestPublisher, requestSubscriber, workerRouter);
         writerFrontend.start();
 
-        recordHandler = new SimpleRecordHandler(simpleBlobStore, requestPublisher);
+        recordHandler = new SimpleRecordHandler(blobStore, requestPublisher);
 
         for (int nThread = 0; nThread < 5; ++nThread) {
             threadPool.execute(() -> {

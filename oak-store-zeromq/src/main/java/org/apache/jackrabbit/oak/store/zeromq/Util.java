@@ -1,15 +1,21 @@
 package org.apache.jackrabbit.oak.store.zeromq;
 
+import org.slf4j.Logger;
+
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
 public class Util {
+
+    public static final Logger LOG = org.slf4j.LoggerFactory.getLogger(Util.class);
 
     public static byte[] LONG_ZERO = longToBytes(0L);
 
@@ -79,5 +85,14 @@ public class Util {
         buf.put(bytes);
         buf.rewind();
         return buf.getLong();
+    }
+
+    public static String fromFile(String path) {
+        try {
+            return Files.readString(Paths.get(path));
+        } catch (IOException e) {
+            LOG.error("Got IOException while reading from file " + path + " : " + e.getMessage(), e);
+            throw new RuntimeException(e);
+        }
     }
 }

@@ -87,14 +87,14 @@ public class SimpleRecordHandler {
 
     private final Base64.Decoder b64 = Base64.getDecoder();
     private int line = 0;
-    private final SimpleBlobStore store;
+    private final BlobStore store;
     private final Map<String, SimpleMutableNodeState> nodeStates;
     private final Map<String, CurrentBlob> currentBlobMap;
     private final Cache<String, SimpleMutableNodeState> cache;
     private final Cache<String, Long> lastMessageSeen;
     private final ZMQ.Socket journalPublisher;
 
-    public SimpleRecordHandler(SimpleBlobStore store, ZMQ.Socket journalPublisher) {
+    public SimpleRecordHandler(BlobStore store, ZMQ.Socket journalPublisher) {
         this.store = store;
         nodeStates = new HashMap<>();
         currentBlobMap = new HashMap<>();
@@ -296,6 +296,8 @@ public class SimpleRecordHandler {
                             }
                         }
                     }
+                } catch (IOException e) {
+                    throw new IllegalStateException(e);
                 }
                 break;
             }

@@ -92,13 +92,13 @@ public class SimpleNodeStoreTest {
         subSocket.bind(publisherUrl);
         subSocket.subscribe("");
         blobDir = temporaryFolder.newFolder();
-        reader = new SimpleBlobReaderService(blobDir, publisherUrl, subscriberUrl);
-        writer = new SimpleBlobWriterService(blobDir, publisherUrl, subscriberUrl);
+        reader = new SimpleBlobReaderService(new SimpleBlobStore(blobDir), publisherUrl, subscriberUrl);
+        writer = new SimpleBlobWriterService(new SimpleBlobStore(blobDir), publisherUrl, subscriberUrl);
         threadPool = Executors.newFixedThreadPool(3);
         threadPool.execute(() -> ZMQ.proxy(subSocket, pubSocket, null));
         threadPool.execute(reader);
         threadPool.execute(writer);
-        store = newSimpleNodeStore("golden");
+        store = newSimpleNodeStore(Constants.DEFAULT_JOURNAL_ID);
     }
 
     @After
@@ -125,10 +125,10 @@ public class SimpleNodeStoreTest {
     public void testConcurrentReaders() {
         SimpleRequestResponse reader1 = new SimpleRequestResponse(SimpleRequestResponse.Topic.READ, publisherUrl, subscriberUrl);
         SimpleRequestResponse reader2 = new SimpleRequestResponse(SimpleRequestResponse.Topic.READ, publisherUrl, subscriberUrl);
-        reader1.requestString("journal", "golden");
+        reader1.requestString("journal", Constants.DEFAULT_JOURNAL_ID);
         reader1.receiveMore();
-        String ret1 = reader1.requestString("journal", "golden");
-        String ret2 = reader2.requestString("journal", "golden");
+        String ret1 = reader1.requestString("journal", Constants.DEFAULT_JOURNAL_ID);
+        String ret2 = reader2.requestString("journal", Constants.DEFAULT_JOURNAL_ID);
         String ret4 = reader2.receiveMore();
         String ret3 = reader1.receiveMore();
         Assert.assertEquals("E", ret1);
@@ -152,7 +152,7 @@ public class SimpleNodeStoreTest {
 
     @Test
     public void testConcurrentWriters() throws IOException, InterruptedException {
-        SimpleNodeStore store2 = newSimpleNodeStore("golden");
+        SimpleNodeStore store2 = newSimpleNodeStore(Constants.DEFAULT_JOURNAL_ID);
         Random random = new Random();
         byte[] randomBlob = new byte[1024576];
         for (int i = 0; i < randomBlob.length; ++i) {
@@ -192,7 +192,7 @@ public class SimpleNodeStoreTest {
     */
     @Test
     public void testConcurrent() throws IOException, CommitFailedException, InterruptedException {
-        SimpleNodeStore store2 = newSimpleNodeStore("golden");
+        SimpleNodeStore store2 = newSimpleNodeStore(Constants.DEFAULT_JOURNAL_ID);
 
         NodeBuilder root = store.getRoot().builder();
         NodeBuilder root2 = store2.getRoot().builder();
@@ -229,7 +229,7 @@ public class SimpleNodeStoreTest {
 
     @Test
     public void testConcurrent2() throws IOException, CommitFailedException, InterruptedException {
-        try (SimpleNodeStore store2 = newSimpleNodeStore("golden")) {
+        try (SimpleNodeStore store2 = newSimpleNodeStore(Constants.DEFAULT_JOURNAL_ID)) {
 
             NodeState root = store.getRoot();
             NodeBuilder rootBuilder = root.builder();
@@ -286,7 +286,7 @@ public class SimpleNodeStoreTest {
 
     @Test
     public void testConcurrent3() throws IOException, CommitFailedException, InterruptedException {
-        SimpleNodeStore store2 = newSimpleNodeStore("golden");
+        SimpleNodeStore store2 = newSimpleNodeStore(Constants.DEFAULT_JOURNAL_ID);
 
         NodeBuilder root = store.getRoot().builder();
         NodeBuilder root2 = store2.getRoot().builder();
