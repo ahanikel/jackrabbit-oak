@@ -280,6 +280,8 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
 
         init();
         OsgiWhiteboard whiteboard = new OsgiWhiteboard(ctx.getBundleContext());
+        // avoid dependency cycle with oak-lucene
+        /*
         org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardUtils.registerMBean
                 (whiteboard
                         , CheckpointMBean.class
@@ -288,6 +290,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                         , "SimpleNodeStore checkpoint management"
                         , new HashMap<>()
                 );
+        */
         // ensure a clusterId is initialized
         // and expose it as 'oak.clusterid' repository descriptor
         GenericDescriptors clusterIdDesc = new GenericDescriptors();
