@@ -25,11 +25,8 @@ import org.apache.jackrabbit.oak.index.merge.IndexStoreCommand;
 import org.apache.jackrabbit.oak.index.merge.IndexStoreStatsCommand;
 import org.apache.jackrabbit.oak.run.commons.Command;
 import org.apache.jackrabbit.oak.run.commons.Modes;
-import org.apache.jackrabbit.oak.simple.CommHubCommand;
 import org.apache.jackrabbit.oak.simple.ImportToSimpleCommand;
 import org.apache.jackrabbit.oak.simple.SerialiseNodeStoreCommand;
-import org.apache.jackrabbit.oak.simple.SimpleBlobReaderServiceCommand;
-import org.apache.jackrabbit.oak.simple.SimpleBlobWriterServiceCommand;
 import org.apache.jackrabbit.oak.simple.SimpleQueueListenerCommand;
 
 import java.util.Collections;
@@ -81,9 +78,6 @@ public final class AvailableModes {
         builder.put("resetclusterid", new ResetClusterIdCommand());
         builder.put("restore", new RestoreCommand());
         builder.put(SerialiseNodeStoreCommand.NAME, new SerialiseNodeStoreCommand());
-        builder.put(SimpleBlobReaderServiceCommand.NAME, new SimpleBlobReaderServiceCommand());
-        builder.put(SimpleBlobWriterServiceCommand.NAME, new SimpleBlobWriterServiceCommand());
-        builder.put(CommHubCommand.NAME, new CommHubCommand());
         builder.put(SimpleQueueListenerCommand.NAME, new SimpleQueueListenerCommand());
         builder.put("tarmkdiff", new FileStoreDiffCommand());
         builder.put(ThreadDumpCommand.THREADDUMP, new ThreadDumpCommand());
