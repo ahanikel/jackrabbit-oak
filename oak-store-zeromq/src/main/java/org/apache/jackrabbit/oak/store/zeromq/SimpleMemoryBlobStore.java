@@ -3,6 +3,7 @@ package org.apache.jackrabbit.oak.store.zeromq;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -34,8 +35,8 @@ public class SimpleMemoryBlobStore implements BlobStore {
   }
 
   @Override
-  public FileInputStream getInputStream(String ref) throws IOException {
-    throw new UnsupportedOperationException("Memory store does not support FileInputStream.");
+  public InputStream getInputStream(String ref) throws IOException {
+    return new ByteArrayInputStream(getBytes(ref));
   }
 
   @Override
