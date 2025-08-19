@@ -375,18 +375,22 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         while (true) {
             try {
                 String retCode = nodeStateReader.requestString("journal", journalId);
-                if (!retCode.equals("E")) {
-                    log.error("lastReq: {}", nodeStateReader.getLastReq());
-                    log.error("retCode: {}", retCode);
-                    log.error("Unexpected response from reader: {}", nodeStateReader.receiveMore());
-                    throw new IllegalStateException("Unable to read root, unexpected response from reader");
-                }
                 msg = nodeStateReader.receiveMore();
+                if (!retCode.equals("E")) {
+                    // TODO: this should be handled in AzureBlobStoreAdapter
+                    if (msg.contains("404")) {
+                        msg = "undefined";
+                    } else {
+                        log.error("lastReq: {}", nodeStateReader.getLastReq());
+                        log.error("retCode: {}", retCode);
+                        log.error("Unexpected response from reader: {}, assuming journal is unset", nodeStateReader.receiveMore());
+                    }
+                }
                 break;
             } catch (Exception e) {
                 log.warn(e.toString());
                 try {
-                    Thread.sleep(100);
+                    Thread.sleep(1000);
                 } catch (InterruptedException ex) {
                     // ignore
                 }

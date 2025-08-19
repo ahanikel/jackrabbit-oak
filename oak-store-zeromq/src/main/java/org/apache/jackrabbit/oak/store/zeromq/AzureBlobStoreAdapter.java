@@ -37,6 +37,7 @@ public class AzureBlobStoreAdapter implements BlobStoreAdapter {
             .connectionString(connectionString)
             .buildClient();
     this.containerClient = serviceClient.getBlobContainerClient(containerName);
+    containerClient.createIfNotExists();
   }
 
   private boolean hasBlob(String blobName) {

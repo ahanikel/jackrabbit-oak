@@ -92,7 +92,7 @@ public class SimpleRequestResponse implements Closeable {
 
     public byte[] requestBytes(String op, byte[] args) {
         lastReq.set(thisReq.get());
-        thisReq.set(op + " " + args);
+        thisReq.set(op + " " + new String(args));
         ZMQ.Socket writer = writerSocket.get();
         ZMQ.Socket reader = readerSocket.get();
         byte[] ret;
