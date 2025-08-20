@@ -166,14 +166,10 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         nodeStateWriter = new SimpleRequestResponse(SimpleRequestResponse.Topic.WRITE, backendWriterURL, backendReaderURL);
 
         this.blobStoreAdapter = new ZeroMQBlobStoreAdapter(nodeStateReader, nodeStateWriter);
-        try {
-            this.remoteBlobStore = new SimpleRemoteBlobStore(blobStoreAdapter.getChecker(), blobStoreAdapter.getReader(),
-                    blobStoreAdapter.getWriter(), new SimpleBlobStore(this.blobCacheDir));
-        } catch (IOException e) {
-            throw new IllegalStateException(e);
-        }
+        this.remoteBlobStore = new SimpleRemoteBlobStore(blobStoreAdapter.getChecker(), blobStoreAdapter.getReader(),
+              blobStoreAdapter.getWriter(), new SimpleMemoryBlobStore(100000));
 
-        Cache<String, SimpleNodeState> cache =
+      Cache<String, SimpleNodeState> cache =
                 CacheBuilder.newBuilder()
                         .concurrencyLevel(10)
                         .maximumSize(200000).build();
