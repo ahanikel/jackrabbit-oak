@@ -43,6 +43,7 @@ public class SimpleBlobWriterService implements Runnable {
     private static final String WRITER_REQ_TOPIC = SimpleRequestResponse.Topic.WRITE.toString() + "-req";
     private static final String WRITER_REP_TOPIC = SimpleRequestResponse.Topic.WRITE.toString() + "-rep";
     private static final String WORKER_URL = "inproc://writerBackend";
+    private static final int WORKER_THREADS = 5;
 
     private ExecutorService threadPool;
     private Router writerFrontend;
@@ -62,7 +63,7 @@ public class SimpleBlobWriterService implements Runnable {
     public void run() {
         @SuppressWarnings("resource")
         final ZContext context = new ZContext();
-        threadPool = Executors.newFixedThreadPool(5);
+        threadPool = Executors.newFixedThreadPool(WORKER_THREADS);
         final ZMQ.Socket requestSubscriber = context.createSocket(SocketType.SUB);
         requestSubscriber.setBacklog(100000);
         final ZMQ.Socket requestPublisher = context.createSocket(SocketType.PUB);
@@ -78,7 +79,7 @@ public class SimpleBlobWriterService implements Runnable {
 
         recordHandler = new SimpleRecordHandler(blobStore, requestPublisher);
 
-        for (int nThread = 0; nThread < 5; ++nThread) {
+        for (int nThread = 0; nThread < WORKER_THREADS; ++nThread) {
             threadPool.execute(() -> {
                 final ZMQ.Socket socket = context.createSocket(SocketType.REQ);
                 socket.setIdentity(("" + Thread.currentThread().getId()).getBytes());
@@ -131,9 +132,12 @@ public class SimpleBlobWriterService implements Runnable {
         try {
             final String uuThreadId = msg;
             reqMsgId = socket.recv();
+            final long reqMsgIdLong = Util.longFromBytes(reqMsgId);
             final String op = socket.recvStr();
             byte[] value = socket.recv();
-            recordHandler.handleRecord(uuThreadId, Util.longFromBytes(reqMsgId), op, value);
+
+            recordHandler.handleRecord(uuThreadId, reqMsgIdLong, op, value);
+
             socket.sendMore(reqMsgId);
             socket.sendMore(Util.longToBytes(0L));
             socket.sendMore("E");
