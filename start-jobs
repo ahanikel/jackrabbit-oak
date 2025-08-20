@@ -7,11 +7,11 @@ rm -rf /tmp/blobCacheDir
 #readerProfile=-XX:StartFlightRecording=name=SimpleBlobReaderProfileSession,settings=profile,filename=simple-blob-reader-profile.jfr
 #writerProfile=-XX:StartFlightRecording=name=SimpleBlobWriterProfileSession,settings=profile,filename=simple-blob-writer-profile.jfr
 
-#readerDebug="-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=5006"
-#writerDebug="-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=5007"
+readerDebug="-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=5006"
+writerDebug="-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=5007"
 
-#AZPARAM="-a $AZURE_STORAGE_CONNECTION_STRING -c zmq-nodestore-test"
-MEMORY=-m
+AZPARAM="-a $AZURE_STORAGE_CONNECTION_STRING -c zmq-nodestore-test"
+#MEMORY=-m
 
 java -jar oak-store-zeromq/target/oak-store-zeromq-*-uberjar.jar comm-hub -s tcp://localhost:8001 -r tcp://localhost:8000 &
 if [[ -z $MEMORY ]]

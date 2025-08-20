@@ -32,11 +32,18 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.StringTokenizer;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 public class SimpleRecordHandler {
@@ -85,29 +92,35 @@ public class SimpleRecordHandler {
     private final Cache<String, SimpleMutableNodeState> cache;
     private final Cache<String, Long> lastMessageSeen;
     private final ZMQ.Socket journalPublisher;
+    private final ExecutorService threads;
+    private final List<Future<?>> pendingTasks;
 
     public SimpleRecordHandler(BlobStore store, ZMQ.Socket journalPublisher) {
         this.store = store;
-        nodeStates = new HashMap<>();
-        currentBlobMap = new HashMap<>();
+        nodeStates = new ConcurrentHashMap<>();
+        currentBlobMap = new ConcurrentHashMap<>();
         cache = CacheBuilder.newBuilder().maximumSize(1000).build();
         lastMessageSeen = CacheBuilder.newBuilder().expireAfterWrite(10, TimeUnit.MINUTES).build();
         this.journalPublisher = journalPublisher;
+        this.threads = Executors.newFixedThreadPool(100);
+        pendingTasks = Collections.synchronizedList(new ArrayList<>());
     }
 
-    public synchronized void handleRecord(String uuThreadId, long msgid, String op, byte[] value) throws IOException {
+    public void handleRecord(String uuThreadId, long msgid, String op, byte[] value) throws IOException {
 
-        ++line;
-        if (line % 100000 == 0) {
-            log.info("We're at line {}", line);
-        }
+        synchronized (this) {
+            ++line;
+            if (line % 100000 == 0) {
+                log.info("We're at line {}", line);
+            }
 
-        Long lastMsgId = lastMessageSeen.getIfPresent(uuThreadId);
-        if (lastMsgId != null && lastMsgId.longValue() >= msgid) {
-            log.info("Duplicate msgId: {} instead of {}", msgid, lastMsgId + 1);
-            return;
+            Long lastMsgId = lastMessageSeen.getIfPresent(uuThreadId);
+            if (lastMsgId != null && lastMsgId.longValue() >= msgid) {
+                log.info("Duplicate msgId: {} instead of {}", msgid, lastMsgId + 1);
+                return;
+            }
+            lastMessageSeen.put(uuThreadId, msgid);
         }
-        lastMessageSeen.put(uuThreadId, msgid);
 
         if (op == null) {
             return;
@@ -159,29 +172,31 @@ public class SimpleRecordHandler {
                     log.error("Current nodestate not present");
                     break;
                 }
-                if (!ns.skip) {
-                    try {
-                        TemporaryBlob tempBlob = store.getTempBlob();
-                        OutputStream os = tempBlob.getOutputStream();
-                        ns.serialise(os);
-                        String newRef;
+                Future<?> f = threads.submit(() -> {
+                    if (!ns.skip) {
                         try {
-                            newRef = store.putTempBlob(tempBlob);
-                        } catch (BlobAlreadyExistsException e) {
-                            newRef = e.getRef();
+                            TemporaryBlob tempBlob = store.getTempBlob();
+                            OutputStream os = tempBlob.getOutputStream();
+                            ns.serialise(os);
+                            String newRef;
+                            try {
+                                newRef = store.putTempBlob(tempBlob);
+                            } catch (BlobAlreadyExistsException e) {
+                                newRef = e.getRef();
+                            }
+                            if (!newRef.equals(ns.getUuid())) {
+                                // TODO: should we just warn and continue here?
+                                throw new IllegalStateException(
+                                        String.format("Calculated ref %1$s differs from expected ref %2$s",
+                                                newRef, ns.getUuid()));
+                            }
+                            cache.put(newRef, ns);
+                        } catch (IOException e) {
+                            log.error(e.getMessage() + " while trying to write node " + ns.getUuid());
                         }
-                        if (!newRef.equals(ns.getUuid())) {
-                            // TODO: should we just warn and continue here?
-                            throw new IllegalStateException(
-                                String.format("Calculated ref %1$s differs from expected ref %2$s",
-                                    newRef, ns.getUuid()));
-                        }
-                        cache.put(newRef, ns);
-                    } catch (IOException e) {
-                        log.error(e.getMessage() + " while trying to write node " + ns.getUuid());
-                        break;
                     }
-                }
+                });
+                pendingTasks.add(f);
                 break;
             }
 
@@ -264,14 +279,6 @@ public class SimpleRecordHandler {
                     log.error(msg);
                     throw new IllegalStateException(msg);
                 }
-                try {
-                    if (ref.contains("journal")) {
-                        throw new FileNotFoundException("");
-                    }
-                    currentBlob.setFound(store.getInputStream(ref));
-                    // the blob exists already if no exception occurred
-                } catch (FileNotFoundException e) {
-                    // the blob doesn't exist yet, build it
                     currentBlob.setRef(ref);
                     for (int i = 0; ; ++i) {
                         try {
@@ -280,7 +287,7 @@ public class SimpleRecordHandler {
                             break;
                         } catch (IOException ioe) {
                             if (i % 600 == 0) {
-                                log.error("Unable to create temp file, retrying every 100ms (#{}): {}", i, e.getMessage());
+                                log.error("Unable to create temp file, retrying every 100ms (#{}): {}", i, ioe.getMessage());
                             }
                             try {
                                 Thread.sleep(100);
@@ -290,9 +297,6 @@ public class SimpleRecordHandler {
                             }
                         }
                     }
-                } catch (IOException e) {
-                    throw new IllegalStateException(e);
-                }
                 break;
             }
 
@@ -357,49 +361,63 @@ public class SimpleRecordHandler {
                     }
                     break;
                 }
-                final TemporaryBlob temporaryBlob = currentBlob.getTemporaryBlob();
-                if (temporaryBlob == null) {
-                    final String msg = "Blob is not open";
-                    log.error(msg);
-                    throw new IllegalStateException(msg);
-                }
-                try {
-                    String newRef;
+                Future<?> f = threads.submit(() -> {
+                    final TemporaryBlob temporaryBlob = currentBlob.getTemporaryBlob();
+                    if (temporaryBlob == null) {
+                        final String msg = "Blob is not open";
+                        log.error(msg);
+                        throw new IllegalStateException(msg);
+                    }
                     try {
-                        newRef = store.putTempBlob(temporaryBlob);
-                    } catch (BlobAlreadyExistsException e) {
-                        newRef = e.getRef();
+                        String newRef;
+                        try {
+                            newRef = store.putTempBlob(temporaryBlob);
+                        } catch (BlobAlreadyExistsException e) {
+                            newRef = e.getRef();
+                        }
+                        if (!newRef.equals(currentBlob.getRef())) {
+                            log.error("Calculated ref {} differs from expected ref {}", newRef, currentBlob.getRef());
+                        }
+                    } catch (IOException e) {
+                        log.error(e.getMessage());
+                        //throw new IllegalStateException(e);
                     }
-                    if (!newRef.equals(currentBlob.getRef())) {
-                        log.error("Calculated ref {} differs from expected ref {}", newRef, currentBlob.getRef());
-                    }
-                } catch (IOException e) {
-                    log.error(e.getMessage());
-                    throw new IllegalStateException(e);
-                }
+                });
+                pendingTasks.add(f);
                 break;
             }
 
-            case "journal": {
-                StringTokenizer tokens = new StringTokenizer(new String(value));
-                final String journalId = tokens.nextToken();
-                final String head = tokens.nextToken();
-                final String oldHead = tokens.nextToken();
-                final TemporaryBlob journalBlob = store.getTempBlob();
-                try (OutputStream journalFile = journalBlob.getOutputStream()) {
-                    IOUtils.writeString(journalFile, head);
-                    store.putTempBlobAs("journal-" + journalId, journalBlob);
-                } catch (IOException e) {
-                    throw new IllegalStateException(e);
+            case "journal":
+                synchronized (this) {
+                    synchronized (pendingTasks) {
+                        for (Future<?> f : pendingTasks) {
+                            try {
+                                f.get();
+                            } catch (Exception e) {
+                                log.error(e.getMessage() + " while waiting for pending tasks to complete");
+                            }
+                        }
+                        pendingTasks.clear();
+                    }
+                    StringTokenizer tokens = new StringTokenizer(new String(value));
+                    final String journalId = tokens.nextToken();
+                    final String head = tokens.nextToken();
+                    final String oldHead = tokens.nextToken();
+                    final TemporaryBlob journalBlob = store.getTempBlob();
+                    try (OutputStream journalFile = journalBlob.getOutputStream()) {
+                        IOUtils.writeString(journalFile, head);
+                        store.putTempBlobAs("journal-" + journalId, journalBlob);
+                    } catch (IOException e) {
+                        throw new IllegalStateException(e);
+                    }
+                    if (journalPublisher != null) {
+                        journalPublisher.sendMore(JOURNAL_TOPIC);
+                        journalPublisher.sendMore(journalId);
+                        journalPublisher.sendMore(head);
+                        journalPublisher.send(oldHead);
+                    }
+                    break;
                 }
-                if (journalPublisher != null) {
-                    journalPublisher.sendMore(JOURNAL_TOPIC);
-                    journalPublisher.sendMore(journalId);
-                    journalPublisher.sendMore(head);
-                    journalPublisher.send(oldHead);
-                }
-                break;
-            }
 
             default: {
                 log.warn("Unrecognised op at line {}: {}/{}/{}", line, uuThreadId, op, value);
