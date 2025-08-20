@@ -265,6 +265,9 @@ public class SimpleRecordHandler {
                     throw new IllegalStateException(msg);
                 }
                 try {
+                    if (ref.contains("journal")) {
+                        throw new FileNotFoundException("");
+                    }
                     currentBlob.setFound(store.getInputStream(ref));
                     // the blob exists already if no exception occurred
                 } catch (FileNotFoundException e) {

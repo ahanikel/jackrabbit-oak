@@ -19,8 +19,7 @@
 package org.apache.jackrabbit.oak.store.zeromq;
 
 import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.function.BiConsumer;
@@ -31,10 +30,10 @@ public class SimpleRemoteBlobStore implements BlobStore {
     private final Function<String, Boolean> checker;
     private final Function<String, InputStream> reader;
     private final BiConsumer<String, InputStream> writer;
-    private final SimpleBlobStore localCache;
+    private final BlobStore localCache;
 
     public SimpleRemoteBlobStore(Function<String, Boolean> checker, Function<String, InputStream> reader,
-                                 BiConsumer<String, InputStream> writer, SimpleBlobStore localCache) {
+                                 BiConsumer<String, InputStream> writer, BlobStore localCache) {
         this.checker = checker;
         this.reader = reader;
         this.writer = writer;
@@ -42,18 +41,17 @@ public class SimpleRemoteBlobStore implements BlobStore {
     }
 
     private void ensureBlobInCache(String ref) throws IOException {
-        if (!localCache.hasBlob(ref)) {
+        if (ref.contains("journal") || !localCache.hasBlob(ref)) {
             try {
-                localCache.putInputStream(reader.apply(ref));
+                InputStream is = reader.apply(ref);
+                if (is == null) {
+                    throw new FileNotFoundException("Blob not found: " + ref);
+                }
+                localCache.putInputStream(is);
             } catch (BlobAlreadyExistsException e) {
                 // should not happen
             }
         }
-    }
-
-    // the check has already been done at this point
-    private void writeBytesRemote(String ref, byte[] bytes) {
-        writer.accept(ref, new ByteArrayInputStream(bytes));
     }
 
     @Override
@@ -69,7 +67,7 @@ public class SimpleRemoteBlobStore implements BlobStore {
     }
 
     @Override
-    public FileInputStream getInputStream(String ref) throws IOException {
+    public InputStream getInputStream(String ref) throws IOException {
         ensureBlobInCache(ref);
         return localCache.getInputStream(ref);
     }
@@ -78,7 +76,7 @@ public class SimpleRemoteBlobStore implements BlobStore {
     public String putBytes(byte[] bytes) throws IOException, BlobAlreadyExistsException {
         final String ref = localCache.putBytes(bytes);
         if (!checker.apply(ref)) {
-            writeBytesRemote(ref, bytes);
+            writer.accept(ref, new ByteArrayInputStream(bytes));
         }
         return ref;
     }
@@ -87,7 +85,7 @@ public class SimpleRemoteBlobStore implements BlobStore {
     public String putInputStream(InputStream is) throws IOException, BlobAlreadyExistsException {
         final String ref = localCache.putInputStream(is);
         if (!checker.apply(ref)) {
-            writeBytesRemote(ref, localCache.getBytes(ref));
+            writer.accept(ref, localCache.getInputStream(ref));
         }
         return ref;
     }
@@ -107,7 +105,7 @@ public class SimpleRemoteBlobStore implements BlobStore {
     @Override
     public void putTempBlobAs(String ref, TemporaryBlob tempBlob) throws IOException {
         localCache.putTempBlobAs(ref, tempBlob);
-        if (!checker.apply(ref)) {
+        if (ref.contains("journal") || !checker.apply(ref)) {
             writer.accept(ref, localCache.getInputStream(ref));
         }
     }

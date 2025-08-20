@@ -5,6 +5,7 @@ import org.apache.jackrabbit.oak.store.zeromq.BlobStore;
 import org.apache.jackrabbit.oak.store.zeromq.Constants;
 import org.apache.jackrabbit.oak.store.zeromq.SimpleBlobReaderService;
 import org.apache.jackrabbit.oak.store.zeromq.SimpleBlobStore;
+import org.apache.jackrabbit.oak.store.zeromq.SimpleMemoryBlobStore;
 import org.apache.jackrabbit.oak.store.zeromq.SimpleRemoteBlobStore;
 import picocli.CommandLine;
 

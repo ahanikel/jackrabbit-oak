@@ -24,6 +24,7 @@ import com.azure.storage.blob.specialized.BlockBlobClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.BufferedInputStream;
 import java.io.InputStream;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
@@ -45,11 +46,22 @@ public class AzureBlobStoreAdapter implements BlobStoreAdapter {
   }
 
   private InputStream readBlob(String blobName) {
-    return containerClient.getBlobClient(blobName).openInputStream();
+    try {
+      return new BufferedInputStream(containerClient.getBlobClient(blobName).openInputStream());
+    } catch (Exception e) {
+      if (e.getMessage() != null && e.getMessage().contains("404")) {
+        return null;
+      } else {
+        throw e;
+      }
+    }
   }
 
   private void writeBlob(String blobName, InputStream inputStream) {
     BlockBlobClient blobClient = containerClient.getBlobClient(blobName).getBlockBlobClient();
+    if (!inputStream.markSupported()) {
+      inputStream = new BufferedInputStream(inputStream);
+    }
     try {
       blobClient.upload(inputStream, inputStream.available(), true);
     } catch (Exception e) {

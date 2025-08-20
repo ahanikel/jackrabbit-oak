@@ -35,4 +35,7 @@ public interface BlobStore {
     void putTempBlobAs(String ref, TemporaryBlob tempBlob) throws IOException;
     boolean hasBlob(String ref);
     long getLength(String ref) throws IOException;
+    default void blobNotFound(String ref) throws IOException {
+        throw new FileNotFoundException("Blob not found: " + ref);
+    }
 }

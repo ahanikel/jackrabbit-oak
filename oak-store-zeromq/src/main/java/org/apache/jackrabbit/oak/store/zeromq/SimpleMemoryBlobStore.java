@@ -14,7 +14,11 @@ public class SimpleMemoryBlobStore implements BlobStore {
   private final Cache<String, byte[]> cache;
 
   public SimpleMemoryBlobStore() {
-    this.cache = CacheBuilder.newBuilder().maximumSize(10000).build();
+    this.cache = CacheBuilder.newBuilder().build();
+  }
+
+  public SimpleMemoryBlobStore(int maxSize) {
+    this.cache = CacheBuilder.newBuilder().maximumSize(maxSize).build();
   }
 
   @Override
@@ -25,7 +29,7 @@ public class SimpleMemoryBlobStore implements BlobStore {
   @Override
   public byte[] getBytes(String ref) throws IOException {
     byte[] bytes = cache.getIfPresent(ref);
-    if (bytes == null) throw new IOException("Blob not found: " + ref);
+    if (bytes == null) blobNotFound(ref);
     return bytes;
   }
 
@@ -41,7 +45,7 @@ public class SimpleMemoryBlobStore implements BlobStore {
 
   @Override
   public String putBytes(byte[] bytes) throws IOException, BlobAlreadyExistsException {
-    String ref = String.valueOf(java.util.Arrays.hashCode(bytes));
+    String ref = Util.getRefFromBytes(bytes);
     if (hasBlob(ref)) {
       throw new BlobAlreadyExistsException(ref);
     }

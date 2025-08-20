@@ -3,8 +3,10 @@ package org.apache.jackrabbit.oak.store.zeromq.cli;
 import org.apache.jackrabbit.oak.store.zeromq.AzureBlobStoreAdapter;
 import org.apache.jackrabbit.oak.store.zeromq.BlobStore;
 import org.apache.jackrabbit.oak.store.zeromq.Constants;
+import org.apache.jackrabbit.oak.store.zeromq.SimpleBlobReaderService;
 import org.apache.jackrabbit.oak.store.zeromq.SimpleBlobStore;
 import org.apache.jackrabbit.oak.store.zeromq.SimpleBlobWriterService;
+import org.apache.jackrabbit.oak.store.zeromq.SimpleMemoryBlobStore;
 import org.apache.jackrabbit.oak.store.zeromq.SimpleRemoteBlobStore;
 import picocli.CommandLine;
 
@@ -31,17 +33,26 @@ public class BlobWriterCommand implements Runnable {
   @CommandLine.Option(names = {"-c", "--container-name"}, description = "Azure Blob Storage container name (default: ${DEFAULT-VALUE})")
   String containerName = "zmq-blobstore";
 
+  @CommandLine.Option(names = {"-m", "--memory-blob-store"}, description = "Use an in-memory blob store instead of file-based storage")
+  boolean useMemoryBlobStore = false;
+
   @Override
   public void run() {
     try {
-      BlobStore blobStore = new SimpleBlobStore(blobDir);
-      if (azureConnectionString != null && !azureConnectionString.isEmpty()) {
-        // Initialize Azure Blob Storage if connection string is provided
-        AzureBlobStoreAdapter adapter = new AzureBlobStoreAdapter(azureConnectionString, containerName);
-        blobStore = new SimpleRemoteBlobStore(adapter.getChecker(),
-                adapter.getReader(),
-                adapter.getWriter(),
-                (SimpleBlobStore) blobStore);
+      BlobStore blobStore;
+      if (useMemoryBlobStore) {
+        blobStore = new SimpleMemoryBlobStore();
+        new Thread(null, new SimpleBlobReaderService(blobStore, sendingUri, receivingUri), "Blob Reader").start();
+      } else {
+        blobStore = new SimpleBlobStore(blobDir);
+        if (azureConnectionString != null && !azureConnectionString.isEmpty()) {
+          // Initialize Azure Blob Storage if connection string is provided
+          AzureBlobStoreAdapter adapter = new AzureBlobStoreAdapter(azureConnectionString, containerName);
+          blobStore = new SimpleRemoteBlobStore(adapter.getChecker(),
+                  adapter.getReader(),
+                  adapter.getWriter(),
+                  (SimpleBlobStore) blobStore);
+        }
       }
       new SimpleBlobWriterService(blobStore, sendingUri, receivingUri).run();
     } catch (Exception e) {
