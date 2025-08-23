@@ -275,36 +275,35 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
             builder.getBlobCacheDir());
 
         init();
-        OsgiWhiteboard whiteboard = new OsgiWhiteboard(ctx.getBundleContext());
-        // avoid dependency cycle with oak-lucene
-        /*
-        org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardUtils.registerMBean
-                (whiteboard
-                        , CheckpointMBean.class
-                        , new SimpleCheckpointMBean(this)
-                        , CheckpointMBean.TYPE
-                        , "SimpleNodeStore checkpoint management"
-                        , new HashMap<>()
-                );
-        */
-        // ensure a clusterId is initialized
-        // and expose it as 'oak.clusterid' repository descriptor
-        GenericDescriptors clusterIdDesc = new GenericDescriptors();
-        clusterIdDesc.put(
-                ClusterRepositoryInfo.OAK_CLUSTERID_REPOSITORY_DESCRIPTOR_KEY,
-                new SimpleValueFactory().createValue(getOrCreateId(this)),
-                true,
-                false
-        );
-        whiteboard.register(Descriptors.class, clusterIdDesc, new HashMap<>());
-        // Register "discovery lite" descriptors
-        whiteboard.register(Descriptors.class, new SimpleDiscoveryLiteDescriptors(this), new HashMap<>());
-        WhiteboardExecutor executor = new WhiteboardExecutor();
-        executor.start(whiteboard);
-        //registerCloseable(executor);
-        ObserverTracker observerTracker = new ObserverTracker(this);
-        observerTracker.start(ctx.getBundleContext());
-        //registerCloseable(observerTracker);
+        new Thread(() -> {
+            OsgiWhiteboard whiteboard = new OsgiWhiteboard(ctx.getBundleContext());
+            org.apache.jackrabbit.oak.spi.whiteboard.WhiteboardUtils.registerMBean
+                    (whiteboard
+                            , CheckpointMBean.class
+                            , new SimpleCheckpointMBean(this)
+                            , CheckpointMBean.TYPE
+                            , "SimpleNodeStore checkpoint management"
+                            , new HashMap<>()
+                    );
+            // ensure a clusterId is initialized
+            // and expose it as 'oak.clusterid' repository descriptor
+            GenericDescriptors clusterIdDesc = new GenericDescriptors();
+            clusterIdDesc.put(
+                    ClusterRepositoryInfo.OAK_CLUSTERID_REPOSITORY_DESCRIPTOR_KEY,
+                    new SimpleValueFactory().createValue(getOrCreateId(this)),
+                    true,
+                    false
+            );
+            whiteboard.register(Descriptors.class, clusterIdDesc, new HashMap<>());
+            // Register "discovery lite" descriptors
+            whiteboard.register(Descriptors.class, new SimpleDiscoveryLiteDescriptors(this), new HashMap<>());
+            WhiteboardExecutor executor = new WhiteboardExecutor();
+            executor.start(whiteboard);
+            //registerCloseable(executor);
+            ObserverTracker observerTracker = new ObserverTracker(this);
+            observerTracker.start(ctx.getBundleContext());
+            //registerCloseable(observerTracker);
+        }).start();
     }
 
     void init() {
