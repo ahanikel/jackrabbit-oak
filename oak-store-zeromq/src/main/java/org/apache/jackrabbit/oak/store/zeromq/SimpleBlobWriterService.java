@@ -43,7 +43,7 @@ public class SimpleBlobWriterService implements Runnable {
     private static final String WRITER_REQ_TOPIC = SimpleRequestResponse.Topic.WRITE.toString() + "-req";
     private static final String WRITER_REP_TOPIC = SimpleRequestResponse.Topic.WRITE.toString() + "-rep";
     private static final String WORKER_URL = "inproc://writerBackend";
-    private static final int WORKER_THREADS = 5;
+    private static final int WORKER_THREADS = 50;
 
     private ExecutorService threadPool;
     private Router writerFrontend;
@@ -63,7 +63,7 @@ public class SimpleBlobWriterService implements Runnable {
     public void run() {
         @SuppressWarnings("resource")
         final ZContext context = new ZContext();
-        threadPool = Executors.newFixedThreadPool(WORKER_THREADS);
+        threadPool = Executors.newFixedThreadPool(WORKER_THREADS, new NamedThreadFactory("SimpleBlobWriterService"));
         final ZMQ.Socket requestSubscriber = context.createSocket(SocketType.SUB);
         requestSubscriber.setBacklog(100000);
         final ZMQ.Socket requestPublisher = context.createSocket(SocketType.PUB);
