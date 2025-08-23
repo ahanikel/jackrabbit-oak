@@ -55,8 +55,8 @@ public class ZeroMQFixture extends NodeStoreFixture {
             pubSocket = context.createSocket(SocketType.PUB);
             pubSocket.bind(subscriberUrl);
             subSocket = context.createSocket(SocketType.SUB);
-            subSocket.bind(publisherUrl);
             subSocket.subscribe("");
+            subSocket.bind(publisherUrl);
 
             // Where the blobs are stored
             blobDir = File.createTempFile("zeromqns", ".d");

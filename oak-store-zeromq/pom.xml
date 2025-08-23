@@ -394,4 +394,91 @@
         <scope>test</scope>
     </dependency>
   </dependencies>
+
+  <profiles>
+    <profile>
+      <id>docker</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-resources-plugin</artifactId>
+            <version>3.3.1</version> <executions>
+            <execution>
+              <id>copy-dockerfile</id>
+              <phase>prepare-package</phase>
+              <goals>
+                <goal>copy-resources</goal>
+              </goals>
+              <configuration>
+                <outputDirectory>${project.build.directory}/docker</outputDirectory>
+                <resources>
+                  <resource>
+                    <directory>${project.basedir}/src/main/docker</directory>
+                    <includes>
+                      <include>Dockerfile</include>
+                    </includes>
+                  </resource>
+                </resources>
+              </configuration>
+            </execution>
+          </executions>
+          </plugin>
+
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-dependency-plugin</artifactId>
+            <version>3.6.1</version> <executions>
+            <execution>
+              <id>copy-jar-to-docker</id>
+              <phase>install</phase>
+              <goals>
+                <goal>copy</goal>
+              </goals>
+              <configuration>
+                <artifactItems>
+                  <artifactItem>
+                    <groupId>org.apache.jackrabbit</groupId>
+                    <artifactId>${project.artifactId}</artifactId>
+                    <version>${project.version}</version>
+                    <classifier>uberjar</classifier>
+                    <type>jar</type>
+                  </artifactItem>
+                </artifactItems>
+                <outputDirectory>${project.build.directory}/docker</outputDirectory>
+              </configuration>
+            </execution>
+          </executions>
+          </plugin>
+
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>exec-maven-plugin</artifactId>
+            <version>3.5.1</version>
+            <executions>
+              <execution>
+                <id>docker-build</id>
+                <phase>install</phase>
+                <goals>
+                  <goal>exec</goal>
+                </goals>
+                <configuration>
+                  <executable>docker</executable>
+                  <workingDirectory>${project.build.directory}/docker</workingDirectory>
+                  <arguments>
+                    <argument>build</argument>
+                    <argument>--build-arg</argument>
+                    <argument>VERSION=${project.version}</argument>
+                    <argument>-t</argument>
+                    <argument>${project.artifactId}:${project.version}</argument>
+                    <argument>.</argument>
+                  </arguments>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>
