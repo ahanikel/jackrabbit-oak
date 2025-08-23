@@ -42,15 +42,11 @@ public class SimpleRemoteBlobStore implements BlobStore {
 
     private void ensureBlobInCache(String ref) throws IOException {
         if (ref.contains("journal") || !localCache.hasBlob(ref)) {
-            try {
-                InputStream is = reader.apply(ref);
-                if (is == null) {
-                    throw new FileNotFoundException("Blob not found: " + ref);
-                }
-                localCache.putInputStream(is);
-            } catch (BlobAlreadyExistsException e) {
-                // should not happen
-            }
+          InputStream is = reader.apply(ref);
+          if (is == null) {
+              throw new FileNotFoundException("Blob not found: " + ref);
+          }
+          localCache.putInputStreamAs(ref, is);
         }
     }
 
@@ -88,6 +84,14 @@ public class SimpleRemoteBlobStore implements BlobStore {
             writer.accept(ref, localCache.getInputStream(ref));
         }
         return ref;
+    }
+
+    @Override
+    public void putInputStreamAs(String ref, InputStream is) throws IOException {
+        localCache.putInputStreamAs(ref, is);
+        if (ref.contains("journal") || !checker.apply(ref)) {
+            writer.accept(ref, localCache.getInputStream(ref));
+        }
     }
 
     @Override

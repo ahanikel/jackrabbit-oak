@@ -135,6 +135,25 @@ public class SimpleBlobStore implements BlobStore {
         return putTempBlob(tempBlob);
     }
 
+    @Override
+    public void putInputStreamAs(String ref, InputStream is) throws IOException {
+        checkRef(ref);
+        if (ref == null || ref.length() < 6) {
+            throw new IllegalArgumentException("Invalid ref: " + ref);
+        }
+        final TemporaryBlob tempBlob = getTempBlob();
+        try (OutputStream os = tempBlob.getOutputStream()) {
+            IOUtils.copy(is, os);
+        } finally {
+            try {
+                is.close();
+            } catch (IOException e) {
+                // ignore
+            }
+        }
+        putTempBlobAs(ref, tempBlob);
+    }
+
 
     @Override
     public TemporaryBlob getTempBlob() throws IOException {

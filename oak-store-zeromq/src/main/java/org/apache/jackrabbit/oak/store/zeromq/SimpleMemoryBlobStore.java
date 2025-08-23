@@ -60,6 +60,12 @@ public class SimpleMemoryBlobStore implements BlobStore {
   }
 
   @Override
+  public void putInputStreamAs(String ref, InputStream is) throws IOException {
+    byte[] bytes = is.readAllBytes();
+    cache.put(ref, bytes);
+  }
+
+  @Override
   public TemporaryBlob getTempBlob() throws IOException {
     return new MemoryTemporaryBlob();
   }
