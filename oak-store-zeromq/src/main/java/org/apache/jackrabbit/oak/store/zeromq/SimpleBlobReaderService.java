@@ -45,6 +45,7 @@ public class SimpleBlobReaderService implements Runnable {
 
     private static final String READER_REQ_TOPIC = SimpleRequestResponse.Topic.READ.toString() + "-req";
     private static final String READER_REP_TOPIC = SimpleRequestResponse.Topic.READ.toString() + "-rep";
+    private static final int WORKER_THREADS = 50;
 
     private BlobStore blobStore;
     private final String publisherUrl;
@@ -62,11 +63,11 @@ public class SimpleBlobReaderService implements Runnable {
     @Override
     public void run() {
         context = new ZContext();
-        threadPool = Executors.newFixedThreadPool(5);
+        threadPool = Executors.newFixedThreadPool(WORKER_THREADS, new NamedThreadFactory("SimpleBlobReaderService"));
         readerFrontend = new Router(context, subscriberUrl, publisherUrl, "inproc://readerBackend");
         readerFrontend.start();
 
-        for (int nThread = 0; nThread < 5; ++nThread) {
+        for (int nThread = 0; nThread < WORKER_THREADS; ++nThread) {
             threadPool.execute(() -> {
                 final ZMQ.Socket socket = context.createSocket(SocketType.REQ);
                 socket.setIdentity(("" + Thread.currentThread().getId()).getBytes());

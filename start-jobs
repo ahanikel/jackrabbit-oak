@@ -1,5 +1,5 @@
-rm -rf /tmp/nodestore
-rm -rf /tmp/blobCacheDir
+#rm -rf /tmp/nodestore
+#rm -rf /tmp/blobCacheDir
 
 #readerProfile=-XX:StartFlightRecording=name=SimpleBlobReaderProfileSession,settings=default,filename=simple-blob-reader-profile.jfr
 #writerProfile=-XX:StartFlightRecording=name=SimpleBlobWriterProfileSession,settings=default,filename=simple-blob-writer-profile.jfr

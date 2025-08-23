@@ -22,15 +22,24 @@ import java.io.ByteArrayInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 
 public class SimpleRemoteBlobStore implements BlobStore {
 
+    private static final int WORKER_THREADS = 50;
     private final Function<String, Boolean> checker;
     private final Function<String, InputStream> reader;
     private final BiConsumer<String, InputStream> writer;
     private final BlobStore localCache;
+    private final ExecutorService threads;
+    private volatile boolean emergency = false;
+    private final List<Future<?>> pendingWrites = new ArrayList<>();
 
     public SimpleRemoteBlobStore(Function<String, Boolean> checker, Function<String, InputStream> reader,
                                  BiConsumer<String, InputStream> writer, BlobStore localCache) {
@@ -38,9 +47,11 @@ public class SimpleRemoteBlobStore implements BlobStore {
         this.reader = reader;
         this.writer = writer;
         this.localCache = localCache;
+        threads = Executors.newFixedThreadPool(WORKER_THREADS, new NamedThreadFactory("SimpleRemoteBlobStore"));
     }
 
     private void ensureBlobInCache(String ref) throws IOException {
+        checkEmergency();
         if (ref.contains("journal") || !localCache.hasBlob(ref)) {
           InputStream is = reader.apply(ref);
           if (is == null) {
@@ -70,6 +81,7 @@ public class SimpleRemoteBlobStore implements BlobStore {
 
     @Override
     public String putBytes(byte[] bytes) throws IOException, BlobAlreadyExistsException {
+        checkEmergency();
         final String ref = localCache.putBytes(bytes);
         if (!checker.apply(ref)) {
             writer.accept(ref, new ByteArrayInputStream(bytes));
@@ -79,15 +91,36 @@ public class SimpleRemoteBlobStore implements BlobStore {
 
     @Override
     public String putInputStream(InputStream is) throws IOException, BlobAlreadyExistsException {
+        checkEmergency();
         final String ref = localCache.putInputStream(is);
-        if (!checker.apply(ref)) {
-            writer.accept(ref, localCache.getInputStream(ref));
-        }
+        submit(() -> {
+            boolean emergencySet = false;
+            while (true) {
+                try {
+                    if (!checker.apply(ref)) {
+                        writer.accept(ref, localCache.getInputStream(ref));
+                    }
+                    if (emergencySet) {
+                        emergency = false;
+                    }
+                    break;
+                } catch (IOException e) {
+                    emergency = true;
+                    emergencySet = true;
+                    try {
+                        Thread.sleep(10000);
+                    } catch (InterruptedException ie) {
+                        break;
+                    }
+                }
+            }
+        });
         return ref;
     }
 
     @Override
     public void putInputStreamAs(String ref, InputStream is) throws IOException {
+        checkEmergency();
         localCache.putInputStreamAs(ref, is);
         if (ref.contains("journal") || !checker.apply(ref)) {
             writer.accept(ref, localCache.getInputStream(ref));
@@ -96,11 +129,13 @@ public class SimpleRemoteBlobStore implements BlobStore {
 
     @Override
     public TemporaryBlob getTempBlob() throws IOException {
+        checkEmergency();
         return localCache.getTempBlob();
     }
 
     @Override
     public String putTempBlob(TemporaryBlob tempFile) throws BlobAlreadyExistsException, IOException {
+        checkEmergency();
         final String ref = localCache.putTempBlob(tempFile);
         writer.accept(ref, localCache.getInputStream(ref));
         return ref;
@@ -108,6 +143,7 @@ public class SimpleRemoteBlobStore implements BlobStore {
 
     @Override
     public void putTempBlobAs(String ref, TemporaryBlob tempBlob) throws IOException {
+        checkEmergency();
         localCache.putTempBlobAs(ref, tempBlob);
         if (ref.contains("journal") || !checker.apply(ref)) {
             writer.accept(ref, localCache.getInputStream(ref));
@@ -116,6 +152,7 @@ public class SimpleRemoteBlobStore implements BlobStore {
 
     @Override
     public boolean hasBlob(String ref) {
+        checkEmergency();
         // return localCache.hasBlob(ref) || checker.apply(ref); // more efficient but dangerous
         return checker.apply(ref);
 
@@ -125,5 +162,31 @@ public class SimpleRemoteBlobStore implements BlobStore {
     public long getLength(String ref) throws IOException {
         ensureBlobInCache(ref);
         return localCache.getLength(ref);
+    }
+
+    private void checkEmergency() {
+        while (emergency) {
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                break;
+            }
+        }
+    }
+
+    private void submit(Runnable r) {
+        synchronized (pendingWrites) {
+            pendingWrites.removeIf(Future::isDone);
+            if (pendingWrites.size() > WORKER_THREADS) {
+                Future<?> f = pendingWrites.remove(0);
+                try {
+                    f.get();
+                } catch (Exception e) {
+                    // ignore
+                }
+            }
+            Future<?> f = threads.submit(r);
+            pendingWrites.add(f);
+        }
     }
 }
