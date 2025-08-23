@@ -28,6 +28,9 @@ public interface BlobStore {
     InputStream getInputStream(String ref) throws IOException;
     String putBytes(byte[] bytes) throws IOException, BlobAlreadyExistsException;
     String putInputStream(InputStream is) throws IOException, BlobAlreadyExistsException;
+
+    void putInputStreamAs(String ref, InputStream is) throws IOException;
+
     TemporaryBlob getTempBlob() throws IOException;
     String putTempBlob(TemporaryBlob tempBlob) throws BlobAlreadyExistsException, IOException;
     void putTempBlobAs(String ref, TemporaryBlob tempBlob) throws IOException;
