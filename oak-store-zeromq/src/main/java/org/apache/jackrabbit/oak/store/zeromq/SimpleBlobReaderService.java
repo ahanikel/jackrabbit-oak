@@ -142,7 +142,8 @@ public class SimpleBlobReaderService implements Runnable {
                     final int maxSize = parseIntWithDefault(st, -1);
                     final byte[] buffer = new byte[maxSize <= 0 || maxSize > 1048576 ? 1048576 : maxSize];
                     is = blobStore.getInputStream(reference);
-                    int nRead = is.read(buffer, offset, buffer.length);
+                    IOUtils.skipFully(is, offset);
+                    int nRead = is.read(buffer, 0, buffer.length);
                     if (nRead >= 0) {
                         if (nRead < buffer.length) {
                             socket.sendMore(msgId);
