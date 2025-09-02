@@ -43,7 +43,7 @@ public class SimpleBlobWriterService implements Runnable {
     private static final String WRITER_REQ_TOPIC = SimpleRequestResponse.Topic.WRITE.toString() + "-req";
     private static final String WRITER_REP_TOPIC = SimpleRequestResponse.Topic.WRITE.toString() + "-rep";
     private static final String WORKER_URL = "inproc://writerBackend";
-    private static final int WORKER_THREADS = 50;
+    private static final int WORKER_THREADS = 5;
 
     private ExecutorService threadPool;
     private Router writerFrontend;

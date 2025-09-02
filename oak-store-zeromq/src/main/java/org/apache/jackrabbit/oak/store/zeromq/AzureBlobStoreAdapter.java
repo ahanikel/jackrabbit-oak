@@ -17,27 +17,41 @@
 
 package org.apache.jackrabbit.oak.store.zeromq;
 
+import com.azure.core.util.BinaryData;
+import com.azure.storage.blob.BlobAsyncClient;
+import com.azure.storage.blob.BlobClient;
+import com.azure.storage.blob.BlobContainerAsyncClient;
 import com.azure.storage.blob.BlobContainerClient;
+import com.azure.storage.blob.BlobServiceAsyncClient;
 import com.azure.storage.blob.BlobServiceClient;
 import com.azure.storage.blob.BlobServiceClientBuilder;
-import com.azure.storage.blob.specialized.BlockBlobClient;
+import com.azure.storage.blob.models.BlockBlobItem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.publisher.Mono;
 
 import java.io.BufferedInputStream;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 
 public class AzureBlobStoreAdapter implements BlobStoreAdapter {
   private static final Logger log = LoggerFactory.getLogger(AzureBlobStoreAdapter.class.getName());
   private final BlobContainerClient containerClient;
+  private final BlobContainerAsyncClient containerAsyncClient;
+  private final List<Mono<BlockBlobItem>> uploadMonos = new ArrayList<Mono<BlockBlobItem>>(100);
 
   public AzureBlobStoreAdapter(String connectionString, String containerName) {
     BlobServiceClient serviceClient = new BlobServiceClientBuilder()
             .connectionString(connectionString)
             .buildClient();
+    BlobServiceAsyncClient serviceAsyncClient = new BlobServiceClientBuilder()
+            .connectionString(connectionString)
+            .buildAsyncClient();
     this.containerClient = serviceClient.getBlobContainerClient(containerName);
+    this.containerAsyncClient = serviceAsyncClient.getBlobContainerAsyncClient(containerName);
     containerClient.createIfNotExists();
   }
 
@@ -58,12 +72,18 @@ public class AzureBlobStoreAdapter implements BlobStoreAdapter {
   }
 
   private void writeBlob(String blobName, InputStream inputStream) {
-    BlockBlobClient blobClient = containerClient.getBlobClient(blobName).getBlockBlobClient();
-    if (!inputStream.markSupported()) {
-      inputStream = new BufferedInputStream(inputStream);
-    }
     try {
-      blobClient.upload(inputStream, inputStream.available(), true);
+      if (blobName.contains("journal")) {
+        while (!uploadMonos.isEmpty()) {
+          uploadMonos.remove(0).block();
+        }
+        BlobClient blobClient = containerClient.getBlobClient(blobName);
+        blobClient.upload(BinaryData.fromStream(inputStream), true);
+      } else {
+        BlobAsyncClient blobClient = containerAsyncClient.getBlobAsyncClient(blobName);
+        Mono<BlockBlobItem> upload = blobClient.upload(BinaryData.fromStream(inputStream), true);
+        uploadMonos.add(upload);
+      }
     } catch (Exception e) {
       log.error("Failed to upload blob: {}", e.getMessage());
       throw new RuntimeException(e);

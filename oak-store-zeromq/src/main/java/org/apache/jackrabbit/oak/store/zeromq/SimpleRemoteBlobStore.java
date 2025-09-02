@@ -32,7 +32,7 @@ import java.util.function.Function;
 
 public class SimpleRemoteBlobStore implements BlobStore {
 
-    private static final int WORKER_THREADS = 50;
+    private static final int WORKER_THREADS = 5;
     private final Function<String, Boolean> checker;
     private final Function<String, InputStream> reader;
     private final BiConsumer<String, InputStream> writer;
@@ -104,7 +104,7 @@ public class SimpleRemoteBlobStore implements BlobStore {
                         emergency = false;
                     }
                     break;
-                } catch (IOException e) {
+                } catch (Exception e) {
                     emergency = true;
                     emergencySet = true;
                     try {
