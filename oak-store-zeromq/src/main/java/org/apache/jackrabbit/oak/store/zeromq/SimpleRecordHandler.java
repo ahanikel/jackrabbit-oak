@@ -128,6 +128,31 @@ public class SimpleRecordHandler {
 
         boolean raw = false;
 
+        // Message format: uuThreadId msgId op value
+        //                                  n: newUuid oldUuid   (begin new node)
+        //                                  n!                   (end (store) new node)
+        //                                  n+ name uuid         (add    child node)
+        //                                  n^ name uuid         (change child node)
+        //                                  n- name              (delete child node)
+        //                                  p+ name value        (add    property,
+        //                                    where value ::= '<' type '>' (simpleValue | ('[' [simpleValue {',' simpleValue}] ']')
+        //                                    where simpleValue is a safeEncoded (kind of urlencoded) string
+        //                                    and type is always the singular type, even in case of a list of values
+        //                                  p^ name value        (change property)
+        //                                  p- name              (remove property)
+        //                                b64+ uuid              (begin new blob)
+        //                                b64x                   (cancel current blob)
+        //                                braw data              (a chunk of unencoded (raw) binary data)
+        //                                b64d data              (a chunk of base64-encoded binary data)
+        //                                b64!                   (end new blob)
+        //                                journal journal-id newHead oldHead (set the new journal head)
+        //                                                       the journal forms a barrier in the sense that all
+        //                                                       blobs which came before must have been written to
+        //                                                       the blob store.
+        //                                                       the journal files are the only blobs that are not
+        //                                                       named after their uuid. they must contain the string
+        //                                                       "journal" in their name. the blobstore recognises this
+        //                                                       and waits for all pending blob uploads to finish.
         switch (op) {
             case "n:": {
                 StringTokenizer tokens = new StringTokenizer(new String(value));
