@@ -21,14 +21,11 @@ package org.apache.jackrabbit.oak.store.zeromq;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import org.apache.jackrabbit.oak.commons.IOUtils;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.zeromq.ZMQ;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -89,11 +86,12 @@ public class SimpleRecordHandler {
     private final BlobStore store;
     private final Map<String, SimpleMutableNodeState> nodeStates;
     private final Map<String, CurrentBlob> currentBlobMap;
-    private final Cache<String, SimpleMutableNodeState> cache;
-    private final Cache<String, Long> lastMessageSeen;
+    private final Cache<@NotNull String, @NotNull SimpleMutableNodeState> cache;
+    private final Cache<@NotNull String, @NotNull Long> lastMessageSeen;
     private final ZMQ.Socket journalPublisher;
     private final ExecutorService threads;
     private final List<Future<?>> pendingTasks;
+    private final Object journalLock = new Object();
 
     public SimpleRecordHandler(BlobStore store, ZMQ.Socket journalPublisher) {
         this.store = store;
@@ -413,7 +411,7 @@ public class SimpleRecordHandler {
             }
 
             case "journal":
-                synchronized (this) {
+                synchronized (journalLock) {
                     synchronized (pendingTasks) {
                         for (Future<?> f : pendingTasks) {
                             try {
