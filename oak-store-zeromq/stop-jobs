@@ -1,1 +1,1 @@
-ps|awk '/awk/ {next}; /zeromq-uberjar/ {print $1}'|xargs kill
+ps|awk '/awk/ {next}; /zeromq-.*uberjar/ {print $1}'|xargs kill
