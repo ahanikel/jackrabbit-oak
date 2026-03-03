@@ -98,20 +98,32 @@ public class SimpleNodeState implements NodeState {
 
     private void ensureLoaded() {
         if (!loaded) {
+            // OPTIMIZATION: Perform I/O OUTSIDE synchronized block to reduce lock contention
+            // and allow other threads to proceed without waiting for network/disk operations
+            Map<String, String> childrenData = null;
+            Map<String, String> propertiesData = null;
+
+            if (ref != null && !ref.equals(UUID_NULL.toString())) {
+                try {
+                    // Network/disk I/O happens here WITHOUT holding any locks
+                    Pair<Map<String, String>, Map<String, String>> p = deserialise(store.getInputStream(ref));
+                    childrenData = p.fst;
+                    propertiesData = p.snd;
+                } catch (IOException e) {
+                    throw new IllegalStateException("Failed to load node state: " + ref, e);
+                }
+            }
+
+            // Only synchronize for the final assignment to minimize lock duration
             synchronized (this) {
                 if (!loaded) {
                     if (ref == null || ref.equals(UUID_NULL.toString())) {
                         children = ImmutableMap.of();
                         properties = ImmutableMap.of();
                     } else {
-                        Pair<Map<String, String>, Map<String, String>> p;
-                        try {
-                            p = deserialise(store.getInputStream(ref));
-                        } catch (IOException e) {
-                            throw new IllegalStateException(e);
-                        }
-                        children = p.fst;
-                        properties = p.snd;
+                        // Use the data we loaded outside the lock
+                        children = childrenData;
+                        properties = propertiesData;
                     }
                     propertiesDeSerialised = new HashMap<>();
                     loaded = true;
@@ -240,11 +252,24 @@ public class SimpleNodeState implements NodeState {
             return null;
         }
         try {
-            if (propertiesDeSerialised.containsKey(name)) {
-                return propertiesDeSerialised.get(name);
+            // OPTIMIZATION: Use double-checked locking for cache to avoid repeated parsing
+            SimplePropertyState cached = propertiesDeSerialised.get(name);
+            if (cached != null) {
+                return cached;
             }
+
+            // Deserialize outside synchronized block
             SimplePropertyState ret = SimplePropertyState.deSerialise(store, properties.get(name));
-            propertiesDeSerialised.put(name, ret);
+
+            // Only synchronize for cache update
+            synchronized (propertiesDeSerialised) {
+                // Check again in case another thread added it
+                SimplePropertyState existing = propertiesDeSerialised.get(name);
+                if (existing != null) {
+                    return existing;
+                }
+                propertiesDeSerialised.put(name, ret);
+            }
             return ret;
         } catch (SimplePropertyState.ParseFailure e) {
             throw new IllegalStateException(e);
