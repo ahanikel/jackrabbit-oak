@@ -37,6 +37,52 @@ public class Util {
 
     public static byte[] LONG_ZERO = longToBytes(0L);
 
+    public static byte[] sha256FromBytes(byte[] data) {
+        try {
+            return MessageDigest.getInstance("SHA-256").digest(data);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    public static String sha256HexFromBytes(byte[] data) {
+        return bytesToHex(sha256FromBytes(data));
+    }
+
+    public static String sha256HexFromStream(InputStream is) {
+        try {
+            MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
+            byte[] buf = new byte[65536];
+            int n;
+            while ((n = is.read(buf)) >= 0) {
+                sha256.update(buf, 0, n);
+            }
+            return bytesToHex(sha256.digest());
+        } catch (NoSuchAlgorithmException | IOException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    public static String bytesToHex(byte[] bytes) {
+        final char[] hex = "0123456789abcdef".toCharArray();
+        StringBuilder sb = new StringBuilder(bytes.length * 2);
+        for (byte b : bytes) {
+            sb.append(hex[(b >> 4) & 0x0f]);
+            sb.append(hex[b & 0x0f]);
+        }
+        return sb.toString();
+    }
+
+    public static byte[] hexToBytes(String hex) {
+        int len = hex.length();
+        byte[] data = new byte[len / 2];
+        for (int i = 0; i < len; i += 2) {
+            data[i / 2] = (byte) ((Character.digit(hex.charAt(i), 16) << 4)
+                    + Character.digit(hex.charAt(i + 1), 16));
+        }
+        return data;
+    }
+
     public static String getRefFromBytes(byte[] b) {
         try {
             MessageDigest md5 = MessageDigest.getInstance("MD5");

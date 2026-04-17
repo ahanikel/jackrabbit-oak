@@ -31,9 +31,7 @@ import org.zeromq.ZMQ;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.UUID;
 
 import static org.junit.Assert.*;
@@ -68,56 +66,6 @@ public class SimpleRecordHandlerTest {
     @After
     public void shutdown() {
         context.close();
-    }
-
-    @Test
-    public void handleRecordBasics() throws IOException {
-        simpleRecordHandler.handleRecord("thread-1", 123, "n:", ("9B26508DCB3614BD2A7E9CB8889D4C12 " + new UUID(0, 0).toString()).getBytes());
-        simpleRecordHandler.handleRecord("thread-1", 124, "n+", "child1 1234568".getBytes());
-        simpleRecordHandler.handleRecord("thread-1", 125, "n!", "".getBytes());
-
-        File offset = new File(blobDir, "offset");
-        assertTrue(offset.exists());
-        assertTrue(offset.isFile());
-        assertEquals(8, offset.length());
-
-        File sub1 = new File(blobDir, "9B");
-        assertTrue(sub1.exists());
-        assertTrue(sub1.isDirectory());
-
-        File sub2 = new File(sub1, "26");
-        assertTrue(sub2.exists());
-        assertTrue(sub2.isDirectory());
-
-        File sub3 = new File(sub2, "50");
-        assertTrue(sub3.exists());
-        assertTrue(sub3.isDirectory());
-
-        File blob = new File(sub3, "9B26508DCB3614BD2A7E9CB8889D4C12");
-        assertTrue(blob.exists());
-        assertTrue(blob.isFile());
-        ByteArrayOutputStream bos = new ByteArrayOutputStream();
-        IOUtils.copy(new FileInputStream(blob), bos);
-        assertEquals(
-                "n:\n" +
-                        "n+ child1 1234568\n" +
-                        "n!\n", new String(bos.toByteArray()));
-    }
-
-    @Test
-    public void handleRecordProperties() throws IOException {
-        simpleRecordHandler.handleRecord("thread-1", 123, "n:", ("6F3E7018B987ED1260B6B843364261BA " + new UUID(0, 0).toString()).getBytes());
-        simpleRecordHandler.handleRecord("thread-1", 124, "p+", "prop1 <LONG> 1234568".getBytes());
-        simpleRecordHandler.handleRecord("thread-1", 125, "n!", "".getBytes());
-        File blob = new File(blobDir, "6F/3E/70/6F3E7018B987ED1260B6B843364261BA");
-        assertTrue(blob.exists());
-        assertTrue(blob.isFile());
-        ByteArrayOutputStream bos = new ByteArrayOutputStream();
-        IOUtils.copy(new FileInputStream(blob), bos);
-        assertEquals(
-                "n:\n" +
-                        "p+ prop1 <LONG> 1234568\n" +
-                        "n!\n", new String(bos.toByteArray()));
     }
 
     @Test
@@ -158,7 +106,7 @@ public class SimpleRecordHandlerTest {
     @Test
     public void handleRecordJournal() throws IOException {
         simpleRecordHandler.handleRecord("thread-1", 123, "journal", ("mytestjournal 6F3E7018B987ED1260B6B843364261BA " + new UUID(0, 0).toString()).getBytes());
-        File blob = new File(blobDir, "journal-mytestjournal");
+        File blob = simpleBlobStore.getFile("journal-mytestjournal");
         assertTrue(blob.exists());
         assertTrue(blob.isFile());
         String actual = IOUtils.readString(new FileInputStream(blob));

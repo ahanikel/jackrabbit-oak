@@ -18,95 +18,78 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq;
 
-import org.apache.jackrabbit.oak.api.Blob;
 import org.apache.jackrabbit.oak.api.PropertyState;
-import org.apache.jackrabbit.oak.api.Type;
 import org.apache.jackrabbit.oak.plugins.memory.EmptyNodeState;
 import org.apache.jackrabbit.oak.spi.state.NodeState;
 import org.apache.jackrabbit.oak.spi.state.NodeStateDiff;
 
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.OutputStream;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
-import static org.apache.jackrabbit.oak.store.zeromq.SafeEncode.safeEncode;
-
+/**
+ * Accumulates node-state diffs and converts the result to a {@link SegmentNodeState}
+ * via {@link SegmentWriter}.
+ */
 public class SimpleNodeStateDiffGenerator implements NodeStateDiff {
 
-    private final Map<String, String> childrenMap;
-    private final Map<String, String> propertiesMap;
     private final SimpleNodeStore store;
+    // Maps child name → child SegmentNodeState ref (segment ID)
+    private final Map<String, NodeState> childrenMap;
+    // Maps property name → PropertyState
+    private final Map<String, PropertyState> propertiesMap;
 
-    public SimpleNodeStateDiffGenerator(SimpleNodeState base) {
+    public SimpleNodeStateDiffGenerator(SegmentNodeState base) {
+        this.store = base.getStore();
         this.childrenMap = new HashMap<>();
         this.propertiesMap = new HashMap<>();
-        this.store = base.getStore();
 
-        childrenMap.putAll(base.getChildrenMap());
-        propertiesMap.putAll(base.getPropertiesMap());
+        // Initialise from base
+        for (String name : base.getChildNodeNames()) {
+            childrenMap.put(name, base.getChildNode(name));
+        }
+        for (PropertyState ps : base.getProperties()) {
+            propertiesMap.put(ps.getName(), ps);
+        }
     }
 
-    public SimpleNodeState getNodeState() throws IOException {
-        final BlobStore blobStore = store.getRemoteBlobStore();
-
-        final List<String> children = new ArrayList<>();
-        for (Map.Entry<String, String> e : childrenMap.entrySet()) {
-            children.add("n+ " + safeEncode(e.getKey()) + " " + e.getValue());
+    public SegmentNodeState getNodeState() throws IOException {
+        // Build a MemoryNodeState-like structure and hand off to SegmentWriter
+        org.apache.jackrabbit.oak.plugins.memory.MemoryNodeBuilder builder =
+                new org.apache.jackrabbit.oak.plugins.memory.MemoryNodeBuilder(
+                        org.apache.jackrabbit.oak.plugins.memory.EmptyNodeState.EMPTY_NODE);
+        for (Map.Entry<String, PropertyState> e : propertiesMap.entrySet()) {
+            builder.setProperty(e.getValue());
         }
-
-        final List<String> properties = new ArrayList<>();
-        for (String p : propertiesMap.values()) {
-            properties.add("p+ " + p);
+        for (Map.Entry<String, NodeState> e : childrenMap.entrySet()) {
+            builder.setChildNode(e.getKey(), e.getValue());
         }
+        NodeState memNode = builder.getNodeState();
 
-        children.sort(Comparator.naturalOrder());
-        properties.sort(Comparator.naturalOrder());
-
-        TemporaryBlob tempFile = blobStore.getTempBlob();
-        OutputStream os = tempFile.getOutputStream();
-        writeLine(os, "n:");
-        for (String c : children) {
-            writeLine(os, c);
-        }
-        for (String p : properties) {
-            writeLine(os, p);
-        }
-        writeLine(os, "n!");
-        String ref;
+        SegmentWriter writer = new SegmentWriter(store.getRemoteBlobStore());
+        String segId = writer.write(memNode);
+        byte[] segData = store.getRemoteBlobStore().getBytes(segId);
+        Segment seg;
         try {
-            ref = blobStore.putTempBlob(tempFile);
-        } catch (BlobAlreadyExistsException e) {
-            ref = e.getRef();
+            seg = Segment.parse(segData);
+        } catch (IOException e) {
+            throw new IOException("Failed to parse written segment: " + segId, e);
         }
-        return SimpleNodeState.get(store, ref, childrenMap, propertiesMap);
+        store.cacheSegment(segId, seg);
+        int rootIdx = seg.getNodeCount() - 1;
+        return SegmentNodeState.fromRecord(store, segId, rootIdx, seg.getNodeRecord(rootIdx));
     }
 
     @Override
     public boolean propertyAdded(PropertyState after) {
-        try {
-            String ps = serializePropertyState(store.getRemoteBlobStore(), after);
-            propertiesMap.put(after.getName(), ps);
-            return true;
-        } catch (IOException e) {
-            throw new IllegalStateException(e);
-        }
+        propertiesMap.put(after.getName(), after);
+        return true;
     }
 
     @Override
     public boolean propertyChanged(PropertyState before, PropertyState after) {
-        try {
-            String ps = serializePropertyState(store.getRemoteBlobStore(), after);
-            propertiesMap.replace(after.getName(), ps);
-            return true;
-        } catch (IOException e) {
-            throw new IllegalStateException(e);
-        }
+        propertiesMap.put(after.getName(), after);
+        return true;
     }
 
     @Override
@@ -117,97 +100,19 @@ public class SimpleNodeStateDiffGenerator implements NodeStateDiff {
 
     @Override
     public boolean childNodeAdded(String name, NodeState after) {
-        try {
-            SimpleNodeState child;
-            if (after instanceof SimpleNodeState) {
-                child = (SimpleNodeState) after;
-            } else if (after instanceof EmptyNodeState) {
-                child = SimpleNodeState.empty(store);
-            } else {
-                SimpleNodeState before = SimpleNodeState.empty(store);
-                SimpleNodeStateDiffGenerator generator = new SimpleNodeStateDiffGenerator(before);
-                after.compareAgainstBaseState(before, generator);
-                child = generator.getNodeState();
-            }
-            childrenMap.put(name, child.getRef());
-            return true;
-        } catch (IOException e) {
-            throw new IllegalStateException(e);
-        }
+        childrenMap.put(name, after);
+        return true;
     }
 
     @Override
     public boolean childNodeChanged(String name, NodeState before, NodeState after) {
-        childrenMap.remove(name);
-        return childNodeAdded(name, after);
+        childrenMap.put(name, after);
+        return true;
     }
 
     @Override
     public boolean childNodeDeleted(String name, NodeState before) {
         childrenMap.remove(name);
         return true;
-    }
-
-    private String serializePropertyState(BlobStore blobStore, PropertyState ps) throws IOException {
-        final StringBuilder sb = new StringBuilder();
-        sb
-                .append(safeEncode(ps.getName()))
-                .append(" <")
-                .append(ps.getType().toString())
-                .append("> ");
-        if (ps.getType().equals(Type.BINARY)) {
-            final Blob blob = ps.getValue(Type.BINARY);
-            if (blob instanceof SimpleBlob) {
-                sb.append(blob.getReference());
-            } else {
-                String ref;
-                try {
-                    ref = blobStore.putInputStream(blob.getNewStream());
-                } catch (BlobAlreadyExistsException e) {
-                    ref = e.getRef();
-                }
-                sb.append(ref);
-            }
-        } else if (ps.getType().equals(Type.BINARIES)) {
-            sb.append('[');
-            final Iterable<Blob> blobs = ps.getValue(Type.BINARIES);
-            for (Blob blob : blobs) {
-                if (blob instanceof SimpleBlob) {
-                    sb.append(blob.getReference());
-                } else {
-                    String ref;
-                    try {
-                        ref = blobStore.putInputStream(blob.getNewStream());
-                    } catch (BlobAlreadyExistsException e) {
-                        ref = e.getRef();
-                    }
-                    sb.append(ref);
-                }
-                sb.append(',');
-            }
-            if (sb.charAt(sb.length() - 1) == ',') {
-                sb.deleteCharAt(sb.length() - 1);
-            }
-            sb.append(']');
-        } else if (ps.isArray()) {
-            sb.append('[');
-            final Iterable<String> strings = ps.getValue(Type.STRINGS);
-            for (String s : strings) {
-                sb.append(SafeEncode.safeEncode(s));
-                sb.append(',');
-            }
-            if (sb.charAt(sb.length() - 1) == ',') {
-                sb.deleteCharAt(sb.length() - 1);
-            }
-            sb.append(']');
-        } else {
-            sb.append(SafeEncode.safeEncode(ps.getValue(Type.STRING)));
-        }
-        return sb.toString();
-    }
-
-    private void writeLine(OutputStream os, String s) throws IOException {
-        os.write(s.getBytes());
-        os.write('\n');
     }
 }

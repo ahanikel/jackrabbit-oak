@@ -216,7 +216,7 @@ public class SimpleBlobReaderService implements Runnable {
         } catch (IOException e) {
         }
         if (is == null) {
-            return SimpleNodeState.UUID_NULL.toString();
+            return SegmentNodeState.NULL_HASH;
         }
         return IOUtils.readString(is);
     }

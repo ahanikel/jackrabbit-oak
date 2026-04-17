@@ -100,7 +100,7 @@ public class SimpleBlobReaderServiceTest {
         assertEquals(msgid, Util.longFromBytes(request.recv()));
         assertEquals(0, Util.longFromBytes(request.recv()));
         assertEquals("E", request.recvStr());
-        assertEquals(new UUID(0, 0).toString(), request.recvStr());
+        assertEquals(SegmentNodeState.NULL_HASH, request.recvStr());
 
         sendReadRequestString(++msgid, "journal", "mytestjournal");
         SimpleBlobReaderService.handleReaderService(reply, simpleBlobStore);

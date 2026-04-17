@@ -102,14 +102,16 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         return new SimpleNodeStoreBuilder();
     }
 
-    public SimpleNodeState EMPTY;
-    public SimpleNodeState MISSING;
+    public SegmentNodeState EMPTY;
+    public SegmentNodeState MISSING;
 
     private ZContext context;
     private String journalId;
     private SimpleRequestResponse nodeStateReader;
+    private SimpleRequestResponse journalHeadReader;
     private SimpleRequestResponse nodeStateWriter;
-    private KVStore<String, SimpleNodeState> nodeStateCache;
+    private KVStore<String, SegmentNodeState> nodeStateCache;
+    private KVStore<String, Segment> segmentCache;
     private KVStore<String, SimpleBlob> blobCache;
     private volatile ChangeDispatcher changeDispatcher;
 
@@ -159,22 +161,42 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         this.blobCacheDir = new File(blobCacheDir);
         this.blobCacheDir.mkdirs();
 
-        this.EMPTY = SimpleNodeState.empty(this);
-        this.MISSING = SimpleNodeState.missing(this);
+        this.EMPTY = SegmentNodeState.empty(this);
+        this.MISSING = SegmentNodeState.missing(this);
 
         nodeStateReader = new SimpleRequestResponse(SimpleRequestResponse.Topic.READ, backendWriterURL, backendReaderURL);
+        journalHeadReader = new SimpleRequestResponse(SimpleRequestResponse.Topic.READ, backendWriterURL, backendReaderURL);
         nodeStateWriter = new SimpleRequestResponse(SimpleRequestResponse.Topic.WRITE, backendWriterURL, backendReaderURL);
 
         this.blobStoreAdapter = new ZeroMQBlobStoreAdapter(nodeStateReader, nodeStateWriter);
         this.remoteBlobStore = new SimpleRemoteBlobStore(blobStoreAdapter.getChecker(), blobStoreAdapter.getReader(),
               blobStoreAdapter.getWriter(), new SimpleMemoryBlobStore(100000));
 
-      Cache<String, SimpleNodeState> cache =
+        Cache<String, SegmentNodeState> cache =
                 CacheBuilder.newBuilder()
                         .concurrencyLevel(10)
                         .maximumSize(200000).build();
 
-        nodeStateCache = new NodeStateCache<>(cache, ref -> SimpleNodeState.get(this, ref));
+        nodeStateCache = new NodeStateCache<>(cache, ref -> {
+            Segment seg = readSegment(ref);
+            // Root node is always the last record in a segment (post-order DFS)
+            int rootIdx = seg.getNodeCount() - 1;
+            return SegmentNodeState.fromRecord(this, ref, rootIdx, seg.getNodeRecord(rootIdx));
+        });
+
+        Cache<String, Segment> segCache =
+                CacheBuilder.newBuilder()
+                        .concurrencyLevel(10)
+                        .maximumSize(50000).build();
+
+        segmentCache = new NodeStateCache<>(segCache, ref -> {
+            try {
+                byte[] data = remoteBlobStore.getBytes(ref);
+                return Segment.parse(data);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
 
         Cache<String, SimpleBlob> bCache =
                 CacheBuilder.newBuilder()
@@ -212,11 +234,15 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
                             NodeState newBase = readNodeState(journalRoot);
                             NodeState newRoot;
                             try {
+                                String prevJournalRoot = journalRoot;
                                 newRoot = rebase(newHead, oldBase, newBase);
-                                journalRoot = ((SimpleNodeState) newRoot).getRef();
+                                journalRoot = ((SegmentNodeState) newRoot).getRef();
                                 roots.put(newUuid);
                                 roots.put(journalRoot);
                                 log.info("new root after resolution: {}", journalRoot);
+                                // Write the rebased state back to the remote so that
+                                // readRootRemote() on any instance returns the correct merged head.
+                                setRootRemote(null, journalRoot, prevJournalRoot);
                                 // we need to pass the rebased newRoot to the contentChanged handlers
                                 handleCommitResult(CommitResult.success(newUuid, newRoot));
                             } catch (CommitFailedException cfe) {
@@ -310,7 +336,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         String uuid = readRootRemote();
         log.info("Journal root initialised with {}", uuid);
         journalRoot = uuid;
-        if ("undefined".equals(uuid) || SimpleNodeState.UUID_NULL.toString().equals(uuid)) {
+        if ("undefined".equals(uuid) || SegmentNodeState.NULL_HASH.equals(uuid)) {
             resetRoot();
         }
         resetCPRoot();
@@ -337,7 +363,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         NodeBuilder builder = EMPTY.builder();
         builder.setChildNode(ROOT_NODE_NAME);
         builder.setChildNode(CHECKPOINT_NODE_NAME);
-        SimpleNodeState newSuperRoot = (SimpleNodeState) builder.getNodeState();
+        SegmentNodeState newSuperRoot = (SegmentNodeState) builder.getNodeState();
         journalRoot = EMPTY.getRef(); // the new journalRoot is set by the log processor
         try {
             setRoot(newSuperRoot.getRef(), EMPTY.getRef(), CommitInfo.EMPTY);
@@ -355,6 +381,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     void emptyCaches() {
         nodeStateCache.empty();
+        segmentCache.empty();
         blobCache.empty();
     }
 
@@ -369,16 +396,16 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         String msg;
         while (true) {
             try {
-                String retCode = nodeStateReader.requestString("journal", journalId);
-                msg = nodeStateReader.receiveMore();
+                String retCode = journalHeadReader.requestString("journal", journalId);
+                msg = journalHeadReader.receiveMore();
                 if (!retCode.equals("E")) {
                     // TODO: this should be handled in AzureBlobStoreAdapter
                     if (msg.contains("404")) {
                         msg = "undefined";
                     } else {
-                        log.error("lastReq: {}", nodeStateReader.getLastReq());
+                        log.error("lastReq: {}", journalHeadReader.getLastReq());
                         log.error("retCode: {}", retCode);
-                        log.error("Unexpected response from reader: {}, assuming journal is unset", nodeStateReader.receiveMore());
+                        log.error("Unexpected response from reader: {}, assuming journal is unset", journalHeadReader.receiveMore());
                     }
                 }
                 break;
@@ -400,20 +427,21 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         return getSuperRoot().getChildNode(ROOT_NODE_NAME);
     }
 
-    public SimpleNodeState getSuperRoot() {
-        String uuid = readRoot();
-        if ("undefined".equals(uuid)) {
+    public SegmentNodeState getSuperRoot() {
+        String uuid = readRootRemote();
+        if ("undefined".equals(uuid) || uuid == null) {
             throw new IllegalStateException("root is undefined, forgot to call init()?");
         }
+        journalRoot = uuid;
         return readNodeState(uuid);
     }
 
-    private SimpleNodeState getCheckpointSuperRoot() {
+    private SegmentNodeState getCheckpointSuperRoot() {
         return getSuperRoot();
     }
 
-    private SimpleNodeState getCheckpointRoot() {
-        return (SimpleNodeState) getCheckpointSuperRoot().getChildNode(CHECKPOINT_NODE_NAME);
+    private SegmentNodeState getCheckpointRoot() {
+        return (SegmentNodeState) getCheckpointSuperRoot().getChildNode(CHECKPOINT_NODE_NAME);
     }
 
     private void setRoot(String uuid, String oldUuid, CommitInfo info) throws CommitFailedException {
@@ -480,12 +508,12 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     }
 
     private void mergeRoot(NodeState ns, NodeState base, CommitInfo info) throws CommitFailedException {
-        SimpleNodeState superRoot = getSuperRoot();
+        SegmentNodeState superRoot = getSuperRoot();
         NodeState root = superRoot.getChildNode(ROOT_NODE_NAME);
         NodeState rebased = rebase(ns, base, root);
         NodeBuilder superRootBuilder = superRoot.builder();
         superRootBuilder.setChildNode(ROOT_NODE_NAME, rebased);
-        SimpleNodeState newSuperRoot = (SimpleNodeState) superRootBuilder.getNodeState();
+        SegmentNodeState newSuperRoot = (SegmentNodeState) superRootBuilder.getNodeState();
         setRoot(newSuperRoot.getRef(), superRoot.getRef(), info);
     }
 
@@ -497,7 +525,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         }
         checkArgument(((SimpleNodeBuilder) builder).isRoot());
         NodeState before = builder.getBaseState();
-        NodeState after = builder.getNodeState();
+        NodeState after = ((SimpleNodeBuilder) builder).getNodeState();
 
         NodeState afterHook = commitHook.processCommit(before, after, info);
         if (afterHook.equals(before)) {
@@ -539,10 +567,10 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     }
 
     private void mergeCheckpointRoot(NodeState cpRoot, CommitInfo info) throws CommitFailedException {
-        SimpleNodeState superRoot = getCheckpointSuperRoot();
+        SegmentNodeState superRoot = getCheckpointSuperRoot();
         NodeBuilder superRootBuilder = superRoot.builder();
         superRootBuilder.setChildNode(CHECKPOINT_NODE_NAME, cpRoot);
-        SimpleNodeState newSuperRoot = (SimpleNodeState) superRootBuilder.getNodeState();
+        SegmentNodeState newSuperRoot = (SegmentNodeState) superRootBuilder.getNodeState();
         setRoot(newSuperRoot.getRef(), superRoot.getRef(), info);
     }
 
@@ -576,11 +604,11 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     }
 
     @Nullable
-    public SimpleNodeState readNodeState(String ref) {
+    public SegmentNodeState readNodeState(String ref) {
         if (log.isTraceEnabled()) {
             log.trace("{} n? {}", Thread.currentThread().getId(), ref);
         }
-        if (EMPTY.getRef().equals(ref)) {
+        if (SegmentNodeState.NULL_HASH.equals(ref)) {
             return EMPTY;
         }
         try {
@@ -589,6 +617,18 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
             log.warn("Node not found: {} ", ref);
         }
         return null;
+    }
+
+    public Segment readSegment(String segmentId) {
+        Segment seg = segmentCache.get(segmentId);
+        if (seg == null) {
+            throw new IllegalStateException("Segment not found: " + segmentId);
+        }
+        return seg;
+    }
+
+    public void cacheSegment(String segmentId, Segment segment) {
+        segmentCache.put(segmentId, segment);
     }
 
     private void countNodeRead() {
@@ -618,7 +658,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
 
     NodeState rebase(@NotNull NodeBuilder builder, NodeState newBase) throws CommitFailedException {
         checkArgument(builder instanceof SimpleNodeBuilder);
-        checkArgument(newBase instanceof SimpleNodeState);
+        checkArgument(newBase instanceof SegmentNodeState);
         NodeState head = checkNotNull(builder).getNodeState();
         NodeState base = builder.getBaseState();
         if (!base.equals(newBase)) {
@@ -638,7 +678,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         newHead.compareAgainstBaseState(oldBase, new ConflictAnnotatingRebaseDiff(newBuilder));
         newHead = newBuilder.getNodeState();
         ConflictHook conflictHook = new ConflictHook(new SimpleConflictHandler());
-        return conflictHook.processCommit(oldBase, newHead, CommitInfo.EMPTY);
+        return conflictHook.processCommit(newBase, newHead, CommitInfo.EMPTY);
     }
 
     @Override
@@ -693,7 +733,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
             }
         }
 
-        SimpleNodeState currentRoot = (SimpleNodeState) getRoot();
+        SegmentNodeState currentRoot = (SegmentNodeState) getRoot();
         String name = UUID.randomUUID().toString();
 
         NodeBuilder cp = checkpoints.child(name);

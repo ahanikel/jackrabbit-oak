@@ -28,11 +28,11 @@ import java.io.InputStream;
 
 public class SimpleNodeBuilder extends MemoryNodeBuilder {
 
-    private SimpleNodeState nodestate = null;
+    private SegmentNodeState nodestate = null;
 
     public SimpleNodeBuilder(@NotNull NodeState base) {
         super(base);
-        assert(base instanceof SimpleNodeState);
+        assert(base instanceof SegmentNodeState);
     }
 
     public SimpleNodeBuilder(SimpleNodeBuilder parent, String name) {
@@ -47,18 +47,24 @@ public class SimpleNodeBuilder extends MemoryNodeBuilder {
 
     @Override
     @NotNull
-    public SimpleNodeState getNodeState() {
+    public SegmentNodeState getNodeState() {
         if (nodestate != null) {
             return nodestate;
         }
-        final SimpleNodeState base = (SimpleNodeState) getBaseState();
+        final SegmentNodeState base = (SegmentNodeState) getBaseState();
         final NodeState after = super.getNodeState();
-        final SimpleNodeStateDiffGenerator diff = new SimpleNodeStateDiffGenerator(base);
-        after.compareAgainstBaseState(base, diff);
         try {
-            nodestate = diff.getNodeState();
+            SegmentWriter writer = new SegmentWriter(base.getStore().getRemoteBlobStore());
+            String segId = writer.write(after);
+            // Cache this segment so readSegment works immediately
+            byte[] segData = base.getStore().getRemoteBlobStore().getBytes(segId);
+            Segment seg = Segment.parse(segData);
+            base.getStore().cacheSegment(segId, seg);
+            // Root node is always the last record (post-order DFS)
+            int rootIdx = seg.getNodeCount() - 1;
+            nodestate = SegmentNodeState.fromRecord(base.getStore(), segId, rootIdx, seg.getNodeRecord(rootIdx));
             return nodestate;
-        } catch (IOException e) {
+        } catch (Exception e) {
             throw new IllegalStateException(e);
         }
     }
@@ -70,7 +76,7 @@ public class SimpleNodeBuilder extends MemoryNodeBuilder {
 
     @Override
     public Blob createBlob(InputStream is) throws IOException {
-        final SimpleNodeState base = (SimpleNodeState) getBaseState();
+        final SegmentNodeState base = (SegmentNodeState) getBaseState();
         return base.getStore().createBlob(is);
     }
 

@@ -133,21 +133,17 @@ public class SimpleNodeStoreTest {
         String ret3 = reader1.receiveMore();
         Assert.assertEquals("E", ret1);
         Assert.assertEquals("E", ret2);
-        Assert.assertEquals("953A5B0E88B832A0122DB4EA380D6E12", ret3);
-        Assert.assertEquals("953A5B0E88B832A0122DB4EA380D6E12", ret4);
+        // Journal head should be a 64-char hex SHA-256 hash in the new binary segment format
+        Assert.assertEquals(64, ret3.length());
+        Assert.assertEquals(64, ret4.length());
+        Assert.assertEquals(ret3, ret4);
+        Assert.assertTrue(ret3.matches("[0-9a-f]{64}"));
 
-        String rethas1 = reader1.requestString("hasblob", "953A5B0E88B832A0122DB4EA380D6E12");
+        // The segment blob should exist in the blob store
+        String rethas1 = reader1.requestString("hasblob", ret3);
         Assert.assertEquals("E", rethas1);
         String rethas2 = reader1.receiveMore();
         Assert.assertTrue(Boolean.valueOf(rethas2));
-
-        String retblob1 = reader1.requestString("blob", "953A5B0E88B832A0122DB4EA380D6E12");
-        Assert.assertEquals("E", retblob1);
-        String retblob2 = reader1.receiveMore();
-        Assert.assertEquals("n:\n" +
-                "n+ checkpoints 00000000-0000-0000-0000-000000000000\n" +
-                "n+ root 00000000-0000-0000-0000-000000000000\n" +
-                "n!\n", retblob2);
     }
 
     @Test
