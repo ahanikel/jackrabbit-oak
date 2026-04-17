@@ -85,4 +85,14 @@ public class SimpleNodeBuilder extends MemoryNodeBuilder {
         super.reset(newBase);
         nodestate = null;
     }
+
+    /**
+     * Return the current state as an in-memory node state <em>without</em>
+     * writing a segment to the remote store. Use this in merge-pipeline
+     * internals where the caller will write the final segment itself, to
+     * avoid creating unnecessary intermediate segments.
+     */
+    NodeState getMemoryNodeState() {
+        return super.getNodeState();
+    }
 }

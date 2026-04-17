@@ -510,7 +510,9 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
     private void mergeRoot(NodeState ns, NodeState base, CommitInfo info) throws CommitFailedException {
         SegmentNodeState superRoot = getSuperRoot();
         NodeState root = superRoot.getChildNode(ROOT_NODE_NAME);
-        NodeState rebased = rebase(ns, base, root);
+        // Use in-memory rebase to avoid writing a transient intermediate segment;
+        // the single final segment is written by superRootBuilder.getNodeState() below.
+        NodeState rebased = rebaseInMemory(ns, base, root);
         NodeBuilder superRootBuilder = superRoot.builder();
         superRootBuilder.setChildNode(ROOT_NODE_NAME, rebased);
         SegmentNodeState newSuperRoot = (SegmentNodeState) superRootBuilder.getNodeState();
@@ -525,7 +527,9 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         }
         checkArgument(((SimpleNodeBuilder) builder).isRoot());
         NodeState before = builder.getBaseState();
-        NodeState after = ((SimpleNodeBuilder) builder).getNodeState();
+        // Use the in-memory state to avoid writing an intermediate segment
+        // here; the single final segment is written in mergeRoot().
+        NodeState after = ((SimpleNodeBuilder) builder).getMemoryNodeState();
 
         NodeState afterHook = commitHook.processCommit(before, after, info);
         if (afterHook.equals(before)) {
@@ -679,6 +683,21 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         newHead = newBuilder.getNodeState();
         ConflictHook conflictHook = new ConflictHook(new SimpleConflictHandler());
         return conflictHook.processCommit(newBase, newHead, CommitInfo.EMPTY);
+    }
+
+    /**
+     * Like {@link #rebase} but uses an in-memory builder so that no
+     * intermediate segment is written to the store. The returned state may be
+     * a plain {@code MemoryNodeState}; callers that need a persisted
+     * {@link SegmentNodeState} must write it themselves.
+     */
+    private static NodeState rebaseInMemory(NodeState newHead, NodeState oldBase, NodeState newBase)
+            throws CommitFailedException {
+        NodeBuilder newBuilder = new MemoryNodeBuilder(newBase);
+        newHead.compareAgainstBaseState(oldBase, new ConflictAnnotatingRebaseDiff(newBuilder));
+        NodeState rebasedState = newBuilder.getNodeState();
+        ConflictHook conflictHook = new ConflictHook(new SimpleConflictHandler());
+        return conflictHook.processCommit(newBase, rebasedState, CommitInfo.EMPTY);
     }
 
     @Override
