@@ -526,7 +526,9 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
             throw new IllegalArgumentException();
         }
         checkArgument(((SimpleNodeBuilder) builder).isRoot());
-        NodeState before = builder.getBaseState();
+        // getOriginalBase() returns the state before any user edits, even if
+        // the builder has been flushed to a segment by the high-watermark mechanism.
+        NodeState before = ((SimpleNodeBuilder) builder).getOriginalBase();
         // Use the in-memory state to avoid writing an intermediate segment
         // here; the single final segment is written in mergeRoot().
         NodeState after = ((SimpleNodeBuilder) builder).getMemoryNodeState();
