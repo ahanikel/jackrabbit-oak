@@ -246,6 +246,8 @@ public class SimpleRecordHandler {
                     }
                     break;
                 }
+                final long b64BlobStart = System.nanoTime();
+                final String b64ExpectedRef = currentBlob.getRef();
                 Future<?> f = threads.submit(() -> {
                     final TemporaryBlob temporaryBlob = currentBlob.getTemporaryBlob();
                     if (temporaryBlob == null) {
@@ -275,7 +277,11 @@ public class SimpleRecordHandler {
                 });
                 pendingTasks.add(f);
                 try {
+                    long waitStart = System.nanoTime();
                     f.get(); // wait for storage to complete before acknowledging
+                    long totalMs = (System.nanoTime() - b64BlobStart) / 1_000_000;
+                    long waitMs = (System.nanoTime() - waitStart) / 1_000_000;
+                    log.info("b64! blob={} total={}ms (blocking wait={}ms)", b64ExpectedRef, totalMs, waitMs);
                 } catch (Exception e) {
                     log.error("Error storing blob: {}", e.getMessage());
                 }
@@ -284,7 +290,9 @@ public class SimpleRecordHandler {
 
             case "journal":
                 synchronized (this) {
+                    long journalStart = System.nanoTime();
                     synchronized (pendingTasks) {
+                        int taskCount = pendingTasks.size();
                         for (Future<?> f : pendingTasks) {
                             try {
                                 f.get();
@@ -292,6 +300,8 @@ public class SimpleRecordHandler {
                                 log.error(e.getMessage() + " while waiting for pending tasks to complete");
                             }
                         }
+                        long barrierMs = (System.nanoTime() - journalStart) / 1_000_000;
+                        log.info("journal barrier: waited {}ms for {} pending blob tasks", barrierMs, taskCount);
                         pendingTasks.clear();
                     }
                     StringTokenizer tokens = new StringTokenizer(new String(value));
@@ -301,7 +311,12 @@ public class SimpleRecordHandler {
                     final TemporaryBlob journalBlob = store.getTempBlob();
                     try (OutputStream journalFile = journalBlob.getOutputStream()) {
                         IOUtils.writeString(journalFile, head);
+                        long writeStart = System.nanoTime();
                         store.putTempBlobAs("journal-" + journalId, journalBlob);
+                        log.info("journal write(journal-{}) head={} in {}ms, total journal time={}ms",
+                                journalId, head,
+                                (System.nanoTime() - writeStart) / 1_000_000,
+                                (System.nanoTime() - journalStart) / 1_000_000);
                     } catch (IOException e) {
                         throw new IllegalStateException(e);
                     }

@@ -18,6 +18,9 @@
  */
 package org.apache.jackrabbit.oak.store.zeromq;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.ByteArrayInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -27,11 +30,13 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 
 public class SimpleRemoteBlobStore implements BlobStore {
 
+    private static final Logger log = LoggerFactory.getLogger(SimpleRemoteBlobStore.class);
     private static final int WORKER_THREADS = 50;
     private final Function<String, Boolean> checker;
     private final Function<String, InputStream> reader;
@@ -40,6 +45,12 @@ public class SimpleRemoteBlobStore implements BlobStore {
     private final ExecutorService threads;
     private volatile boolean emergency = false;
     private final List<Future<?>> pendingWrites = new ArrayList<>();
+
+    /** Total number of remote hasBlob() calls made. */
+    private final AtomicLong hasBlobCalls = new AtomicLong();
+    /** Calls where the local cache already had the blob (remote call was redundant). */
+    private final AtomicLong hasBlobRedundant = new AtomicLong();
+    private static final long LOG_INTERVAL = 100;
 
     public SimpleRemoteBlobStore(Function<String, Boolean> checker, Function<String, InputStream> reader,
                                  BiConsumer<String, InputStream> writer, BlobStore localCache) {
@@ -123,7 +134,9 @@ public class SimpleRemoteBlobStore implements BlobStore {
         checkEmergency();
         localCache.putInputStreamAs(ref, is);
         if (ref.contains("journal") || !checker.apply(ref)) {
+            long t0 = System.nanoTime();
             writer.accept(ref, localCache.getInputStream(ref));
+            log.info("putInputStreamAs({}) remote write in {}ms", ref, (System.nanoTime() - t0) / 1_000_000);
         }
     }
 
@@ -137,7 +150,9 @@ public class SimpleRemoteBlobStore implements BlobStore {
     public String putTempBlob(TemporaryBlob tempFile) throws BlobAlreadyExistsException, IOException {
         checkEmergency();
         final String ref = localCache.putTempBlob(tempFile);
+        long t0 = System.nanoTime();
         writer.accept(ref, localCache.getInputStream(ref));
+        log.info("putTempBlob({}) remote write in {}ms", ref, (System.nanoTime() - t0) / 1_000_000);
         return ref;
     }
 
@@ -146,16 +161,30 @@ public class SimpleRemoteBlobStore implements BlobStore {
         checkEmergency();
         localCache.putTempBlobAs(ref, tempBlob);
         if (ref.contains("journal") || !checker.apply(ref)) {
+            long t0 = System.nanoTime();
             writer.accept(ref, localCache.getInputStream(ref));
+            log.info("putTempBlobAs({}) remote write in {}ms", ref, (System.nanoTime() - t0) / 1_000_000);
         }
     }
 
     @Override
     public boolean hasBlob(String ref) {
         checkEmergency();
-        // return localCache.hasBlob(ref) || checker.apply(ref); // more efficient but dangerous
-        return checker.apply(ref);
-
+        long total = hasBlobCalls.incrementAndGet();
+        boolean inCache = localCache.hasBlob(ref);
+        if (inCache) {
+            hasBlobRedundant.incrementAndGet();
+        }
+        long t0 = System.nanoTime();
+        boolean result = checker.apply(ref);
+        long ms = (System.nanoTime() - t0) / 1_000_000;
+        if (total % LOG_INTERVAL == 0) {
+            log.info("hasBlob stats: {} total remote checks, {} redundant (local cache hit), last check {}ms",
+                    total, hasBlobRedundant.get(), ms);
+        } else {
+            log.debug("hasBlob({}) inCache={} remote={} in {}ms", ref, inCache, result, ms);
+        }
+        return result;
     }
 
     @Override

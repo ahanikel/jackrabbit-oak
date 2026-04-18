@@ -48,18 +48,28 @@ public class ZeroMQBlobStoreAdapter implements BlobStoreAdapter {
     }
 
     private void writeBlob(String ref, InputStream is) {
+        long t0 = System.nanoTime();
         LoggingHook.writeBlob(ref, is, this::writeBlobChunk);
+        long ms = (System.nanoTime() - t0) / 1_000_000;
+        log.info("ZeroMQ writeBlob({}) total {}ms", ref, ms);
     }
 
     private void writeBlobChunk(String op, byte[] args) {
+        long t0 = System.nanoTime();
         while (true) {
             try {
                 String msg = queueWriter.requestString(op, args);
+                long ms = (System.nanoTime() - t0) / 1_000_000;
                 if (!msg.equals("E")) {
                     log.error("lastReq: {}", queueWriter.getLastReq());
                     log.error("{}: {}", msg, queueWriter.receiveMore());
                 } else {
                     queueWriter.receiveMore(); // ignore, should be ""
+                    if (ms > 200) {
+                        log.warn("ZeroMQ chunk slow: op={} size={}B round-trip={}ms", op, args.length, ms);
+                    } else {
+                        log.debug("ZeroMQ chunk: op={} size={}B round-trip={}ms", op, args.length, ms);
+                    }
                 }
                 break;
             } catch (Exception e1) {

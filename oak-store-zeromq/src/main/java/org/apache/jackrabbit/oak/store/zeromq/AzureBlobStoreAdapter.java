@@ -42,16 +42,29 @@ public class AzureBlobStoreAdapter implements BlobStoreAdapter {
   }
 
   private boolean hasBlob(String blobName) {
-    return containerClient.getBlobClient(blobName).exists();
+    long t0 = System.nanoTime();
+    boolean result = containerClient.getBlobClient(blobName).exists();
+    long ms = (System.nanoTime() - t0) / 1_000_000;
+    log.debug("Azure hasBlob({}) = {} in {}ms", blobName, result, ms);
+    if (ms > 500) {
+      log.warn("Azure hasBlob slow: {} ms for {}", ms, blobName);
+    }
+    return result;
   }
 
   private InputStream readBlob(String blobName) {
+    long t0 = System.nanoTime();
     try {
-      return new BufferedInputStream(containerClient.getBlobClient(blobName).openInputStream());
+      InputStream is = new BufferedInputStream(containerClient.getBlobClient(blobName).openInputStream());
+      log.debug("Azure readBlob({}) opened in {}ms", blobName, (System.nanoTime() - t0) / 1_000_000);
+      return is;
     } catch (Exception e) {
+      long ms = (System.nanoTime() - t0) / 1_000_000;
       if (e.getMessage() != null && e.getMessage().contains("404")) {
+        log.debug("Azure readBlob({}) not found in {}ms", blobName, ms);
         return null;
       } else {
+        log.error("Azure readBlob({}) failed after {}ms: {}", blobName, ms, e.getMessage());
         throw e;
       }
     }
@@ -62,10 +75,16 @@ public class AzureBlobStoreAdapter implements BlobStoreAdapter {
     if (!inputStream.markSupported()) {
       inputStream = new BufferedInputStream(inputStream);
     }
+    long t0 = System.nanoTime();
     try {
-      blobClient.upload(inputStream, inputStream.available(), true);
+      int size = inputStream.available();
+      blobClient.upload(inputStream, size, true);
+      long ms = (System.nanoTime() - t0) / 1_000_000;
+      double kbPerSec = ms > 0 ? (size / 1024.0) / (ms / 1000.0) : Double.POSITIVE_INFINITY;
+      log.info("Azure writeBlob({}) {} bytes in {}ms ({} KB/s)", blobName, size, ms, String.format("%.1f", kbPerSec));
     } catch (Exception e) {
-      log.error("Failed to upload blob: {}", e.getMessage());
+      long ms = (System.nanoTime() - t0) / 1_000_000;
+      log.error("Azure writeBlob({}) failed after {}ms: {}", blobName, ms, e.getMessage());
       throw new RuntimeException(e);
     }
   }
