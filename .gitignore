@@ -11,7 +11,7 @@ atlassian-ide-plugin.xml
 .checkstyle
 derby.log
 .java-version
-oak-shaded-guava/dependency-reduced-pom.xml
+*/dependency-reduced-pom.xml
 .DS_Store
 TAGS
 .cpcache
