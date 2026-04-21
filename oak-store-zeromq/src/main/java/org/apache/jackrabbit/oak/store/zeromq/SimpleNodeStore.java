@@ -743,7 +743,7 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         if (reference == null) {
             return null;
         }
-        assert(reference.equals(reference.toUpperCase()));
+        assert(reference.equals(reference.toLowerCase()));
         try {
             return blobCache.get(reference);
         } catch (Exception e) {
