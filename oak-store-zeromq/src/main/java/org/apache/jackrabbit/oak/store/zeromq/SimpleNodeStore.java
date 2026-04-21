@@ -169,8 +169,12 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         nodeStateWriter = new SimpleRequestResponse(SimpleRequestResponse.Topic.WRITE, backendWriterURL, backendReaderURL);
 
         this.blobStoreAdapter = new ZeroMQBlobStoreAdapter(nodeStateReader, nodeStateWriter);
-        this.remoteBlobStore = new SimpleRemoteBlobStore(blobStoreAdapter.getChecker(), blobStoreAdapter.getReader(),
-              blobStoreAdapter.getWriter(), new SimpleMemoryBlobStore(100000));
+        try {
+            this.remoteBlobStore = new SimpleRemoteBlobStore(blobStoreAdapter.getChecker(), blobStoreAdapter.getReader(),
+                  blobStoreAdapter.getWriter(), new SimpleBlobStore(this.blobCacheDir));
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to initialise local blob cache at " + this.blobCacheDir, e);
+        }
 
         Cache<String, SegmentNodeState> cache =
                 CacheBuilder.newBuilder()
@@ -516,6 +520,12 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         NodeBuilder superRootBuilder = superRoot.builder();
         superRootBuilder.setChildNode(ROOT_NODE_NAME, rebased);
         SegmentNodeState newSuperRoot = (SegmentNodeState) superRootBuilder.getNodeState();
+        if (newSuperRoot.getRef().equals(superRoot.getRef())) {
+            // Idempotent commit: the desired state is already reflected in the current root.
+            // Skipping setRoot() prevents a self-referential journal entry (X, X) that
+            // would cause the log processor to enter an infinite conflict-resolution loop.
+            return;
+        }
         setRoot(newSuperRoot.getRef(), superRoot.getRef(), info);
     }
 
@@ -577,6 +587,9 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         NodeBuilder superRootBuilder = superRoot.builder();
         superRootBuilder.setChildNode(CHECKPOINT_NODE_NAME, cpRoot);
         SegmentNodeState newSuperRoot = (SegmentNodeState) superRootBuilder.getNodeState();
+        if (newSuperRoot.getRef().equals(superRoot.getRef())) {
+            return; // idempotent — avoid self-referential journal entry
+        }
         setRoot(newSuperRoot.getRef(), superRoot.getRef(), info);
     }
 

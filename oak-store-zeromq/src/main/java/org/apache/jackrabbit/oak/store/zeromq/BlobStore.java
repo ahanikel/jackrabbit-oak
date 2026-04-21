@@ -39,4 +39,11 @@ public interface BlobStore {
     default void blobNotFound(String ref) throws IOException {
         throw new FileNotFoundException("Blob not found: " + ref);
     }
+
+    /**
+     * Wait for any pending async writes (e.g. remote/cloud uploads) to complete.
+     * Used by the journal barrier to ensure all blobs are durable before the journal
+     * is committed. The default implementation is a no-op for local-only stores.
+     */
+    default void flushPendingWrites() throws IOException {}
 }

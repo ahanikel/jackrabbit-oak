@@ -40,12 +40,16 @@ public class SimpleNodeBuilder extends MemoryNodeBuilder {
     private static final int CHECK_INTERVAL = 500;
 
     /**
-     * The base state before <em>any</em> user changes, preserved across
-     * intermediate {@link #flushToSegment()} operations so that the merge
-     * pipeline can compute the correct diff even after one or more flushes.
-     * Non-null only for root builders.
+     * The base state at the start of the <em>current editing session</em>
+     * (i.e. since the last {@link #reset} call), preserved across intermediate
+     * {@link #flushToSegment()} operations so that the merge pipeline can
+     * compute the correct diff even after one or more in-memory flushes.
+     * <p>
+     * Updated on every {@link #reset} (real commit reset) but NOT by
+     * {@link #flushToSegment()}, which calls {@code super.reset()} directly to
+     * avoid triggering this field's update.  Non-null only for root builders.
      */
-    private final NodeState originalBase;
+    private NodeState originalBase;
 
     /**
      * Counter of {@link #updated()} calls since the last size check.
@@ -154,6 +158,13 @@ public class SimpleNodeBuilder extends MemoryNodeBuilder {
 
     @Override
     public void reset(@NotNull NodeState newBase) {
+        // Update originalBase so that the next session's diff is computed
+        // relative to the newly committed state, not the original pre-session
+        // base.  flushToSegment() intentionally calls super.reset() directly
+        // to skip this update.
+        if (originalBase != null) {
+            originalBase = newBase;
+        }
         super.reset(newBase);
         nodestate = null;
         updatesSinceCheck = 0;

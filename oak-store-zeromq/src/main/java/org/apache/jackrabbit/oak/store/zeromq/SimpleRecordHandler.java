@@ -277,13 +277,16 @@ public class SimpleRecordHandler {
                 });
                 pendingTasks.add(f);
                 try {
+                    // Wait only for the local write to complete (fast) — the remote/Azure
+                    // upload is now submitted asynchronously inside SimpleRemoteBlobStore and
+                    // will be waited on by the journal barrier via store.flushPendingWrites().
                     long waitStart = System.nanoTime();
-                    f.get(); // wait for storage to complete before acknowledging
+                    f.get();
                     long totalMs = (System.nanoTime() - b64BlobStart) / 1_000_000;
                     long waitMs = (System.nanoTime() - waitStart) / 1_000_000;
-                    log.info("b64! blob={} total={}ms (blocking wait={}ms)", b64ExpectedRef, totalMs, waitMs);
+                    log.debug("b64! blob={} local write done in {}ms (total {}ms)", b64ExpectedRef, waitMs, totalMs);
                 } catch (Exception e) {
-                    log.error("Error storing blob: {}", e.getMessage());
+                    log.error("Error storing blob {}: {}", b64ExpectedRef, e.getMessage());
                 }
                 break;
             }
@@ -300,10 +303,18 @@ public class SimpleRecordHandler {
                                 log.error(e.getMessage() + " while waiting for pending tasks to complete");
                             }
                         }
-                        long barrierMs = (System.nanoTime() - journalStart) / 1_000_000;
-                        log.info("journal barrier: waited {}ms for {} pending blob tasks", barrierMs, taskCount);
                         pendingTasks.clear();
+                        long localBarrierMs = (System.nanoTime() - journalStart) / 1_000_000;
+                        log.debug("journal: local writes done in {}ms ({} tasks)", localBarrierMs, taskCount);
                     }
+                    // Wait for all async remote (Azure) uploads submitted by SimpleRemoteBlobStore
+                    try {
+                        store.flushPendingWrites();
+                    } catch (IOException e) {
+                        log.error("journal: error flushing remote writes: {}", e.getMessage());
+                    }
+                    long barrierMs = (System.nanoTime() - journalStart) / 1_000_000;
+                    log.info("journal barrier: all blobs remote-durable in {}ms", barrierMs);
                     StringTokenizer tokens = new StringTokenizer(new String(value));
                     final String journalId = tokens.nextToken();
                     final String head = tokens.nextToken();

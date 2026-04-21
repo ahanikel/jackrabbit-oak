@@ -46,10 +46,10 @@ public class SimpleRemoteBlobStore implements BlobStore {
     private volatile boolean emergency = false;
     private final List<Future<?>> pendingWrites = new ArrayList<>();
 
-    /** Total number of remote hasBlob() calls made. */
-    private final AtomicLong hasBlobCalls = new AtomicLong();
-    /** Calls where the local cache already had the blob (remote call was redundant). */
-    private final AtomicLong hasBlobRedundant = new AtomicLong();
+    /** hasBlob() calls answered from local cache (no Azure round-trip). */
+    private final AtomicLong hasBlobCacheHits = new AtomicLong();
+    /** hasBlob() calls that required an Azure round-trip (blob not in local cache). */
+    private final AtomicLong hasBlobRemoteCalls = new AtomicLong();
     private static final long LOG_INTERVAL = 100;
 
     public SimpleRemoteBlobStore(Function<String, Boolean> checker, Function<String, InputStream> reader,
@@ -150,9 +150,20 @@ public class SimpleRemoteBlobStore implements BlobStore {
     public String putTempBlob(TemporaryBlob tempFile) throws BlobAlreadyExistsException, IOException {
         checkEmergency();
         final String ref = localCache.putTempBlob(tempFile);
-        long t0 = System.nanoTime();
-        writer.accept(ref, localCache.getInputStream(ref));
-        log.info("putTempBlob({}) remote write in {}ms", ref, (System.nanoTime() - t0) / 1_000_000);
+        // Remote write is async — the journal barrier (flushPendingWrites) ensures
+        // it completes before the journal is committed.
+        submit(() -> {
+            try {
+                if (!checker.apply(ref)) {
+                    long t0 = System.nanoTime();
+                    writer.accept(ref, localCache.getInputStream(ref));
+                    log.info("putTempBlob({}) async remote write in {}ms", ref, (System.nanoTime() - t0) / 1_000_000);
+                }
+            } catch (IOException e) {
+                log.error("putTempBlob({}) async remote write failed: {}", ref, e.getMessage());
+                emergency = true;
+            }
+        });
         return ref;
     }
 
@@ -160,29 +171,73 @@ public class SimpleRemoteBlobStore implements BlobStore {
     public void putTempBlobAs(String ref, TemporaryBlob tempBlob) throws IOException {
         checkEmergency();
         localCache.putTempBlobAs(ref, tempBlob);
-        if (ref.contains("journal") || !checker.apply(ref)) {
+        if (ref.contains("journal")) {
+            // Journal must be durably written synchronously — other nodes read it immediately.
             long t0 = System.nanoTime();
             writer.accept(ref, localCache.getInputStream(ref));
-            log.info("putTempBlobAs({}) remote write in {}ms", ref, (System.nanoTime() - t0) / 1_000_000);
+            log.info("putTempBlobAs({}) journal write in {}ms", ref, (System.nanoTime() - t0) / 1_000_000);
+        } else {
+            // Content-addressed segment blobs: async remote write; journal barrier waits for them.
+            submit(() -> {
+                try {
+                    if (!checker.apply(ref)) {
+                        long t0 = System.nanoTime();
+                        writer.accept(ref, localCache.getInputStream(ref));
+                        log.info("putTempBlobAs({}) async remote write in {}ms", ref, (System.nanoTime() - t0) / 1_000_000);
+                    }
+                } catch (IOException e) {
+                    log.error("putTempBlobAs({}) async remote write failed: {}", ref, e.getMessage());
+                    emergency = true;
+                }
+            });
+        }
+    }
+
+    @Override
+    public void flushPendingWrites() throws IOException {
+        synchronized (pendingWrites) {
+            int count = pendingWrites.size();
+            long t0 = System.nanoTime();
+            for (Future<?> f : pendingWrites) {
+                try {
+                    f.get();
+                } catch (Exception e) {
+                    log.error("Async remote write failed during flush: {}", e.getMessage());
+                }
+            }
+            pendingWrites.clear();
+            if (count > 0) {
+                log.info("flushPendingWrites: waited for {} async remote writes in {}ms",
+                        count, (System.nanoTime() - t0) / 1_000_000);
+            }
         }
     }
 
     @Override
     public boolean hasBlob(String ref) {
         checkEmergency();
-        long total = hasBlobCalls.incrementAndGet();
-        boolean inCache = localCache.hasBlob(ref);
-        if (inCache) {
-            hasBlobRedundant.incrementAndGet();
+        // Fast path: if the blob is in the local cache it was successfully written to the
+        // remote store in a prior call (content-addressed; we never evict). Skip the
+        // expensive Azure exists() round-trip (~110 ms each).
+        if (localCache.hasBlob(ref)) {
+            long hits = hasBlobCacheHits.incrementAndGet();
+            if (hits % LOG_INTERVAL == 0) {
+                log.info("hasBlob stats: {} cache hits, {} remote checks",
+                        hits, hasBlobRemoteCalls.get());
+            } else {
+                log.debug("hasBlob({}) cache hit", ref);
+            }
+            return true;
         }
         long t0 = System.nanoTime();
         boolean result = checker.apply(ref);
         long ms = (System.nanoTime() - t0) / 1_000_000;
-        if (total % LOG_INTERVAL == 0) {
-            log.info("hasBlob stats: {} total remote checks, {} redundant (local cache hit), last check {}ms",
-                    total, hasBlobRedundant.get(), ms);
+        long remote = hasBlobRemoteCalls.incrementAndGet();
+        if (remote % LOG_INTERVAL == 0) {
+            log.info("hasBlob stats: {} cache hits, {} remote checks, last remote {}ms",
+                    hasBlobCacheHits.get(), remote, ms);
         } else {
-            log.debug("hasBlob({}) inCache={} remote={} in {}ms", ref, inCache, result, ms);
+            log.debug("hasBlob({}) remote={} in {}ms", ref, result, ms);
         }
         return result;
     }

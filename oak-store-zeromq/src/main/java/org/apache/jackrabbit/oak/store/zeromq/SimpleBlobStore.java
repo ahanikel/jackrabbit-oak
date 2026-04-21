@@ -180,8 +180,16 @@ public class SimpleBlobStore implements BlobStore {
             throw new IllegalArgumentException("Invalid ref: " + ref);
         }
         File tempFile = ((FileTemporaryBlob) tempBlob).getFile();
-        if (!tempFile.renameTo(getFileForRef(ref))) {
-            throw new IOException("Failed to rename temporary blob file to " + ref);
+        File dest = getFileForRef(ref);
+        if (!tempFile.renameTo(dest)) {
+            // Rename failed — either dest already exists (concurrent write of the same
+            // content-addressed blob) or a cross-device rename.  In either case the
+            // blob is already present or we need to copy-then-delete.
+            if (dest.exists()) {
+                tempFile.delete();
+            } else {
+                throw new IOException("Failed to rename temporary blob file to " + ref);
+            }
         }
     }
 
