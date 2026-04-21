@@ -234,7 +234,7 @@ public class SegmentWriter {
             case LONG:
             case DOUBLE: return 8;
             case BOOLEAN: return 1;
-            case BINARY: return 32;
+            case BINARY: return 64;
             default:
                 String s = ps.getValue(org.apache.jackrabbit.oak.api.Type.STRING, index);
                 return s.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
@@ -275,7 +275,7 @@ public class SegmentWriter {
             case LONG:
             case DOUBLE: return 8;
             case BOOLEAN: return 1;
-            case BINARY: return 32;
+            case BINARY: return 64;
             default:
                 String s = ps.getValue(Type.STRING, index);
                 return s.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;

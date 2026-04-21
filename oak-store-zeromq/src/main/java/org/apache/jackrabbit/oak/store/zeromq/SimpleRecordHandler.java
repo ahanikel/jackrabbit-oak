@@ -256,21 +256,9 @@ public class SimpleRecordHandler {
                         throw new IllegalStateException(msg);
                     }
                     try {
-                        final String expectedRef = currentBlob.getRef();
-                        if (expectedRef != null && expectedRef.length() == 64) {
-                            // SHA-256 segment ID: store by the given ref without MD5 verification
-                            store.putTempBlobAs(expectedRef, temporaryBlob);
-                        } else {
-                            String newRef;
-                            try {
-                                newRef = store.putTempBlob(temporaryBlob);
-                            } catch (BlobAlreadyExistsException e) {
-                                newRef = e.getRef();
-                            }
-                            if (!newRef.equals(expectedRef)) {
-                                log.error("Calculated ref {} differs from expected ref {}", newRef, expectedRef);
-                            }
-                        }
+                        // All refs are 64-char SHA-256 hashes (both segments and data blobs),
+                        // so always store under the pre-announced ref.
+                        store.putTempBlobAs(currentBlob.getRef(), temporaryBlob);
                     } catch (IOException e) {
                         log.error(e.getMessage());
                     }

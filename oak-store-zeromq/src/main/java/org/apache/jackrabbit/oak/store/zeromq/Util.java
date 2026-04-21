@@ -83,11 +83,7 @@ public class Util {
     }
 
     public static String getRefFromBytes(byte[] b) {
-        try {
-            return bytesToHex(MessageDigest.getInstance("MD5").digest(b));
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
+        return sha256HexFromBytes(b);
     }
 
     public static String getRefFromString(String s) {
@@ -95,18 +91,9 @@ public class Util {
     }
 
     public static String getRefFromFile(File file) {
-        try {
-            MessageDigest md5 = MessageDigest.getInstance("MD5");
-            try (InputStream is = new FileInputStream(file)) {
-                byte[] buf = new byte[1024 * 1024];
-                int nRead = is.read(buf);
-                while (nRead >= 0) {
-                    md5.update(buf, 0, nRead);
-                    nRead = is.read(buf);
-                }
-            }
-            return bytesToHex(md5.digest());
-        } catch (NoSuchAlgorithmException | IOException e) {
+        try (InputStream is = new FileInputStream(file)) {
+            return sha256HexFromStream(is);
+        } catch (IOException e) {
             throw new IllegalStateException(e);
         }
     }
