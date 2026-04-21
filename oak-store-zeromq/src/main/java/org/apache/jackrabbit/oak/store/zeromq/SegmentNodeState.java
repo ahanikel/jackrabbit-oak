@@ -212,7 +212,9 @@ public class SegmentNodeState implements NodeState {
     @Override
     public @Nullable String getString(String name) {
         PropertyState ps = getProperty(name);
-        if (ps != null && ps.getType() == Type.STRING) {
+        // Follow Oak's AbstractNodeState contract: return string representation of
+        // any scalar property, not just those stored with type STRING.
+        if (ps != null && !ps.isArray()) {
             return ps.getValue(Type.STRING);
         }
         return null;
@@ -221,7 +223,9 @@ public class SegmentNodeState implements NodeState {
     @Override
     public @NotNull Iterable<String> getStrings(@NotNull String name) {
         PropertyState ps = getProperty(name);
-        if (ps != null && ps.getType() == Type.STRINGS) {
+        // Follow Oak's AbstractNodeState contract: getValue(STRINGS) handles
+        // both scalar STRING (wraps in singleton list) and multi-valued STRINGS.
+        if (ps != null) {
             return ps.getValue(Type.STRINGS);
         }
         return Collections.emptyList();
@@ -230,7 +234,8 @@ public class SegmentNodeState implements NodeState {
     @Override
     public @Nullable String getName(@NotNull String name) {
         PropertyState ps = getProperty(name);
-        if (ps != null && ps.getType() == Type.NAME) {
+        // Return name representation of any scalar property, as AbstractNodeState does.
+        if (ps != null && !ps.isArray()) {
             return ps.getValue(Type.NAME);
         }
         return null;
@@ -239,7 +244,8 @@ public class SegmentNodeState implements NodeState {
     @Override
     public @NotNull Iterable<String> getNames(@NotNull String name) {
         PropertyState ps = getProperty(name);
-        if (ps != null && ps.getType() == Type.NAMES) {
+        // getValue(NAMES) handles both scalar NAME and multi-valued NAMES.
+        if (ps != null) {
             return ps.getValue(Type.NAMES);
         }
         return Collections.emptyList();
