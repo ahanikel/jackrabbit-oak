@@ -85,18 +85,37 @@ public class SegmentWriter {
         }
     }
 
+    /** Output of {@link #writeFull}. */
+    public static class WriteOutput {
+        public final String segId;
+        public final byte[] segBytes;
+        WriteOutput(String segId, byte[] segBytes) {
+            this.segId = segId;
+            this.segBytes = segBytes;
+        }
+    }
+
+    /**
+     * Write the node tree rooted at {@code root} to the blob store and return
+     * the raw segment bytes alongside the segment ID.  The caller can parse and
+     * cache the segment without a second round-trip to the blob store.
+     */
+    public WriteOutput writeFull(NodeState root) throws IOException {
+        SegmentBuilder builder = new SegmentBuilder();
+        WriteResult result = writeSubtree(root, builder);
+        byte[] segBytes = builder.flush();
+        String segId = Util.bytesToHex(result.merkleHash);
+        storeSegment(segId, segBytes);
+        return new WriteOutput(segId, segBytes);
+    }
+
     /**
      * Write the node tree rooted at {@code root} to the blob store.
      *
      * @return 64-char hex segment ID of the root segment
      */
     public String write(NodeState root) throws IOException {
-        SegmentBuilder builder = new SegmentBuilder();
-        WriteResult result = writeSubtree(root, builder);
-        byte[] segBytes = builder.flush();
-        String segId = Util.bytesToHex(result.merkleHash);
-        storeSegment(segId, segBytes);
-        return segId;
+        return writeFull(root).segId;
     }
 
     /**
@@ -125,24 +144,33 @@ public class SegmentWriter {
 
         for (String childName : childNames) {
             NodeState child = node.getChildNode(childName);
-            int estimatedChildSize = estimateNodeSize(child);
 
             SegmentBuilder.PendingChild pendingChild;
             byte[] childHash;
 
-            if (builder.currentTotalSize() + estimatedChildSize > maxSegmentSize) {
-                // Child gets its own segment
-                SegmentBuilder childBuilder = new SegmentBuilder();
-                WriteResult childResult = writeSubtree(child, childBuilder);
-                byte[] segBytes = childBuilder.flush();
-                String childSegId = Util.bytesToHex(childResult.merkleHash);
-                storeSegment(childSegId, segBytes);
-                childHash = childResult.merkleHash;
+            if (child instanceof SegmentNodeState
+                    && ((SegmentNodeState) child).getRecordIndex() == SegmentNodeState.ROOT_RECORD) {
+                // Fast path: this child is already the root of a persisted external segment.
+                // The segment ID is hex(merkleHash) by construction, so we can derive the hash
+                // without loading the segment and add it as an external reference directly.
+                childHash = Util.hexToBytes(((SegmentNodeState) child).getSegmentId());
                 pendingChild = new SegmentBuilder.PendingChild(childName, childHash);
             } else {
-                WriteResult childResult = writeSubtree(child, builder);
-                childHash = childResult.merkleHash;
-                pendingChild = new SegmentBuilder.PendingChild(childName, childResult.recordIndex);
+                int estimatedChildSize = estimateNodeSize(child);
+                if (builder.currentTotalSize() + estimatedChildSize > maxSegmentSize) {
+                    // Child gets its own segment
+                    SegmentBuilder childBuilder = new SegmentBuilder();
+                    WriteResult childResult = writeSubtree(child, childBuilder);
+                    byte[] segBytes = childBuilder.flush();
+                    String childSegId = Util.bytesToHex(childResult.merkleHash);
+                    storeSegment(childSegId, segBytes);
+                    childHash = childResult.merkleHash;
+                    pendingChild = new SegmentBuilder.PendingChild(childName, childHash);
+                } else {
+                    WriteResult childResult = writeSubtree(child, builder);
+                    childHash = childResult.merkleHash;
+                    pendingChild = new SegmentBuilder.PendingChild(childName, childResult.recordIndex);
+                }
             }
 
             pendingChildren.add(pendingChild);

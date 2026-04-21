@@ -112,14 +112,14 @@ public class SimpleNodeBuilder extends MemoryNodeBuilder {
         final NodeState after = super.getNodeState();
         try {
             SegmentWriter writer = new SegmentWriter(base.getStore().getRemoteBlobStore());
-            String segId = writer.write(after);
-            // Cache this segment so readSegment works immediately
-            byte[] segData = base.getStore().getRemoteBlobStore().getBytes(segId);
-            Segment seg = Segment.parse(segData);
-            base.getStore().cacheSegment(segId, seg);
+            SegmentWriter.WriteOutput out = writer.writeFull(after);
+            // Parse and cache the segment using the bytes already in memory — avoids a
+            // second round-trip to the blob store that write() + getBytes() would require.
+            Segment seg = Segment.parse(out.segBytes);
+            base.getStore().cacheSegment(out.segId, seg);
             // Root node is always the last record (post-order DFS)
             int rootIdx = seg.getNodeCount() - 1;
-            nodestate = SegmentNodeState.fromRecord(base.getStore(), segId, rootIdx, seg.getNodeRecord(rootIdx));
+            nodestate = SegmentNodeState.fromRecord(base.getStore(), out.segId, rootIdx, seg.getNodeRecord(rootIdx));
             return nodestate;
         } catch (Exception e) {
             throw new IllegalStateException(e);
@@ -224,15 +224,14 @@ public class SimpleNodeBuilder extends MemoryNodeBuilder {
             // Use originalBase to obtain the store — it is always a SegmentNodeState.
             SegmentNodeState storeRef = (SegmentNodeState) originalBase;
             SegmentWriter writer = new SegmentWriter(storeRef.getStore().getRemoteBlobStore());
-            String segId = writer.write(current);
+            SegmentWriter.WriteOutput out = writer.writeFull(current);
 
-            byte[] segData = storeRef.getStore().getRemoteBlobStore().getBytes(segId);
-            Segment seg = Segment.parse(segData);
-            storeRef.getStore().cacheSegment(segId, seg);
+            Segment seg = Segment.parse(out.segBytes);
+            storeRef.getStore().cacheSegment(out.segId, seg);
 
             int rootIdx = seg.getNodeCount() - 1;
             SegmentNodeState flushed = SegmentNodeState.fromRecord(
-                    storeRef.getStore(), segId, rootIdx, seg.getNodeRecord(rootIdx));
+                    storeRef.getStore(), out.segId, rootIdx, seg.getNodeRecord(rootIdx));
 
             // Cache so that getNodeState() returns this immediately if no further changes are made.
             nodestate = flushed;
@@ -240,7 +239,7 @@ public class SimpleNodeBuilder extends MemoryNodeBuilder {
             // This frees all MemoryNodeState/MemoryNodeBuilder objects held so far.
             super.reset(flushed);
 
-            log.debug("Flushed builder to segment {} ({} bytes estimated)", segId, SegmentWriter.estimateInMemorySize(current));
+            log.debug("Flushed builder to segment {} ({} bytes estimated)", out.segId, SegmentWriter.estimateInMemorySize(current));
         } finally {
             flushing = false;
         }
