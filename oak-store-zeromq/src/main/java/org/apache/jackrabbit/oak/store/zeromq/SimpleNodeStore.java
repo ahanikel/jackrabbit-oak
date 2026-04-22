@@ -646,8 +646,20 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         return seg;
     }
 
-    public void cacheSegment(String segmentId, Segment segment) {
-        segmentCache.put(segmentId, segment);
+    /**
+     * Insert {@code segment} into the segment cache under {@code segmentId},
+     * but only if no segment is already cached for that ID.  Returns the
+     * segment that is actually in the cache after the call (either the
+     * pre-existing one or the newly inserted one).
+     * <p>
+     * Two segments can share the same Merkle-hash root (same content, different
+     * internal layout — e.g. one packs many children inline, another uses
+     * external refs).  Allowing a later write to evict the first layout would
+     * corrupt any {@link SegmentNodeState} instances that hold record indices
+     * into the first segment.  putIfAbsent prevents that race.
+     */
+    public Segment cacheSegment(String segmentId, Segment segment) {
+        return segmentCache.putIfAbsent(segmentId, segment);
     }
 
     private void countNodeRead() {
@@ -882,6 +894,13 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
 
         void put(K key, V value);
 
+        /**
+         * Insert {@code value} only if {@code key} is not already present.
+         * Returns the existing value if the key was already mapped, or
+         * {@code value} if the key was absent (i.e. the value just inserted).
+         */
+        V putIfAbsent(K key, V value);
+
         boolean isCached(K key);
 
         void empty();
@@ -908,6 +927,12 @@ public class SimpleNodeStore implements NodeStore, Observable, Closeable, Garbag
         @Override
         public void put(K key, V value) {
             cache.put(key, value);
+        }
+
+        @Override
+        public V putIfAbsent(K key, V value) {
+            V existing = cache.asMap().putIfAbsent(key, value);
+            return existing != null ? existing : value;
         }
 
         @Override

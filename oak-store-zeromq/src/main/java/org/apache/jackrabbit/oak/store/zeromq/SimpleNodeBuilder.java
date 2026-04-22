@@ -115,11 +115,16 @@ public class SimpleNodeBuilder extends MemoryNodeBuilder {
             SegmentWriter.WriteOutput out = writer.writeFull(after);
             // Parse and cache the segment using the bytes already in memory — avoids a
             // second round-trip to the blob store that write() + getBytes() would require.
+            // cacheSegment() uses putIfAbsent semantics: if a segment is already cached
+            // under this Merkle hash (possibly with a different internal layout), the
+            // pre-existing segment wins.  We always derive record indices from the segment
+            // that is *actually* in the cache to stay consistent with any live
+            // SegmentNodeState instances that already hold indices into that segment.
             Segment seg = Segment.parse(out.segBytes);
-            base.getStore().cacheSegment(out.segId, seg);
+            Segment cached = base.getStore().cacheSegment(out.segId, seg);
             // Root node is always the last record (post-order DFS)
-            int rootIdx = seg.getNodeCount() - 1;
-            nodestate = SegmentNodeState.fromRecord(base.getStore(), out.segId, rootIdx, seg.getNodeRecord(rootIdx));
+            int rootIdx = cached.getNodeCount() - 1;
+            nodestate = SegmentNodeState.fromRecord(base.getStore(), out.segId, rootIdx, cached.getNodeRecord(rootIdx));
             return nodestate;
         } catch (Exception e) {
             throw new IllegalStateException(e);
@@ -227,11 +232,11 @@ public class SimpleNodeBuilder extends MemoryNodeBuilder {
             SegmentWriter.WriteOutput out = writer.writeFull(current);
 
             Segment seg = Segment.parse(out.segBytes);
-            storeRef.getStore().cacheSegment(out.segId, seg);
+            Segment cached = storeRef.getStore().cacheSegment(out.segId, seg);
 
-            int rootIdx = seg.getNodeCount() - 1;
+            int rootIdx = cached.getNodeCount() - 1;
             SegmentNodeState flushed = SegmentNodeState.fromRecord(
-                    storeRef.getStore(), out.segId, rootIdx, seg.getNodeRecord(rootIdx));
+                    storeRef.getStore(), out.segId, rootIdx, cached.getNodeRecord(rootIdx));
 
             // Cache so that getNodeState() returns this immediately if no further changes are made.
             nodestate = flushed;
